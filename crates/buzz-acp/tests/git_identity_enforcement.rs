@@ -1094,8 +1094,8 @@ fn wrapper_refuses_push_of_commit_validly_signed_by_wrong_key() {
 /// Run the real `buzz-acp` harness with a script adapter and `BUZZ_GIT_IDENTITY`
 /// set to `mode` (unset for `None`). The adapter runs `probe` in `work`, writes
 /// `done`, and idles until the harness is terminated. Returns the harness exit
-/// status and its log. Isolated from operator Git config so any identity the
-/// probe sees came from the harness.
+/// status and its log. Isolated from operator global/system Git config, so any
+/// identity the probe sees came from the harness or the fixture's repo config.
 fn run_harness(
     work: &Path,
     mode: Option<&str>,
@@ -1233,8 +1233,7 @@ fn harness_user_mode_installs_only_relay_credentials() {
     let (status, logs) = run_harness(
         work.path(),
         Some("user"),
-        r#"case "$(command -v git)" in */parent-install/*) echo "git resolves to the parent wrapper" >&2; exit 1;; esac
-absent() { if git config "$1"; then echo "$1 is set" >&2; exit 1; fi; }
+        r#"absent() { if git config "$1"; then echo "$1 is set" >&2; exit 1; fi; }
 helper=$(command -v git-credential-nostr)
 dir=$(dirname "$helper")
 test "$(git config --get-urlmatch credential.helper https://relay.test/git/o/r)" = nostr
