@@ -498,7 +498,7 @@ async fn websocket_batch_enforces_token_scope_and_rejects_queue_truncation() {
 
     // A queue with room for the page but not EOSE must close, not complete.
     let (terminal, mut terminal_rx) = f.ws_conn(None);
-    for _ in 0..2 {
+    for _ in 0..1 {
         assert!(terminal.send("padding".into()));
     }
     crate::handlers::req::handle_req(

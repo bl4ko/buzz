@@ -600,7 +600,7 @@ async fn send_thread_window_frame(
     let reserve = (conn.send_tx.max_capacity() / 4)
         .max(1)
         .min(conn.send_tx.max_capacity().saturating_sub(1));
-    let mut frame = axum::extract::ws::Message::Text(frame.into());
+    let frame = axum::extract::ws::Message::Text(frame.into());
     loop {
         if conn.cancel.is_cancelled() || tokio::time::Instant::now() >= deadline {
             return false;
@@ -609,16 +609,18 @@ async fn send_thread_window_frame(
             return false;
         }
         if conn.send_tx.capacity() > reserve {
-            match conn.send_tx.try_send(frame) {
-                Ok(()) => {
+            if let Ok(permit) = conn.send_tx.try_reserve() {
+                // The permit is already subtracted from capacity. Holding it
+                // during this check makes concurrent finite senders respect
+                // the reserve; live producers only see transient contention.
+                if conn.send_tx.capacity() >= reserve {
+                    permit.send(frame);
                     conn.backpressure_count
                         .store(0, std::sync::atomic::Ordering::Relaxed);
                     return true;
                 }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => return false,
-                Err(tokio::sync::mpsc::error::TrySendError::Full(message)) => {
-                    frame = message;
-                }
+            } else if conn.send_tx.is_closed() {
+                return false;
             }
         }
         // No reservation: a live producer can take the reserved slots before
@@ -2775,6 +2777,28 @@ mod thread_window_queue_tests {
             );
         }
         assert!(!conn.cancel.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn concurrent_finite_senders_preserve_live_headroom() {
+        let (conn, _rx) = crate::connection::tests::test_conn_with_auth(
+            crate::connection::tests::authenticated_state(),
+        );
+        let results = futures_util::future::join_all((0..12).map(|n| {
+            let conn = conn.clone();
+            async move {
+                send_thread_window_frame(
+                    &conn,
+                    format!("finite-{n}"),
+                    Instant::now() + Duration::from_millis(30),
+                )
+                .await
+            }
+        }))
+        .await;
+        assert_eq!(results.iter().filter(|&&sent| sent).count(), 3);
+        assert_eq!(conn.send_tx.capacity(), 1);
+        assert!(conn.send("live".into()), "reserved slot remains available");
     }
 
     #[tokio::test]
