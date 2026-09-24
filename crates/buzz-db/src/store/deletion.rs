@@ -4154,7 +4154,12 @@ mod postgres_tests {
             .await
             .expect_err("fenced community must reject fresh write admission");
         assert!(
-            matches!(&error, DbError::AccessDenied(message) if message.contains("write-fenced")),
+            matches!(
+                &error,
+                DbError::AccessDenied(message)
+                    if message
+                        == &format!("community {} is write-fenced (fenced)", request.community_id)
+            ),
             "expected write-fenced access denial, got: {error:#}"
         );
     }
