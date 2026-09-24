@@ -24,7 +24,7 @@ use crate::state::AppState;
 use super::{api_error, internal_error, not_found};
 
 #[cfg(test)]
-mod relay_staff_moderation_tests;
+mod relay_staff_moderation_postgres_tests;
 mod thread_roots;
 mod thread_window;
 
