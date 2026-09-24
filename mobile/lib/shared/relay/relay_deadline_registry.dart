@@ -41,6 +41,13 @@ class RelayDeadlineRegistry {
     _terminal.remove(key);
     _epochs[key] = attempt(key) + 1;
   }
+
+  /// [clear]s every terminal key starting with [prefix].
+  void clearPrefix(String prefix) {
+    for (final key in [..._terminal.keys.where((k) => k.startsWith(prefix))]) {
+      clear(key);
+    }
+  }
 }
 
 /// Request identity for [filters]: equal filters address the same work,

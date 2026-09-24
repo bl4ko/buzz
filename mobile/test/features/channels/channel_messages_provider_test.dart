@@ -585,6 +585,141 @@ void main() {
       });
     }
 
+    for (final peerDeadline in [true, false]) {
+      test(
+        'a parked window attempt after a peer '
+        '${peerDeadline ? 'deadline sends no fallback' : 'success still falls back'}',
+        () async {
+          final parkedA = Completer<List<NostrEvent>>();
+          final session = _RecordingRelaySessionNotifier(
+            queryResults: [
+              parkedA.future,
+              peerDeadline ? deadline() : <NostrEvent>[_bounds()],
+              for (var i = 0; i < 4; i++) <NostrEvent>[_bounds()],
+            ],
+            historyResults: [[]],
+          );
+          final container = _buildContainer(session);
+          addTearDown(container.dispose);
+          container.listen(channelMessagesProvider(_channelId), (_, _) {});
+          await _pumpEventQueue();
+          // A real same-scope reconnect starts attempt B while A waits.
+          session.setConnected(false);
+          await _pumpEventQueue();
+          session.setConnected(true);
+          await _pumpEventQueue();
+          int windowQueries() => session.queryFilters
+              .where((filter) => filter.extensions['top_level'] == true)
+              .length;
+          int fetches() =>
+              session.operations.where((op) => op == 'fetch').length;
+          expect(windowQueries(), 2);
+          parkedA.completeError(Exception('reset'));
+          await _pumpEventQueue();
+          expect(fetches(), peerDeadline ? 0 : 1);
+          if (peerDeadline) {
+            container
+                .read(channelMessagesProvider(_channelId).notifier)
+                .retryAfterDeadline();
+            await _pumpEventQueue();
+            expect(windowQueries(), 3);
+          }
+        },
+      );
+    }
+
+    Future<(_RecordingRelaySessionNotifier, ProviderContainer)> olderFailed(
+      Object error,
+    ) async {
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          [
+            _event(id: 'head', createdAt: 20),
+            _bounds(hasMore: true, cursorCreatedAt: 20, cursorId: 'head'),
+          ],
+          error,
+          for (var i = 0; i < 4; i++)
+            <NostrEvent>[
+              _event(id: 'head', createdAt: 20),
+              _bounds(hasMore: true, cursorCreatedAt: 20, cursorId: 'head'),
+            ],
+        ],
+      );
+      final container = _buildContainer(session);
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      final notifier = container.read(
+        channelMessagesProvider(_channelId).notifier,
+      );
+      expect(await notifier.fetchOlder(), isFalse);
+      expect(notifier.reachedOldest, isFalse);
+      return (session, container);
+    }
+
+    for (final (name, error, retries) in [
+      ('deadline', deadline() as Object, false),
+      ('ordinary error', Exception('page failed') as Object, true),
+    ]) {
+      test('an older page after a $name automatic retry: $retries', () async {
+        final (session, container) = await olderFailed(error);
+        final notifier = container.read(
+          channelMessagesProvider(_channelId).notifier,
+        );
+        final sent = session.queryFilters.length;
+        // Position/layout listeners call fetchOlder again with no gesture,
+        // e.g. after a live arrival.
+        session.emit(_event(id: 'live', createdAt: 30));
+        await _pumpEventQueue();
+        await notifier.fetchOlder();
+        await notifier.fetchOlder();
+        if (retries) {
+          expect(session.queryFilters.length, greaterThan(sent));
+        } else {
+          expect(session.queryFilters.length, sent);
+          expect(notifier.reachedOldest, isFalse);
+          // Reopening the channel re-runs it.
+          notifier.retryAfterDeadline();
+          await notifier.fetchOlder();
+          expect(session.queryFilters.length, sent + 1);
+        }
+      });
+    }
+
+    test('an older-page deadline does not block a different cursor', () async {
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          [
+            _event(id: 'head', createdAt: 20),
+            _bounds(hasMore: true, cursorCreatedAt: 20, cursorId: 'head'),
+          ],
+          deadline(),
+          // A reconnect installs a newer head: a different older cursor.
+          [
+            _event(id: 'head2', createdAt: 25),
+            _bounds(hasMore: true, cursorCreatedAt: 25, cursorId: 'head2'),
+          ],
+          <NostrEvent>[_bounds()],
+        ],
+      );
+      final container = _buildContainer(session);
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      var notifier = container.read(
+        channelMessagesProvider(_channelId).notifier,
+      );
+      expect(await notifier.fetchOlder(), isFalse);
+      session.setConnected(false);
+      await _pumpEventQueue();
+      session.setConnected(true);
+      await _pumpEventQueue();
+      notifier = container.read(channelMessagesProvider(_channelId).notifier);
+      final sent = session.queryFilters.length;
+      await notifier.fetchOlder();
+      expect(session.queryFilters.length, sent + 1);
+    });
+
     test(
       'a recount deadline during the route retry backoff stops the retry',
       () async {

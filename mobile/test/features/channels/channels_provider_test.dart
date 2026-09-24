@@ -1848,6 +1848,53 @@ void main() {
       });
     }
 
+    for (final peerDeadline in [true, false]) {
+      test(
+        'a parked batch after a peer '
+        '${peerDeadline ? 'deadline sends no fallback' : 'success still falls back'}',
+        () async {
+          final session = _FakeRelaySession(
+            memberships: [_membership(_channelA, myPk)],
+            metadata: [_meta(id: _channelA, name: 'general')],
+          );
+          final container = _buildContainer(session: session);
+          addTearDown(container.dispose);
+          await container.read(channelsProvider.future);
+          await _settle();
+          final fallbacksBefore = session.messageHistoryCount;
+          // Attempt A: a reconnect refresh parks its unread batch in flight.
+          session.pauseNextUnreadCatchUpQuery();
+          session.setStatus(SessionStatus.reconnecting);
+          session.setStatus(SessionStatus.connected);
+          await session.nextUnreadCatchUpQueryStarted;
+          // Attempt B: an overlapping lifecycle refresh (resume) for the same
+          // unread batch.
+          if (peerDeadline) session.unreadBatchError = deadline();
+          final lifecycle =
+              container.read(appLifecycleProvider.notifier)
+                  as _FakeAppLifecycleNotifier;
+          lifecycle.set(AppLifecycleState.paused);
+          lifecycle.set(AppLifecycleState.resumed);
+          await _settle();
+          session.unreadBatchError = null;
+          // A then fails ordinarily.
+          session.failClaimedUnreadCatchUpQuery = true;
+          session.resumePausedUnreadCatchUpQuery();
+          await _settle();
+          if (peerDeadline) {
+            expect(session.messageHistoryCount, fallbacksBefore);
+            // Explicit refresh re-runs it.
+            final batches = session.queryBatches.length;
+            await container.read(channelsProvider.notifier).refresh();
+            await _settle();
+            expect(session.queryBatches.length, greaterThan(batches));
+          } else {
+            expect(session.messageHistoryCount, greaterThan(fallbacksBefore));
+          }
+        },
+      );
+    }
+
     test('reordering unchanged channels keeps a batch terminal', () {
       fakeAsync((async) {
         final session = _FakeRelaySession(

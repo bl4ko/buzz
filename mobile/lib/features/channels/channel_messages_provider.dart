@@ -259,6 +259,9 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
       );
       _usingChannelWindow = false;
     }
+    // Another attempt (e.g. after a reconnect) may have hit the deadline
+    // while this one waited: the fallback is a new send, so re-check.
+    if (_deadlines.terminalError(windowKey) case final error?) throw error;
     try {
       final history = await session.fetchHistory(
         NostrFilters.messages(channelId),
@@ -275,6 +278,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
   /// Explicitly retries a newest-window query that settled on a relay
   /// deadline; the channel page calls this when the user reopens it.
   void retryAfterDeadline() {
+    _deadlines.clearPrefix(_olderPageKeyPrefix);
     final windowKey = relayRequestKey([_channelWindowFilter(null)]);
     if (!_deadlines.isTerminal(windowKey)) return;
     _deadlines.clear(windowKey);
@@ -417,6 +421,10 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
       ),
     );
   }
+
+  /// Older pages are keyed by their exact request, cursor included, so a
+  /// different position is new work; reopening clears them all.
+  String get _olderPageKeyPrefix => 'older:$channelId:';
 
   RelayDeadlineRegistry get _deadlines =>
       ref.read(relayDeadlineRegistryProvider);
@@ -957,6 +965,12 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
         _reachedOldest = true;
         return false;
       }
+      // Position/layout listeners call this automatically; a page that hit
+      // the deadline waits for an explicit reopen.
+      final key =
+          _olderPageKeyPrefix + relayRequestKey([_channelWindowFilter(cursor)]);
+      if (_deadlines.isTerminal(key)) return false;
+      final attempt = _deadlines.attempt(key);
       try {
         final pageVersion = ++_threadQuerySerial;
         final page = await _fetchWindowPage(session, cursor);
@@ -971,6 +985,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
         state = AsyncData(flattened);
         return page.rows.isNotEmpty || page.aux.isNotEmpty;
       } catch (error) {
+        _deadlines.record(key, error, attempt: attempt);
         debugPrint(
           '[ChannelMessagesNotifier] failed to fetch older channel window page for $channelId: $error',
         );
@@ -981,9 +996,17 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     final currentEvents = state.value;
     if (currentEvents == null || currentEvents.isEmpty) return false;
     final oldest = currentEvents.first.createdAt;
-    final older = await session.fetchHistory(
-      NostrFilters.messages(channelId, limit: 100, until: oldest),
-    );
+    final filter = NostrFilters.messages(channelId, limit: 100, until: oldest);
+    final key = _olderPageKeyPrefix + relayRequestKey([filter]);
+    if (_deadlines.isTerminal(key)) return false;
+    final attempt = _deadlines.attempt(key);
+    final List<NostrEvent> older;
+    try {
+      older = await session.fetchHistory(filter);
+    } catch (error) {
+      _deadlines.record(key, error, attempt: attempt);
+      rethrow;
+    }
     if (older.isEmpty) {
       _reachedOldest = true;
       return false;

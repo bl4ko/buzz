@@ -500,6 +500,9 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     final events = <NostrEvent>[];
     var deadline = false;
     for (var start = 0; start < filters.length; start += fallbackConcurrency) {
+      // Each chunk is a new send: stop if this or an overlapping attempt
+      // hit the deadline meanwhile. Partial events are not a result.
+      if (deadline || deadlines.isTerminal(key)) return null;
       final end = min(start + fallbackConcurrency, filters.length);
       final results = await Future.wait(
         filters.sublist(start, end).map((filter) async {
@@ -515,8 +518,8 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       for (final result in results) {
         events.addAll(result);
       }
-      if (deadline) return null;
     }
+    if (deadline) return null;
     return events;
   }
 

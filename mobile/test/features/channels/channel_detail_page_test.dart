@@ -10977,10 +10977,26 @@ void main() {
         // One scope throughout; the head (and a rebuild counter) change.
         final shown = ValueNotifier(('root', 0));
         addTearDown(shown.dispose);
+        // Counts real sends: like the production provider, a build whose
+        // scan is terminal throws the stored deadline without sending.
+        var loads = 0;
+        RelayDeadlineRegistry? registry;
+        final key = threadScanKey(
+          const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
+        );
         await tester.pumpWidget(
           _buildTestable(
             messages: [other, root, mid],
             disableRetries: true,
+            threadReplyLoaders: {
+              'root': () {
+                if (registry?.terminalError(key) case final error?) {
+                  return Future.error(error);
+                }
+                loads++;
+                return Future.value(const <NostrEvent>[]);
+              },
+            },
             home: ValueListenableBuilder(
               valueListenable: shown,
               builder: (_, value, _) => ThreadDetailPage(
@@ -10999,17 +11015,17 @@ void main() {
         final deadlines = ProviderScope.containerOf(
           tester.element(find.byType(ThreadDetailPage)),
         ).read(relayDeadlineRegistryProvider);
-        final key = threadScanKey(
-          const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
-        );
+        registry = deadlines;
         deadlines.record(
           key,
           RelayException(503, '{"error":"query timed out"}'),
         );
+        final opened = loads;
         // A rebuild of the open page is not a reopen.
         shown.value = ('root', 1);
         await tester.pumpAndSettle();
         expect(deadlines.isTerminal(key), isTrue);
+        expect(loads, opened);
         // Opening another thread, then this one again, is.
         shown.value = ('other', 2);
         await tester.pumpAndSettle();
@@ -11017,6 +11033,7 @@ void main() {
         shown.value = ('root', 3);
         await tester.pumpAndSettle();
         expect(deadlines.isTerminal(key), isFalse);
+        expect(loads, opened + 1);
       });
 
       testWidgets('shows an incoming nested reply', (tester) async {
