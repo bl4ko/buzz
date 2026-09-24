@@ -9370,20 +9370,46 @@ mod build_mcp_servers_tests {
 
     #[test]
     fn session_new_mcp_server_has_required_fields() {
+        use nostr::ToBech32;
         let config = test_config();
         let servers = build_mcp_servers(&config);
         assert_eq!(servers.len(), 1);
         let server = &servers[0];
         assert_eq!(server.name, "test-mcp-server");
 
-        let names: Vec<&str> = server.env.iter().map(|e| e.name.as_str()).collect();
+        let get_value = |name: &str| -> Option<&str> {
+            server.env.iter().find(|e| e.name == name).map(|e| e.value.as_str())
+        };
+
+        // BUZZ_RELAY_URL must carry the canonical relay URL from config.
+        let relay_url = get_value("BUZZ_RELAY_URL");
         assert!(
-            names.contains(&"BUZZ_RELAY_URL"),
-            "missing BUZZ_RELAY_URL; got {names:?}"
+            relay_url.is_some(),
+            "missing BUZZ_RELAY_URL; env={:?}",
+            server.env.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()
         );
+        assert_eq!(
+            relay_url.unwrap(),
+            config.relay_url,
+            "BUZZ_RELAY_URL value must equal config.relay_url"
+        );
+
+        // BUZZ_PRIVATE_KEY must carry the bech32 nsec for config.keys.
+        let private_key = get_value("BUZZ_PRIVATE_KEY");
         assert!(
-            names.contains(&"BUZZ_PRIVATE_KEY"),
-            "missing BUZZ_PRIVATE_KEY; got {names:?}"
+            private_key.is_some(),
+            "missing BUZZ_PRIVATE_KEY; env={:?}",
+            server.env.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()
+        );
+        let expected_nsec = config
+            .keys
+            .secret_key()
+            .to_bech32()
+            .expect("secret key bech32 must not fail");
+        assert_eq!(
+            private_key.unwrap(),
+            expected_nsec,
+            "BUZZ_PRIVATE_KEY value must be the bech32 nsec of config.keys"
         );
     }
 

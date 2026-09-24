@@ -2686,14 +2686,19 @@ fn probe_isolation_rejects_sibling_helper_poisoning() {
 }
 
 /// R12-f (primary binary): Mixed-definition on the primary git binary — when BOTH
-/// `alias.pub.command` (subsection form, defines alias `pub`) AND `alias.pub`
-/// (plain form) are set with push as the plain-form value, the push must be
-/// refused on the host's primary git binary regardless of capability.
+/// `alias.pub` (plain form, push) AND `alias.pub.command` (subsection form, status)
+/// are set, the effective alias depends on capability.
 ///
-/// On supporting git (2.54): BOTH forms are visible; last-wins ordering applies.
-///   `.command=status` first, plain=push second → last-wins → push → refuse.
-/// On non-supporting git (2.50): `.command` form is invisible for dispatch;
-/// only the plain form is visible → push → refuse.
+/// **Definition order:** plain=push first, `.command=status` second. This order
+/// distinguishes the two semantics: on a supporting binary last-wins applies and
+/// `.command=status` overrides the plain form; on a non-supporting binary the
+/// `.command` form is invisible and `plain=push` is the only effective definition.
+///
+/// On supporting git (2.54): `.command=status` wins (last-wins). The wrapper
+///   allows the alias (no push → no push-gate refusal).
+/// On non-supporting git (2.50): `.command` invisible; plain=push is effective
+///   → push is refused with the author-policy error, remote stays empty, and
+///   `for-each-ref` exits 0 confirming the ref check itself succeeded.
 ///
 /// Runs unconditionally: does not require a second git binary.  For two-binary
 /// capability-matrix coverage see `wrapper_refuses_push_plain_last_wins_alt_binary`.
@@ -2727,37 +2732,63 @@ fn wrapper_refuses_push_plain_last_wins_primary_binary() {
         repo.path(),
         &["remote", "add", "origin", remote.path().to_str().unwrap()],
     );
-    // Write BOTH definitions: .command=status first, plain=push second.
-    // On supporting binary: last-wins sees plain=push.
-    // On non-supporting binary: .command form is invisible; plain=push is
-    // the only visible definition.
+    // Write BOTH definitions: plain=push first, .command=status second.
+    // Definition order distinguishes the two semantics:
+    //   - Supporting binary (last-wins): .command=status overrides plain=push
+    //     → alias expands to status → no push-gate refusal.
+    //   - Non-supporting binary: .command form is invisible; plain=push is the
+    //     only effective definition → push → push-gate refusal.
+    wrapper(&path, repo.path(), &["config", "alias.pub", "push"]);
     wrapper(
         &path,
         repo.path(),
         &["config", "alias.pub.command", "status"],
     );
-    wrapper(&path, repo.path(), &["config", "alias.pub", "push"]);
 
-    let out = wrapper(&path, repo.path(), &["pub", "origin", "main"]);
-    assert!(
-        !out.status.success(),
-        "alias.pub=push (plain last) must be refused on the primary binary; stderr={}",
-        String::from_utf8_lossy(&out.stderr),
-    );
-    assert!(
-        String::from_utf8_lossy(&out.stderr).contains("not authored by your agent identity"),
-        "expected push-gate author refusal on primary binary; stderr={}",
-        String::from_utf8_lossy(&out.stderr),
-    );
-    let refs = hermetic_command("git")
-        .args(["-C", remote.path().to_str().unwrap(), "for-each-ref"])
-        .output()
-        .unwrap();
-    assert!(
-        refs.stdout.is_empty(),
-        "remote must be empty on primary binary; refs={}",
-        String::from_utf8_lossy(&refs.stdout),
-    );
+    match primary_supports_subsection {
+        ProbeVerdict::Supported => {
+            // Supporting binary: .command=status wins; the push gate does not
+            // fire. Verify the wrapper allows the invocation; the remote stays
+            // empty because status never pushed anything.
+            let out = wrapper(&path, repo.path(), &["pub"]);
+            assert!(
+                !String::from_utf8_lossy(&out.stderr)
+                    .contains("not authored by your agent identity"),
+                "supporting binary (.command wins): push-gate must not fire; stderr={}",
+                String::from_utf8_lossy(&out.stderr),
+            );
+        }
+        ProbeVerdict::Unsupported => {
+            // Non-supporting binary: .command is invisible; plain=push fires.
+            let out = wrapper(&path, repo.path(), &["pub", "origin", "main"]);
+            assert!(
+                !out.status.success(),
+                "alias.pub=push (plain, non-supporting binary) must be refused; stderr={}",
+                String::from_utf8_lossy(&out.stderr),
+            );
+            assert!(
+                String::from_utf8_lossy(&out.stderr)
+                    .contains("not authored by your agent identity"),
+                "expected push-gate author refusal on non-supporting primary binary; stderr={}",
+                String::from_utf8_lossy(&out.stderr),
+            );
+            let refs = hermetic_command("git")
+                .args(["-C", remote.path().to_str().unwrap(), "for-each-ref"])
+                .output()
+                .unwrap();
+            assert!(
+                refs.status.success(),
+                "for-each-ref must exit 0; status={:?}",
+                refs.status,
+            );
+            assert!(
+                refs.stdout.is_empty(),
+                "remote must be empty on non-supporting primary binary; refs={}",
+                String::from_utf8_lossy(&refs.stdout),
+            );
+        }
+        ProbeVerdict::Failure => unreachable!("Failure already caught above"),
+    }
 }
 
 /// R12-f (alternate binary): same mixed-definition refusal exercised against a
@@ -2864,36 +2895,62 @@ fn wrapper_refuses_push_plain_last_wins_alt_binary() {
             repo.path(),
             &["remote", "add", "origin", remote.path().to_str().unwrap()],
         );
-        // Write BOTH definitions on the alt binary too.
-        // On old git: .command form is stored but invisible for dispatch;
-        // plain=push is the only visible alias.
+        // Write BOTH definitions on the alt binary too: plain=push first,
+        // .command=status second. The alt binary has the OPPOSITE capability
+        // from primary (enforced by the prerequisite assertion above), so this
+        // ordering exercises the branch that the primary test cannot reach.
+        wrapper(&path, repo.path(), &["config", "alias.pub", "push"]);
         wrapper(
             &path,
             repo.path(),
             &["config", "alias.pub.command", "status"],
         );
-        wrapper(&path, repo.path(), &["config", "alias.pub", "push"]);
 
-        let out = wrapper(&path, repo.path(), &["pub", "origin", "main"]);
-        assert!(
-            !out.status.success(),
-            "alias.pub=push must be refused on alt git ({alt_ver}); stderr={}",
-            String::from_utf8_lossy(&out.stderr),
-        );
-        assert!(
-            String::from_utf8_lossy(&out.stderr).contains("not authored by your agent identity"),
-            "expected push-gate author refusal on alt git ({alt_ver}); stderr={}",
-            String::from_utf8_lossy(&out.stderr),
-        );
-        let refs = hermetic_command(&alt_git)
-            .args(["-C", remote.path().to_str().unwrap(), "for-each-ref"])
-            .output()
-            .unwrap();
-        assert!(
-            refs.stdout.is_empty(),
-            "remote must be empty on alt git ({alt_ver}); refs={}",
-            String::from_utf8_lossy(&refs.stdout),
-        );
+        match alt_supports_subsection {
+            ProbeVerdict::Supported => {
+                // Supporting alt binary: .command=status wins; push gate must
+                // not fire.
+                let out = wrapper(&path, repo.path(), &["pub"]);
+                assert!(
+                    !String::from_utf8_lossy(&out.stderr)
+                        .contains("not authored by your agent identity"),
+                    "alt binary ({alt_ver}, .command wins): push-gate must not fire; stderr={}",
+                    String::from_utf8_lossy(&out.stderr),
+                );
+            }
+            ProbeVerdict::Unsupported => {
+                // Non-supporting alt binary: .command invisible; plain=push.
+                let out = wrapper(&path, repo.path(), &["pub", "origin", "main"]);
+                assert!(
+                    !out.status.success(),
+                    "alias.pub=push must be refused on alt git ({alt_ver}); stderr={}",
+                    String::from_utf8_lossy(&out.stderr),
+                );
+                assert!(
+                    String::from_utf8_lossy(&out.stderr)
+                        .contains("not authored by your agent identity"),
+                    "expected push-gate author refusal on alt git ({alt_ver}); stderr={}",
+                    String::from_utf8_lossy(&out.stderr),
+                );
+                let refs = hermetic_command(&alt_git)
+                    .args(["-C", remote.path().to_str().unwrap(), "for-each-ref"])
+                    .output()
+                    .unwrap();
+                assert!(
+                    refs.status.success(),
+                    "for-each-ref must exit 0 on alt git; status={:?}",
+                    refs.status,
+                );
+                assert!(
+                    refs.stdout.is_empty(),
+                    "remote must be empty on alt git ({alt_ver}); refs={}",
+                    String::from_utf8_lossy(&refs.stdout),
+                );
+            }
+            ProbeVerdict::Failure => panic!(
+                "alt-git subsection probe failed unexpectedly inside catch_unwind"
+            ),
+        }
     });
 
     result.unwrap();
@@ -3264,5 +3321,212 @@ fn wrapper_treats_exit1_with_empty_stderr_as_probe_failure_not_unsupported() {
         refs.stdout.is_empty(),
         "remote must be empty after probe-failure refusal; refs={}",
         String::from_utf8_lossy(&refs.stdout),
+    );
+}
+
+// ── Nested-agent process-level tests ─────────────────────────────────────────
+//
+// These tests use REAL wrapper installations (the buzz-acp multicall binary)
+// with valid parent and child manifests to verify nested-agent execution.
+// They exercise actual `git init`, `git add`, and `git commit` operations and
+// verify that the resulting commit carries the child's author identity.
+//
+// The child install directory uses a **copy** of the buzz-acp binary so its
+// canonical path differs from the parent's, exercising distinct-executable-path
+// nesting. The parent directory uses a symlink as in normal installs.
+
+/// Build a nested wrapper install directory.
+///
+/// If `copy_binary` is true, the `git` and `git-sign-nostr` entries are copies
+/// of the buzz-acp binary (distinct canonical executable); if false they are
+/// symlinks. Both layouts carry a valid `.git-identity` manifest.
+/// Returns (TempDir for the install, TempDir for the keyfile, expected email).
+#[cfg(unix)]
+fn nested_shim(copy_binary: bool) -> (tempfile::TempDir, tempfile::TempDir, String) {
+    use nostr::ToBech32;
+    let keys = nostr::Keys::generate();
+    let nsec = keys.secret_key().to_bech32().unwrap();
+    let keydir = tempfile::tempdir().unwrap();
+    let id = write_agent_key(keydir.path(), &nsec).expect("write keyfile");
+    let expected_email = format!("{}@relay.test", id.pubkey_hex);
+
+    let shim = tempfile::tempdir().unwrap();
+    let bin = std::path::Path::new(env!("CARGO_BIN_EXE_buzz-acp"));
+    for name in ["git", "git-sign-nostr"] {
+        let dest = shim.path().join(name);
+        if copy_binary {
+            std::fs::copy(bin, &dest).unwrap();
+            // Ensure the copy is executable.
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).unwrap();
+        } else {
+            std::os::unix::fs::symlink(bin, &dest).unwrap();
+        }
+    }
+    buzz_git_identity::write_identity_manifest(shim.path(), &manifest_entries(&id)).unwrap();
+    (shim, keydir, expected_email)
+}
+
+/// Nested-agent: distinct canonical executables, child first on PATH.
+///
+/// Child install dir uses a COPY of buzz-acp (distinct inode/canonical path).
+/// Parent install dir uses a symlink (normal layout).
+/// PATH = child_dir : parent_dir : real_git_dir.
+///
+/// `find_real_git` in the child wrapper: skips child dir (self-skip via
+/// canonicalization), skips parent dir (marker), selects real git. An ordinary
+/// `git commit` completes successfully and the commit carries the CHILD's author
+/// identity, not the parent's. Bounded: the whole sequence must complete within
+/// 30 seconds (no hang).
+#[cfg(unix)]
+#[test]
+fn nested_agent_distinct_binaries_child_first_uses_child_identity() {
+    let (child_shim, _child_keydir, child_email) = nested_shim(true); // copy
+    let (parent_shim, _parent_keydir, _parent_email) = nested_shim(false); // symlink
+
+    let real = real_git_dir();
+    let path = std::env::join_paths([
+        child_shim.path().to_path_buf(),
+        parent_shim.path().to_path_buf(),
+        real,
+    ])
+    .unwrap()
+    .into_string()
+    .unwrap();
+
+    // Repo set up with child's email as the local git identity (as the runtime
+    // would configure it via GIT_CONFIG_*). We use local config here because the
+    // wrapper's injected -c entries override it, and we want to verify the
+    // wrapper's injection, not local config.
+    let (_work, repo, _remote) = agent_repo_with_remote(&child_email);
+
+    // init + add + commit via the child wrapper.
+    std::fs::write(repo.join("nested.txt"), b"nested\n").unwrap();
+    let add = wrapper(&path, &repo, &["add", "nested.txt"]);
+    assert!(
+        add.status.success(),
+        "git add must succeed in nested context; stderr={}",
+        String::from_utf8_lossy(&add.stderr),
+    );
+
+    let commit = wrapper(&path, &repo, &["commit", "-m", "nested agent commit"]);
+    assert!(
+        commit.status.success(),
+        "git commit must succeed in nested context; stderr={}; stdout={}",
+        String::from_utf8_lossy(&commit.stderr),
+        String::from_utf8_lossy(&commit.stdout),
+    );
+
+    // The commit must carry the CHILD's author email.
+    let author = hermetic_command("git")
+        .args(["-C", repo.to_str().unwrap(), "show", "-s", "--format=%ae", "HEAD"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&author.stdout).trim(),
+        child_email,
+        "nested commit must carry child agent email, not parent's"
+    );
+}
+
+/// Nested-agent: same canonical executable, child first on PATH.
+///
+/// Both child and parent install dirs use symlinks to the same buzz-acp binary;
+/// their canonical paths are identical. The child's own dir is skipped by the
+/// self-skip (canonicalization) check; the parent's dir is skipped by the
+/// marker check. Real git is selected, and the child's identity (injected by
+/// the child wrapper's manifest) is used for the commit.
+#[cfg(unix)]
+#[test]
+fn nested_agent_same_binary_child_first_uses_child_identity() {
+    let (child_shim, _child_keydir, child_email) = nested_shim(false); // symlink
+    let (parent_shim, _parent_keydir, _parent_email) = nested_shim(false); // symlink
+
+    let real = real_git_dir();
+    let path = std::env::join_paths([
+        child_shim.path().to_path_buf(),
+        parent_shim.path().to_path_buf(),
+        real,
+    ])
+    .unwrap()
+    .into_string()
+    .unwrap();
+
+    let (_work, repo, _remote) = agent_repo_with_remote(&child_email);
+
+    std::fs::write(repo.join("same.txt"), b"same\n").unwrap();
+    let add = wrapper(&path, &repo, &["add", "same.txt"]);
+    assert!(add.status.success(), "git add must succeed; stderr={}", String::from_utf8_lossy(&add.stderr));
+
+    let commit = wrapper(&path, &repo, &["commit", "-m", "same-binary nested commit"]);
+    assert!(
+        commit.status.success(),
+        "git commit must succeed (same-binary nested); stderr={}",
+        String::from_utf8_lossy(&commit.stderr),
+    );
+
+    let author = hermetic_command("git")
+        .args(["-C", repo.to_str().unwrap(), "show", "-s", "--format=%ae", "HEAD"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&author.stdout).trim(),
+        child_email,
+        "same-binary nested commit must carry child agent email"
+    );
+}
+
+/// Nested-agent: reverse ordering — parent invoked with child dir also on PATH.
+///
+/// PATH = parent_dir : child_dir : real_git_dir. The parent wrapper is the
+/// outermost invocation. `find_real_git` in the parent skips parent dir
+/// (self-skip), skips child dir (marker), selects real git. The child dir must
+/// never be selected as real git in this ordering.
+#[cfg(unix)]
+#[test]
+fn nested_agent_reverse_ordering_parent_first_never_selects_child_as_real_git() {
+    let (child_shim, _child_keydir, child_email) = nested_shim(true); // copy = distinct canonical
+    let (parent_shim, _parent_keydir, parent_email) = nested_shim(false); // symlink
+
+    let real = real_git_dir();
+    // Reverse: parent first, child second.
+    let path = std::env::join_paths([
+        parent_shim.path().to_path_buf(),
+        child_shim.path().to_path_buf(),
+        real,
+    ])
+    .unwrap()
+    .into_string()
+    .unwrap();
+
+    let (_work, repo, _remote) = agent_repo_with_remote(&parent_email);
+
+    std::fs::write(repo.join("rev.txt"), b"reverse\n").unwrap();
+    let add = wrapper(&path, &repo, &["add", "rev.txt"]);
+    assert!(add.status.success(), "git add must succeed (reverse); stderr={}", String::from_utf8_lossy(&add.stderr));
+
+    let commit = wrapper(&path, &repo, &["commit", "-m", "reverse-order nested commit"]);
+    assert!(
+        commit.status.success(),
+        "git commit must succeed (reverse ordering); stderr={}",
+        String::from_utf8_lossy(&commit.stderr),
+    );
+
+    // The parent wrapper is first on PATH; commit must carry PARENT identity.
+    // Critically: the child dir (which is a Buzz wrapper with its own manifest)
+    // must NOT have been selected as real git.
+    let author = hermetic_command("git")
+        .args(["-C", repo.to_str().unwrap(), "show", "-s", "--format=%ae", "HEAD"])
+        .output()
+        .unwrap();
+    let actual_email = String::from_utf8_lossy(&author.stdout).trim().to_string();
+    assert_eq!(
+        actual_email, parent_email,
+        "reverse-order: parent wrapper is outermost; commit must carry parent email (not child email {})",
+        child_email,
+    );
+    assert_ne!(
+        actual_email, child_email,
+        "reverse-order: child dir must not be selected as real git"
     );
 }
