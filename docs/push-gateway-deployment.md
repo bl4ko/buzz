@@ -168,7 +168,10 @@ Alerting rules ship as an opt-in prometheus-operator `PrometheusRule` (`promethe
 Relay push is an explicit deployment opt-in through `BUZZ_PUSH_ENABLED=true`;
 the established strict boolean parser rejects unknown values and the default is
 false. When enabled, `BUZZ_PUSH_GATEWAY_DELIVERY_URL` is required and must be an
-exact HTTPS `/v1/deliveries/apns` URL. An absent or explicitly empty URL while
+exact HTTPS `/v1/deliveries/apns` URL, or an explicitly configured HTTP URL
+for an authenticated service mesh. HTTP supports an explicit Service port;
+HTTPS retains the default-port constraint. Credentials, query and fragment are
+not accepted. The relay signs and sends the same configured URL. An absent or explicitly empty URL while
 enabled is a startup error. Only an enabled relay
 advertises its host-scoped NIP-PL descriptor, accepts leases, and starts the
 matcher and delivery worker. Relays retain lease matching, authorization, durable
@@ -320,3 +323,21 @@ before use:
 helm show chart oci://ghcr.io/block/buzz/charts/buzz-push-gateway --version X.Y.Z
 helm pull oci://ghcr.io/block/buzz/charts/buzz-push-gateway --version X.Y.Z
 ```
+
+
+### Delivery URL at the gateway
+
+The gateway verifies NIP-98 against the incoming request URL, including its
+port, path and query, rather than its configured public origin. Its listener is
+HTTP. Direct mesh callers use HTTP without forwarding headers. TLS-terminating
+ingress must preserve Host and overwrite `X-Forwarded-Proto` with `https` before
+forwarding to the gateway. A single `http` or `https` value is accepted; absent
+that header the request URI scheme, or HTTP for an origin-form request, applies.
+The URI authority (when present) or Host supplies the authority.
+`Forwarded` and `X-Forwarded-Host` are not used.
+
+Restrict gateway access to the intended ingress and relay workloads using mesh
+identity authorization and network policy. Internal HTTP requires mesh mTLS;
+it is not intended for an unprotected network. Coordinate the ingress header
+contract with gateway rollout, including external HTTPS deployments. No mobile
+App Attest audiences, grant checks, or relay activation settings change.

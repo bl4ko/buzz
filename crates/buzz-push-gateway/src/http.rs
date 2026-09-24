@@ -12,8 +12,8 @@ use crate::{
 };
 use axum::{
     body::Bytes,
-    extract::State,
-    http::{HeaderMap, StatusCode},
+    extract::{OriginalUri, State},
+    http::{HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -618,7 +618,37 @@ async fn revoke_installation(State(s): State<AppState>, body: Bytes) -> Response
     }
 }
 
-async fn deliver(State(s): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
+// The listener is HTTP. TLS-terminating ingress must overwrite X-Forwarded-Proto
+// and preserve the request authority. Direct mesh callers use HTTP without it.
+// Forwarded and X-Forwarded-Host are deliberately not alternate URL sources.
+fn delivery_request_url(uri: &Uri, headers: &HeaderMap) -> Option<url::Url> {
+    let mut forwarded_proto = headers.get_all("x-forwarded-proto").iter();
+    let scheme = match forwarded_proto.next() {
+        Some(value) => value.to_str().ok()?,
+        None => uri.scheme_str().unwrap_or("http"),
+    };
+    if forwarded_proto.next().is_some() || !matches!(scheme, "http" | "https") {
+        return None;
+    }
+    let authority = match uri.authority() {
+        Some(authority) => authority.as_str(),
+        None => headers.get(axum::http::header::HOST)?.to_str().ok()?,
+    };
+    let authority: axum::http::uri::Authority = authority.parse().ok()?;
+    let path = uri.path_and_query()?.as_str();
+    let url = url::Url::parse(&format!("{scheme}://{authority}{path}")).ok()?;
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return None;
+    }
+    Some(url)
+}
+
+async fn deliver(
+    State(s): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     let r: DeliveryRequest = match crate::strict_json::from_slice(&body) {
         Ok(x) => x,
         Err(_) => return error(StatusCode::BAD_REQUEST, "invalid_request"),
@@ -637,9 +667,13 @@ async fn deliver(State(s): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         Some(x) => x,
         None => return error(StatusCode::UNAUTHORIZED, "invalid_auth"),
     };
+    let request_url = match delivery_request_url(&uri, &headers) {
+        Some(url) => url,
+        None => return error(StatusCode::UNAUTHORIZED, "invalid_auth"),
+    };
     let relay = match verify_auth_header(
         auth,
-        &s.gateway_urls.delivery,
+        &request_url,
         HttpMethod::POST,
         Timestamp::now(),
         Some(&body),
