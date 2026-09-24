@@ -457,6 +457,12 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     try {
       return await session.queryRelay(filters);
     } catch (error) {
+      // Per-filter fallback would re-run the timed-out work another way.
+      // Degrade exactly as a fully failed fallback would: no events.
+      if (isRelayDeadlineError(error)) {
+        debugPrint('[ChannelsNotifier] batched $operation hit the deadline');
+        return const [];
+      }
       debugPrint(
         '[ChannelsNotifier] batched $operation failed; '
         'using bounded websocket fallback: $error',

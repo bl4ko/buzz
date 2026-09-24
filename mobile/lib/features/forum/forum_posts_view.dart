@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/relay/relay_closed_policy.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
@@ -39,10 +40,20 @@ class ForumPostsView extends HookConsumerWidget {
     final providerContainer = ProviderScope.containerOf(context, listen: false);
     final forumDelivery = ForumEventDelivery.capture(providerContainer);
 
-    // Periodic refresh (every 15s, matching desktop).
+    // Periodic refresh (every 15s, matching desktop). A settled deadline
+    // pauses polling; reopening the forum is the explicit retry.
     useEffect(() {
+      final provider = forumPostsProvider(channel.id);
+      // Hooks run effects during build; defer the reopen retry past it.
+      Future.microtask(() {
+        if (context.mounted && isSettledRelayDeadline(ref.read(provider))) {
+          ref.invalidate(provider);
+        }
+      });
       final timer = Stream.periodic(const Duration(seconds: 15)).listen((_) {
-        ref.invalidate(forumPostsProvider(channel.id));
+        if (!isSettledRelayDeadline(ref.read(provider))) {
+          ref.invalidate(provider);
+        }
       });
       return timer.cancel;
     }, [channel.id]);

@@ -304,7 +304,11 @@ extension _ThreadSummaryState on ChannelMessagesNotifier {
   }
 
   Future<void> _refreshOverflowSummary(String root, {int attempt = 0}) async {
-    if (!_hasVisibleThreadRows(root)) return;
+    // A deadline recount stays pending until a complete thread query (the user
+    // opening the thread) settles it; re-queuing must not replay the scan.
+    if (!_hasVisibleThreadRows(root) || _deadlineRecountRoots.contains(root)) {
+      return;
+    }
     final generation = _initVersion;
     final version = beginThreadQuery(root);
     final snapshot = cachedThreadReplyIds(root);
@@ -332,7 +336,9 @@ extension _ThreadSummaryState on ChannelMessagesNotifier {
       }
     } catch (error) {
       if (!current()) return;
-      if (attempt < 2) {
+      if (isRelayDeadlineError(error)) {
+        _deadlineRecountRoots.add(root);
+      } else if (attempt < 2) {
         // Retain this active queue slot during backoff, so retries share the
         // same concurrency budget and stop when newer work supersedes them.
         await Future<void>.delayed(Duration(milliseconds: 500 << attempt));

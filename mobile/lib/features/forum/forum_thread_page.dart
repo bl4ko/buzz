@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/relay/relay_closed_policy.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
@@ -45,12 +46,23 @@ class ForumThreadPage extends HookConsumerWidget {
       forumThreadProvider((channelId: channelId, eventId: postEventId)),
     );
 
-    // Periodic refresh (every 10s, matching desktop).
+    // Periodic refresh (every 10s, matching desktop). A settled deadline
+    // pauses polling; reopening the thread is the explicit retry.
     useEffect(() {
+      final provider = forumThreadProvider((
+        channelId: channelId,
+        eventId: postEventId,
+      ));
+      // Hooks run effects during build; defer the reopen retry past it.
+      Future.microtask(() {
+        if (context.mounted && isSettledRelayDeadline(ref.read(provider))) {
+          ref.invalidate(provider);
+        }
+      });
       final timer = Stream.periodic(const Duration(seconds: 10)).listen((_) {
-        ref.invalidate(
-          forumThreadProvider((channelId: channelId, eventId: postEventId)),
-        );
+        if (!isSettledRelayDeadline(ref.read(provider))) {
+          ref.invalidate(provider);
+        }
       });
       return timer.cancel;
     }, [channelId, postEventId]);

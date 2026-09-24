@@ -37,8 +37,12 @@ final threadRepliesProvider = FutureProvider.autoDispose
       // A reply missed while the socket is stale cannot invalidate this
       // one-shot query. Refresh mounted threads when the session recovers;
       // auto-dispose also makes reopening a thread start from relay truth.
+      // A settled deadline is terminal for this request: only reopening
+      // retries it.
+      var deadline = false;
       ref.listen(relaySessionProvider, (previous, next) {
-        if (previous?.status != SessionStatus.connected &&
+        if (!deadline &&
+            previous?.status != SessionStatus.connected &&
             next.status == SessionStatus.connected) {
           ref.invalidateSelf();
         }
@@ -112,7 +116,8 @@ final threadRepliesProvider = FutureProvider.autoDispose
           }
         }
         return replies;
-      } catch (_) {
+      } catch (error) {
+        deadline = isRelayDeadlineError(error);
         if (queryVersion != null) {
           channelMessages?.failThreadQuery(args.rootId, queryVersion);
         }

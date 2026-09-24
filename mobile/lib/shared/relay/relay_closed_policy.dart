@@ -88,6 +88,13 @@ int? parseRateLimitRetrySeconds(String message) {
   return match == null ? null : int.tryParse(match.group(1)!);
 }
 
+/// Whether [value] has settled on a relay deadline.
+///
+/// Automatic refresh owners (timers, reconnect, live-event invalidation) must
+/// not re-send a request in this state; only an explicit user action may.
+bool isSettledRelayDeadline(AsyncValue<Object?> value) =>
+    value.hasError && !value.isLoading && isRelayDeadlineError(value.error!);
+
 /// Production Riverpod retry policy for relay providers.
 ///
 /// A relay statement deadline cannot resolve on retry — the same expensive

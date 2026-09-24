@@ -40,6 +40,8 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
   final Map<String, String> _localReplyRoots = {};
   final Map<String, ChannelWindowThreadSummary> _queryThreadSummaries = {};
   final Map<String, ChannelWindowThreadSummary> _overflowFloors = {};
+  // Recounts settled on a relay deadline; cleared by a complete thread query.
+  final Set<String> _deadlineRecountRoots = {};
   final Map<String, int> _threadQueryVersions = {};
   final Map<String, int> _threadEvidenceVersions = {};
   int _threadQuerySerial = 0;
@@ -247,6 +249,8 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     } catch (error) {
       _initialWindowQueryInFlight = false;
       _liveSummaryRootsDuringInitialWindowQuery.clear();
+      // Legacy history would re-run the timed-out work another way.
+      if (isRelayDeadlineError(error)) rethrow;
       debugPrint(
         '[ChannelMessagesNotifier] channel window unavailable for $channelId, falling back to WS history: $error',
       );
@@ -378,21 +382,23 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     if (thread.parentId == null) return;
 
     final rootId = thread.rootId;
-    if (rootId != null) {
-      ref.invalidate(
-        threadRepliesProvider(
-          ThreadRepliesArgs(channelId: channelId, rootId: rootId),
-        ),
-      );
-    }
+    if (rootId != null) _invalidateThreadQuery(rootId);
     final parentId = thread.parentId;
     if (parentId != null && parentId != rootId) {
-      ref.invalidate(
-        threadRepliesProvider(
-          ThreadRepliesArgs(channelId: channelId, rootId: parentId),
-        ),
-      );
+      _invalidateThreadQuery(parentId);
     }
+  }
+
+  /// A live reply must not replay a query settled on a relay deadline. The
+  /// open thread still shows the reply through the channel's live events.
+  void _invalidateThreadQuery(String rootId) {
+    final provider = threadRepliesProvider(
+      ThreadRepliesArgs(channelId: channelId, rootId: rootId),
+    );
+    if (ref.exists(provider) && isSettledRelayDeadline(ref.read(provider))) {
+      return;
+    }
+    ref.invalidate(provider);
   }
 
   bool _mergeWindowEventIntoStore(NostrEvent event, {int? summaryVersion}) {
@@ -666,6 +672,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     final evidenceVersion = queryVersion ?? ++_threadQuerySerial;
     _setThreadQueryVersion(rootId, evidenceVersion);
     _overflowFloors.remove(rootId);
+    _deadlineRecountRoots.remove(rootId);
     _clearDeletionUncertainty(rootId, evidenceVersion);
     final resultIds = replies.map((event) => event.id).toSet();
     final missing = queriedIds.difference(resultIds)

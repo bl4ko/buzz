@@ -1632,6 +1632,40 @@ void main() {
     expect(channels.single.lastMessageAt?.millisecondsSinceEpoch, 20 * 1000);
   });
 
+  group('latest-message batch failure', () {
+    Future<List<NostrFilter>> fallbackFilters(Object error) async {
+      final session = _FakeRelaySession(
+        memberships: [_membership(_channelA, myPk)],
+        metadata: [_meta(id: _channelA, name: 'general')],
+      )..messageBatchError = error;
+      final container = _buildContainer(session: session);
+      addTearDown(container.dispose);
+      await container.read(channelsProvider.future);
+      await _waitUntil(() => session.queryBatches.isNotEmpty);
+      await Future<void>.delayed(Duration.zero);
+      return session.historyFilters
+          .where(
+            (filter) =>
+                filter.kinds.contains(EventKind.streamMessageV2) &&
+                (filter.tags['#h']?.contains(_channelA) ?? false),
+          )
+          .toList();
+    }
+
+    test('a relay deadline never reaches the websocket fallback', () async {
+      expect(
+        await fallbackFilters(
+          RelayException(503, '{"error":"query timed out"}'),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('an ordinary failure still uses the websocket fallback', () async {
+      expect(await fallbackFilters(Exception('bridge down')), isNotEmpty);
+    });
+  });
+
   test(
     'loads all channel timestamps through one batched relay query',
     () async {
@@ -2261,6 +2295,7 @@ class _FakeRelaySession extends RelaySessionNotifier {
 
   final List<NostrFilter> historyFilters = [];
   final List<List<NostrFilter>> queryBatches = [];
+  Object? messageBatchError;
   final List<NostrFilter> directoryQueryFilters = [];
   final List<NostrFilter> membershipQueryFilters = [];
   final List<NostrFilter> subscribeFilters = [];
@@ -2614,6 +2649,7 @@ class _FakeRelaySession extends RelaySessionNotifier {
       return filter.until == null ? directorySnapshot : const [];
     }
     queryBatches.add(filters);
+    if (messageBatchError case final error?) throw error;
     // The unread catch-up is the only batch that carries `since` on every
     // filter; the latest-message batch leaves it null. Snapshot the messages at
     // request time so a parked response reflects the scope that asked for it.
