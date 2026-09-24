@@ -9378,7 +9378,11 @@ mod build_mcp_servers_tests {
         assert_eq!(server.name, "test-mcp-server");
 
         let get_value = |name: &str| -> Option<&str> {
-            server.env.iter().find(|e| e.name == name).map(|e| e.value.as_str())
+            server
+                .env
+                .iter()
+                .find(|e| e.name == name)
+                .map(|e| e.value.as_str())
         };
 
         // BUZZ_RELAY_URL must carry the canonical relay URL from config.
@@ -9386,7 +9390,11 @@ mod build_mcp_servers_tests {
         assert!(
             relay_url.is_some(),
             "missing BUZZ_RELAY_URL; env={:?}",
-            server.env.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()
+            server
+                .env
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>()
         );
         assert_eq!(
             relay_url.unwrap(),
@@ -9399,7 +9407,11 @@ mod build_mcp_servers_tests {
         assert!(
             private_key.is_some(),
             "missing BUZZ_PRIVATE_KEY; env={:?}",
-            server.env.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()
+            server
+                .env
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>()
         );
         let expected_nsec = config
             .keys
