@@ -72,7 +72,12 @@ pub(crate) async fn close_if_owner(
     #[cfg(test)]
     test_seam::pause().await;
     if let Some(reason) = closed {
-        conn.send(RelayMessage::closed(sub_id, reason));
+        if !conn.send(RelayMessage::closed(sub_id, reason)) {
+            // The outbound channel is full or closed: the terminal frame is
+            // lost. Cancel the connection so the subscription is not silently
+            // orphaned — the client will reconnect and resubscribe.
+            conn.cancel.cancel();
+        }
     }
     true
 }

@@ -1988,6 +1988,133 @@ mod tests {
         assert!(closed_frames(&mut send_rx).is_empty());
     }
 
+    /// A terminal CLOSED that fails to enqueue after retirement cancels the
+    /// connection, so the subscription is never silently orphaned on a
+    /// congested connection.
+    ///
+    /// Regression for P2-2: before this fix, a `false` from `conn.send` was
+    /// silently ignored after retirement, leaving the subscription retired but
+    /// the connection alive without a CLOSED delivered to the client.
+    #[tokio::test]
+    async fn dropped_terminal_frame_cancels_connection() {
+        use std::sync::atomic::AtomicU8;
+        let state = crate::state::tests::test_state().await;
+        // Capacity-1 channel: one dummy message fills it, so the CLOSED
+        // `try_send` returns Full (below the grace_limit=3 auto-cancel) and
+        // the fix's explicit cancel must fire.
+        let (send_tx, mut send_rx) = tokio::sync::mpsc::channel(1);
+        let (ctrl_tx, _ctrl_rx) = tokio::sync::mpsc::channel(1);
+        let community = buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::new_v4());
+        let conn = Arc::new(ConnectionState {
+            conn_id: uuid::Uuid::new_v4(),
+            tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
+            remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+            auth_state: std::sync::Mutex::new(AuthState::Failed),
+            subscriptions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            send_tx,
+            ctrl_tx,
+            cancel: tokio_util::sync::CancellationToken::new(),
+            backpressure_count: Arc::new(AtomicU8::new(0)),
+            grace_limit: 3,
+        });
+
+        // Claim, then fill the send buffer so the next `send` returns false.
+        let owner = claim_live_subscription("x", &text_filters(), None, &conn, &state)
+            .await
+            .expect("claim");
+        // Occupy the one slot so try_send returns Full on the CLOSED.
+        send_rx.try_recv().ok(); // drain any prior messages
+        let _ = conn.send_tx.try_send(axum::extract::ws::Message::Text(
+            "filler".to_string().into(),
+        ));
+        assert!(!conn.cancel.is_cancelled(), "must not be cancelled yet");
+
+        // `close_timed_out_subscription` retires the sub and tries to send CLOSED.
+        // With the buffer full the frame is dropped and the fix must cancel.
+        close_timed_out_subscription("x", owner, &conn, &state).await;
+
+        assert!(
+            conn.cancel.is_cancelled(),
+            "connection must be cancelled when the terminal frame is dropped"
+        );
+        // The subscription is still retired — the map is empty.
+        assert!(conn.subscriptions.lock().await.is_empty());
+        assert!(!registered(&state, &conn, "x"));
+    }
+
+    /// A revoke `CLOSED restricted` that fails to enqueue after the map remove
+    /// cancels the connection, same as the timeout path.
+    ///
+    /// Regression for P2-2 (revoke branch): before this fix, a `false` from
+    /// `send_to` in `evict_conn_channel_subscriptions` was silently ignored
+    /// after retirement, leaving the subscription orphaned on a congested
+    /// connection.
+    #[tokio::test]
+    async fn revoke_dropped_terminal_frame_cancels_connection() {
+        use std::sync::atomic::AtomicU8;
+        let state = crate::state::tests::test_state().await;
+        // Capacity-1 channel: one dummy message fills it so the CLOSED
+        // restricted `try_send` returns Full (below grace_limit=3) and the
+        // fix's explicit cancel_conn must fire.
+        let (send_tx, mut send_rx) = tokio::sync::mpsc::channel(1);
+        let (ctrl_tx, _ctrl_rx) = tokio::sync::mpsc::channel(1);
+        let community = buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::new_v4());
+        let conn = Arc::new(ConnectionState {
+            conn_id: uuid::Uuid::new_v4(),
+            tenant: buzz_core::tenant::TenantContext::resolved(community, "t.local".to_string()),
+            remote_addr: "127.0.0.1:1234".parse().expect("addr"),
+            auth_state: std::sync::Mutex::new(AuthState::Failed),
+            subscriptions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            send_tx: send_tx.clone(),
+            ctrl_tx,
+            cancel: tokio_util::sync::CancellationToken::new(),
+            backpressure_count: Arc::new(AtomicU8::new(0)),
+            grace_limit: 3,
+        });
+        // Register in conn_manager so evict_conn_channel_subscriptions can
+        // find the connection for cancel_conn.
+        state.conn_manager.register(
+            conn.conn_id,
+            send_tx,
+            conn.ctrl_tx.clone(),
+            None,
+            conn.cancel.clone(),
+            conn.tenant.community(),
+            Arc::clone(&conn.backpressure_count),
+            Arc::clone(&conn.subscriptions),
+            3,
+        );
+
+        let channel = uuid::Uuid::new_v4();
+        claim_live_subscription("x", &text_filters(), Some(&[channel]), &conn, &state)
+            .await
+            .expect("claim");
+
+        // Fill the one send slot so the CLOSED restricted try_send returns Full.
+        send_rx.try_recv().ok(); // drain any earlier messages
+        let _ = conn.send_tx.try_send(axum::extract::ws::Message::Text(
+            "filler".to_string().into(),
+        ));
+        assert!(!conn.cancel.is_cancelled(), "must not be cancelled yet");
+
+        crate::handlers::side_effects::evict_conn_channel_subscriptions(
+            &conn.tenant,
+            &state,
+            channel,
+            conn.conn_id,
+        )
+        .await;
+
+        assert!(
+            conn.cancel.is_cancelled(),
+            "connection must be cancelled when the revoke terminal frame is dropped"
+        );
+        assert!(conn.subscriptions.lock().await.is_empty());
+        assert!(!subscribed(&state, &conn, channel));
+
+        state.conn_manager.deregister(conn.conn_id);
+    }
+
     #[test]
     fn huddle_liveness_filters_require_only_the_snapshot_kind() {
         let liveness = Filter::new().kind(nostr::Kind::Custom(KIND_HUDDLE_LIVENESS as u16));

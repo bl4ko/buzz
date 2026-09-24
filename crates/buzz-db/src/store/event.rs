@@ -961,7 +961,16 @@ pub(crate) async fn count_events_on(conn: &mut sqlx::PgConnection, q: &EventQuer
         }
     }
 
-    let row = qb.build().fetch_one(&mut *conn).await?;
+    let row = if q.e_tags.as_deref().is_some_and(|e| !e.is_empty()) {
+        // Run under the same transaction-local deadline as `query_events_on`
+        // so a COUNT over a long thread cannot stall indefinitely either.
+        let rows = fetch_with_e_tag_deadline(conn, &mut qb).await?;
+        rows.into_iter()
+            .next()
+            .ok_or_else(|| DbError::InvalidData("COUNT returned no rows".to_string()))?
+    } else {
+        qb.build().fetch_one(&mut *conn).await?
+    };
     let cnt: i64 = row.try_get("cnt")?;
 
     Ok(cnt)
@@ -2597,6 +2606,53 @@ mod postgres_tests {
         let err = result.expect_err("locked read must be cancelled");
         assert!(err.is_statement_cancelled(), "want 57014, got {err}");
         assert!(started.elapsed() >= std::time::Duration::from_secs(19));
+
+        locker.rollback().await.expect("unlock");
+        sqlx::query("RESET statement_timeout")
+            .execute(&mut *conn)
+            .await
+            .expect("reset");
+    }
+
+    /// Pins the dispatch: a COUNT with an e-tag filter through the production
+    /// `count_events_on` is cancelled at the 20 s deadline even with the
+    /// session timeout disabled, while `events` is locked. Connection and
+    /// setting are restored afterwards. (Slow by design.)
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn count_events_cancels_at_e_tag_deadline_when_timeout_disabled() {
+        let pool = setup_pool().await;
+        let community = CommunityId::from_uuid(make_test_community(&pool).await);
+        let mut locker = pool.begin().await.expect("begin locker");
+        sqlx::query("LOCK TABLE events IN ACCESS EXCLUSIVE MODE")
+            .execute(&mut *locker)
+            .await
+            .expect("lock events");
+
+        let mut conn = pool.acquire().await.expect("acquire");
+        sqlx::query("SET statement_timeout = 0")
+            .execute(&mut *conn)
+            .await
+            .expect("disable timeout");
+        let mut q = EventQuery::for_community(community);
+        q.e_tags = Some(vec!["00".repeat(32)]);
+        let started = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(40),
+            count_events_on(&mut conn, &q),
+        )
+        .await
+        .expect("deadline must fire before the 40 s guard");
+        let err = result.expect_err("locked COUNT must be cancelled");
+        assert!(err.is_statement_cancelled(), "want 57014, got {err}");
+        assert!(started.elapsed() >= std::time::Duration::from_secs(19));
+
+        // Connection and session timeout are restored after the error.
+        let after: String = sqlx::query_scalar("SHOW statement_timeout")
+            .fetch_one(&mut *conn)
+            .await
+            .expect("connection usable after cancellation");
+        assert_eq!(after, "0", "timeout must be restored to disabled");
 
         locker.rollback().await.expect("unlock");
         sqlx::query("RESET statement_timeout")

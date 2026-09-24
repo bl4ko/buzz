@@ -259,10 +259,14 @@ pub(crate) async fn evict_conn_channel_subscriptions(
             .await;
         if update.removed {
             conn_subscriptions.remove(&update.sub_id);
-            let _ = state.conn_manager.send_to(
+            if !state.conn_manager.send_to(
                 conn_id,
                 RelayMessage::closed(&update.sub_id, "restricted: channel access revoked"),
-            );
+            ) {
+                // Terminal frame lost — cancel so the subscription is not
+                // silently orphaned on a congested connection.
+                state.conn_manager.cancel_conn(conn_id);
+            }
         }
     }
 }
