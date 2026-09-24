@@ -259,3 +259,34 @@ async fn invalid_forwarded_scheme_is_rejected() {
         assert_eq!(sends.load(Ordering::SeqCst), 0);
     }
 }
+
+#[tokio::test]
+async fn repeated_forwarded_scheme_is_rejected() {
+    let (app, keys, body, sends) = fixture().await;
+    let auth = signed_header(&keys, EXTERNAL, "POST", &body);
+    let mut request = request(EXTERNAL, Some("https"), auth, body);
+    request
+        .headers_mut()
+        .append("x-forwarded-proto", "https".parse().unwrap());
+    assert_eq!(
+        app.oneshot(request).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(sends.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn alternate_forwarded_headers_do_not_replace_request_authority() {
+    let (app, keys, body, sends) = fixture().await;
+    let auth = signed_header(&keys, INTERNAL, "POST", &body);
+    let mut request = request(INTERNAL, None, auth, body);
+    request
+        .headers_mut()
+        .insert("x-forwarded-host", "other.example".parse().unwrap());
+    request.headers_mut().insert(
+        "forwarded",
+        "proto=https;host=other.example".parse().unwrap(),
+    );
+    assert_eq!(app.oneshot(request).await.unwrap().status(), StatusCode::OK);
+    assert_eq!(sends.load(Ordering::SeqCst), 1);
+}
