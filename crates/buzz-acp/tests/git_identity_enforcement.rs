@@ -312,6 +312,51 @@ fn wrapper(path: &str, cwd: &Path, args: &[&str]) -> std::process::Output {
         .expect("run wrapper git")
 }
 
+/// Like `wrapper`, but bounded: kills the child after `timeout` and panics if
+/// the deadline is exceeded. Used for nested-agent tests where a recursion
+/// regression would otherwise hang CI indefinitely.
+#[cfg(unix)]
+fn wrapper_bounded(
+    path: &str,
+    cwd: &Path,
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> std::process::Output {
+    use std::process::Stdio;
+    use std::time::Instant;
+    let mut child = hermetic_command("git")
+        .args(args)
+        .current_dir(cwd)
+        .env("PATH", path)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env_remove("NOSTR_PRIVATE_KEY")
+        .env_remove("BUZZ_PRIVATE_KEY")
+        .env_remove("BUZZ_AUTH_TAG")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn wrapper_bounded git");
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait().unwrap() {
+            Some(_) => break,
+            None if Instant::now() >= deadline => {
+                child.kill().ok();
+                child.wait().ok();
+                panic!(
+                    "wrapper_bounded timed out after {timeout:?}: \
+                     git {args:?} in {cwd:?} — likely a recursion or hang regression"
+                );
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(50)),
+        }
+    }
+    child
+        .wait_with_output()
+        .expect("wait_with_output after bounded git")
+}
+
 /// The current `HEAD` commit SHA of `repo`, via real git (empty if unborn).
 fn head_sha(repo: &Path) -> String {
     let out = hermetic_command("git")
@@ -2809,12 +2854,17 @@ fn wrapper_refuses_push_plain_last_wins_alt_binary() {
         .find(|p| p.is_file() && p.canonicalize().ok() != primary.canonicalize().ok())
         .map(|p| p.parent().unwrap().to_path_buf());
 
-    let alt_dir = alt_git_dir.unwrap_or_else(|| {
-        panic!(
-            "no second git binary found at /usr/bin/git or /opt/homebrew/bin/git distinct from \
-             the primary; provision two git installations before running this test"
-        )
-    });
+    let alt_dir = match alt_git_dir {
+        Some(d) => d,
+        None => {
+            eprintln!(
+                "wrapper_refuses_push_plain_last_wins_alt_binary: skipping — \
+                 no second git binary found at /usr/bin/git or /opt/homebrew/bin/git \
+                 distinct from the primary; provision two git installations to run this test"
+            );
+            return;
+        }
+    };
     let alt_git = alt_dir.join("git");
     let alt_ver = hermetic_command(&alt_git)
         .arg("--version")
@@ -2947,9 +2997,9 @@ fn wrapper_refuses_push_plain_last_wins_alt_binary() {
                     String::from_utf8_lossy(&refs.stdout),
                 );
             }
-            ProbeVerdict::Failure => panic!(
-                "alt-git subsection probe failed unexpectedly inside catch_unwind"
-            ),
+            ProbeVerdict::Failure => {
+                panic!("alt-git subsection probe failed unexpectedly inside catch_unwind")
+            }
         }
     });
 
@@ -3381,7 +3431,7 @@ fn nested_shim(copy_binary: bool) -> (tempfile::TempDir, tempfile::TempDir, Stri
 #[cfg(unix)]
 #[test]
 fn nested_agent_distinct_binaries_child_first_uses_child_identity() {
-    let (child_shim, _child_keydir, child_email) = nested_shim(true); // copy
+    let (child_shim, _child_keydir, child_email) = nested_shim(true); // copy = distinct canonical
     let (parent_shim, _parent_keydir, _parent_email) = nested_shim(false); // symlink
 
     let real = real_git_dir();
@@ -3394,22 +3444,35 @@ fn nested_agent_distinct_binaries_child_first_uses_child_identity() {
     .into_string()
     .unwrap();
 
-    // Repo set up with child's email as the local git identity (as the runtime
-    // would configure it via GIT_CONFIG_*). We use local config here because the
-    // wrapper's injected -c entries override it, and we want to verify the
-    // wrapper's injection, not local config.
-    let (_work, repo, _remote) = agent_repo_with_remote(&child_email);
+    // Set repo's local identity to an unrelated human so only the wrapper's
+    // injection can produce the child agent email. If injection does not happen,
+    // %ae/%ce will be "human@example.invalid", not child_email.
+    let (_work, repo, _remote) = agent_repo_with_remote("human@example.invalid");
 
-    // init + add + commit via the child wrapper.
+    let timeout = std::time::Duration::from_secs(30);
+
+    // status: confirms ordinary git operations complete without hang.
+    let status = wrapper_bounded(&path, &repo, &["status"], timeout);
+    assert!(
+        status.status.success(),
+        "git status must succeed in nested context; stderr={}",
+        String::from_utf8_lossy(&status.stderr),
+    );
+
     std::fs::write(repo.join("nested.txt"), b"nested\n").unwrap();
-    let add = wrapper(&path, &repo, &["add", "nested.txt"]);
+    let add = wrapper_bounded(&path, &repo, &["add", "nested.txt"], timeout);
     assert!(
         add.status.success(),
         "git add must succeed in nested context; stderr={}",
         String::from_utf8_lossy(&add.stderr),
     );
 
-    let commit = wrapper(&path, &repo, &["commit", "-m", "nested agent commit"]);
+    let commit = wrapper_bounded(
+        &path,
+        &repo,
+        &["commit", "-m", "nested agent commit"],
+        timeout,
+    );
     assert!(
         commit.status.success(),
         "git commit must succeed in nested context; stderr={}; stdout={}",
@@ -3417,15 +3480,32 @@ fn nested_agent_distinct_binaries_child_first_uses_child_identity() {
         String::from_utf8_lossy(&commit.stdout),
     );
 
-    // The commit must carry the CHILD's author email.
-    let author = hermetic_command("git")
-        .args(["-C", repo.to_str().unwrap(), "show", "-s", "--format=%ae", "HEAD"])
+    // Both author and committer emails must be the child's agent email.
+    // %ae alone could pass if local repo config happened to set the child email;
+    // requiring %ce (set independently by the wrapper) eliminates that.
+    let identity = hermetic_command("git")
+        .args([
+            "-C",
+            repo.to_str().unwrap(),
+            "show",
+            "-s",
+            "--format=%ae%n%ce",
+            "HEAD",
+        ])
         .output()
         .unwrap();
+    let identity_str = String::from_utf8_lossy(&identity.stdout);
+    let lines: Vec<&str> = identity_str.trim().splitn(2, '\n').collect();
+    assert_eq!(lines.len(), 2, "expected two identity lines from git show");
     assert_eq!(
-        String::from_utf8_lossy(&author.stdout).trim(),
+        lines[0].trim(),
         child_email,
-        "nested commit must carry child agent email, not parent's"
+        "author email must be child agent email"
+    );
+    assert_eq!(
+        lines[1].trim(),
+        child_email,
+        "committer email must be child agent email"
     );
 }
 
@@ -3452,27 +3532,60 @@ fn nested_agent_same_binary_child_first_uses_child_identity() {
     .into_string()
     .unwrap();
 
-    let (_work, repo, _remote) = agent_repo_with_remote(&child_email);
+    let (_work, repo, _remote) = agent_repo_with_remote("human@example.invalid");
+
+    let timeout = std::time::Duration::from_secs(30);
+
+    let status = wrapper_bounded(&path, &repo, &["status"], timeout);
+    assert!(
+        status.status.success(),
+        "git status must succeed (same-binary nested); stderr={}",
+        String::from_utf8_lossy(&status.stderr)
+    );
 
     std::fs::write(repo.join("same.txt"), b"same\n").unwrap();
-    let add = wrapper(&path, &repo, &["add", "same.txt"]);
-    assert!(add.status.success(), "git add must succeed; stderr={}", String::from_utf8_lossy(&add.stderr));
+    let add = wrapper_bounded(&path, &repo, &["add", "same.txt"], timeout);
+    assert!(
+        add.status.success(),
+        "git add must succeed; stderr={}",
+        String::from_utf8_lossy(&add.stderr)
+    );
 
-    let commit = wrapper(&path, &repo, &["commit", "-m", "same-binary nested commit"]);
+    let commit = wrapper_bounded(
+        &path,
+        &repo,
+        &["commit", "-m", "same-binary nested commit"],
+        timeout,
+    );
     assert!(
         commit.status.success(),
         "git commit must succeed (same-binary nested); stderr={}",
         String::from_utf8_lossy(&commit.stderr),
     );
 
-    let author = hermetic_command("git")
-        .args(["-C", repo.to_str().unwrap(), "show", "-s", "--format=%ae", "HEAD"])
+    let identity = hermetic_command("git")
+        .args([
+            "-C",
+            repo.to_str().unwrap(),
+            "show",
+            "-s",
+            "--format=%ae%n%ce",
+            "HEAD",
+        ])
         .output()
         .unwrap();
+    let identity_str = String::from_utf8_lossy(&identity.stdout);
+    let lines: Vec<&str> = identity_str.trim().splitn(2, '\n').collect();
+    assert_eq!(lines.len(), 2, "expected two identity lines (same-binary)");
     assert_eq!(
-        String::from_utf8_lossy(&author.stdout).trim(),
+        lines[0].trim(),
         child_email,
-        "same-binary nested commit must carry child agent email"
+        "author email must be child agent email (same-binary)"
+    );
+    assert_eq!(
+        lines[1].trim(),
+        child_email,
+        "committer email must be child agent email (same-binary)"
     );
 }
 
@@ -3499,13 +3612,33 @@ fn nested_agent_reverse_ordering_parent_first_never_selects_child_as_real_git() 
     .into_string()
     .unwrap();
 
-    let (_work, repo, _remote) = agent_repo_with_remote(&parent_email);
+    // Repo uses an unrelated human identity; only the parent wrapper's injection
+    // can produce parent_email.
+    let (_work, repo, _remote) = agent_repo_with_remote("human@example.invalid");
+
+    let timeout = std::time::Duration::from_secs(30);
+
+    let status = wrapper_bounded(&path, &repo, &["status"], timeout);
+    assert!(
+        status.status.success(),
+        "git status must succeed (reverse ordering); stderr={}",
+        String::from_utf8_lossy(&status.stderr)
+    );
 
     std::fs::write(repo.join("rev.txt"), b"reverse\n").unwrap();
-    let add = wrapper(&path, &repo, &["add", "rev.txt"]);
-    assert!(add.status.success(), "git add must succeed (reverse); stderr={}", String::from_utf8_lossy(&add.stderr));
+    let add = wrapper_bounded(&path, &repo, &["add", "rev.txt"], timeout);
+    assert!(
+        add.status.success(),
+        "git add must succeed (reverse); stderr={}",
+        String::from_utf8_lossy(&add.stderr)
+    );
 
-    let commit = wrapper(&path, &repo, &["commit", "-m", "reverse-order nested commit"]);
+    let commit = wrapper_bounded(
+        &path,
+        &repo,
+        &["commit", "-m", "reverse-order nested commit"],
+        timeout,
+    );
     assert!(
         commit.status.success(),
         "git commit must succeed (reverse ordering); stderr={}",
@@ -3515,18 +3648,167 @@ fn nested_agent_reverse_ordering_parent_first_never_selects_child_as_real_git() 
     // The parent wrapper is first on PATH; commit must carry PARENT identity.
     // Critically: the child dir (which is a Buzz wrapper with its own manifest)
     // must NOT have been selected as real git.
-    let author = hermetic_command("git")
-        .args(["-C", repo.to_str().unwrap(), "show", "-s", "--format=%ae", "HEAD"])
+    let identity = hermetic_command("git")
+        .args([
+            "-C",
+            repo.to_str().unwrap(),
+            "show",
+            "-s",
+            "--format=%ae%n%ce",
+            "HEAD",
+        ])
         .output()
         .unwrap();
-    let actual_email = String::from_utf8_lossy(&author.stdout).trim().to_string();
+    let identity_str = String::from_utf8_lossy(&identity.stdout);
+    let lines: Vec<&str> = identity_str.trim().splitn(2, '\n').collect();
+    assert_eq!(lines.len(), 2, "expected two identity lines (reverse)");
+    let actual_ae = lines[0].trim();
+    let actual_ce = lines[1].trim();
     assert_eq!(
-        actual_email, parent_email,
-        "reverse-order: parent wrapper is outermost; commit must carry parent email (not child email {})",
-        child_email,
+        actual_ae, parent_email,
+        "reverse: author must be parent agent email (not child {})",
+        child_email
+    );
+    assert_eq!(
+        actual_ce, parent_email,
+        "reverse: committer must be parent agent email"
     );
     assert_ne!(
-        actual_email, child_email,
+        actual_ae, child_email,
         "reverse-order: child dir must not be selected as real git"
+    );
+}
+
+// ── Relative-PATH absolutize regression ───────────────────────────────────────
+//
+// When the real-git directory is on PATH as a RELATIVE entry, find_real_git()
+// must still return an absolute path. If it returns a relative path, the
+// capability probe's absolute-path guard fires (ProbeFailure), and all aliases
+// fail closed — including safe aliases like `alias.st=status`.
+//
+// This is the process-level regression for the absolutize fix in find_real_git.
+// See also the unit-level `find_real_git_returns_absolute_path_for_relative_entry`
+// in buzz-git-identity.
+
+/// Absolutize regression: safe alias and push-gate refusal both work with a
+/// relative real-git directory on PATH.
+///
+/// PATH = shim_dir (absolute) : `./real-git-dirname` (relative).
+/// The wrapper process runs with cwd = parent of the real-git dir, so the
+/// relative entry resolves to the real git binary. The `-C repo` flag points
+/// git to the test repo regardless of the wrapper's cwd.
+///
+/// Asserts:
+///  (a) `git -c alias.st=status st` exits 0 — the alias probe ran against
+///      real git and resolved the alias (R10-1 would have caused ProbeFailure
+///      here if the absolute guarantee were broken).
+///  (b) `git push` with a human-authored commit produces the author-policy
+///      refusal and `for-each-ref` exits 0 with empty refs.
+#[cfg(unix)]
+#[test]
+fn wrapper_handles_relative_real_git_entry_via_absolutize() {
+    let timeout = std::time::Duration::from_secs(60);
+    // The real-git dir becomes a *relative* PATH entry (`./real-git`) that
+    // resolves only because the wrapper process runs with cwd = rel_parent.
+    let rel_parent = tempfile::tempdir().unwrap();
+    let rel_dir_name = "real-git";
+    let rel_dir = rel_parent.path().join(rel_dir_name);
+    std::fs::create_dir_all(&rel_dir).unwrap();
+    std::os::unix::fs::symlink(real_git_dir().join("git"), rel_dir.join("git")).unwrap();
+
+    let (shim, _abs_path, _agent_email, _keydir) = signed_shim_env();
+    let path = std::env::join_paths([shim.path().to_path_buf(), Path::new(".").join(rel_dir_name)])
+        .unwrap()
+        .into_string()
+        .unwrap();
+
+    // (a) Safe alias: without the absolutize fix the probe fails closed with
+    // "alias capability probe failed".
+    let repo = human_repo();
+    let alias_out = wrapper_bounded(
+        &path,
+        rel_parent.path(),
+        &[
+            "-C",
+            repo.path().to_str().unwrap(),
+            "-c",
+            "alias.st=status",
+            "st",
+        ],
+        timeout,
+    );
+    assert!(
+        alias_out.status.success(),
+        "(a) safe alias must succeed with relative real-git dir; stderr={}",
+        String::from_utf8_lossy(&alias_out.stderr),
+    );
+
+    // (b) A human-authored commit, made through real git, pushed through the
+    // wrapper to an empty bare origin must hit the author-policy refusal.
+    let work = tempfile::tempdir().unwrap();
+    let push_repo = work.path().join("repo");
+    let remote = work.path().join("remote.git");
+    std::fs::create_dir_all(&push_repo).unwrap();
+    let g = |cwd: &Path, args: &[&str]| {
+        let ok = hermetic_command("git")
+            .args(args)
+            .current_dir(cwd)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git {args:?} failed");
+    };
+    g(
+        work.path(),
+        &["init", "-q", "--bare", remote.to_str().unwrap()],
+    );
+    g(&push_repo, &["init", "-q", "-b", "main"]);
+    g(&push_repo, &["config", "user.name", "Human Dev"]);
+    g(
+        &push_repo,
+        &["config", "user.email", "human@example.invalid"],
+    );
+    g(&push_repo, &["config", "commit.gpgSign", "false"]);
+    std::fs::write(push_repo.join("f.txt"), b"rel\n").unwrap();
+    g(&push_repo, &["add", "f.txt"]);
+    g(&push_repo, &["commit", "-qm", "human commit"]);
+
+    let remote_path = remote.to_str().unwrap();
+    let push = wrapper_bounded(
+        &path,
+        rel_parent.path(),
+        &[
+            "-C",
+            push_repo.to_str().unwrap(),
+            "push",
+            remote_path,
+            "main",
+        ],
+        timeout,
+    );
+    let stderr = String::from_utf8_lossy(&push.stderr);
+    assert!(
+        !push.status.success(),
+        "(b) push must be refused; stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("not authored by your agent identity"),
+        "(b) expected push-gate author refusal; stderr={stderr}",
+    );
+    let refs = hermetic_command("git")
+        .args(["-C", remote_path, "for-each-ref"])
+        .output()
+        .unwrap();
+    assert!(
+        refs.status.success(),
+        "(b) for-each-ref must exit 0; status={:?}",
+        refs.status
+    );
+    assert!(
+        refs.stdout.is_empty(),
+        "(b) remote must be empty after refusal; refs={}",
+        String::from_utf8_lossy(&refs.stdout),
     );
 }
