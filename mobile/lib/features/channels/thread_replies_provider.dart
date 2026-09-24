@@ -37,11 +37,14 @@ final threadRepliesProvider = FutureProvider.autoDispose
       // A reply missed while the socket is stale cannot invalidate this
       // one-shot query. Refresh mounted threads when the session recovers;
       // auto-dispose also makes reopening a thread start from relay truth.
-      // A settled deadline is terminal for this request: only reopening
-      // retries it.
-      var deadline = false;
+      // A deadline is terminal for this scan across every owner (see
+      // [threadScanKey]). Building this provider is the explicit retry:
+      // automatic owners consult the registry before invalidating it.
+      final deadlines = ref.read(relayDeadlineRegistryProvider);
+      final scanKey = threadScanKey(args);
+      deadlines.clear(scanKey);
       ref.listen(relaySessionProvider, (previous, next) {
-        if (!deadline &&
+        if (!deadlines.isTerminal(scanKey) &&
             previous?.status != SessionStatus.connected &&
             next.status == SessionStatus.connected) {
           ref.invalidateSelf();
@@ -117,13 +120,18 @@ final threadRepliesProvider = FutureProvider.autoDispose
         }
         return replies;
       } catch (error) {
-        deadline = isRelayDeadlineError(error);
+        deadlines.record(scanKey, error);
         if (queryVersion != null) {
           channelMessages?.failThreadQuery(args.rootId, queryVersion);
         }
         rethrow;
       }
     });
+
+/// Deadline-registry identity of [fetchCompleteThreadReplies] for [args],
+/// shared by the route query and the channel's background recount.
+String threadScanKey(ThreadRepliesArgs args) =>
+    'thread-scan:${args.channelId}:${args.rootId}';
 
 /// Exhaustively scans a thread using insertion-complete cursor pages.
 /// [isCurrent] lets a background refresh stop between pages after disposal.

@@ -1666,6 +1666,126 @@ void main() {
     });
   });
 
+  group('deadline-terminal channel batches', () {
+    Object deadline() => RelayException(503, '{"error":"query timed out"}');
+    bool isUnread(List<NostrFilter> batch) =>
+        batch.isNotEmpty && batch.every((filter) => filter.since != null);
+
+    // Drives the real 60s backstop timer, reconnect and foreground resume.
+    void lifecycle(
+      FakeAsync async,
+      ProviderContainer container,
+      _FakeRelaySession session,
+    ) {
+      for (var i = 0; i < 3; i++) {
+        async.elapse(const Duration(seconds: 61));
+        async.flushMicrotasks();
+      }
+      session.setStatus(SessionStatus.reconnecting);
+      async.flushMicrotasks();
+      session.setStatus(SessionStatus.connected);
+      async.elapse(const Duration(seconds: 1));
+      final appLifecycle =
+          container.read(appLifecycleProvider.notifier)
+              as _FakeAppLifecycleNotifier;
+      appLifecycle.set(AppLifecycleState.paused);
+      async.flushMicrotasks();
+      appLifecycle.set(AppLifecycleState.resumed);
+      async.elapse(const Duration(seconds: 1));
+    }
+
+    for (final (name, error, replays) in [
+      ('deadline', deadline(), false),
+      ('ordinary failure', Exception('bridge down') as Object, true),
+    ]) {
+      test('unread catch-up after a $name replays: $replays', () {
+        fakeAsync((async) {
+          final session = _FakeRelaySession(
+            memberships: [_membership(_channelA, myPk)],
+            metadata: [_meta(id: _channelA, name: 'general')],
+          )..unreadBatchError = error;
+          final container = _buildContainer(session: session);
+          container.listen(channelsProvider, (_, _) {});
+          async.elapse(const Duration(seconds: 1));
+          int unread() => session.queryBatches.where(isUnread).length;
+          expect(unread(), 1);
+          lifecycle(async, container, session);
+          if (replays) {
+            expect(unread(), greaterThan(1));
+          } else {
+            expect(unread(), 1);
+            // Live coverage and membership recovery keep running.
+            expect(session.activeChannels, {_channelA});
+            expect(container.read(channelsProvider).value, hasLength(1));
+            // A changed membership is a new request and runs.
+            session.memberships = [
+              _membership(_channelA, myPk),
+              _membership(_channelB, myPk),
+            ];
+            session.metadata = [
+              _meta(id: _channelA, name: 'general'),
+              _meta(id: _channelB, name: 'random'),
+            ];
+            async.elapse(const Duration(seconds: 61));
+            expect(unread(), 2);
+            // Explicit refresh re-runs the terminal request.
+            session.memberships = [_membership(_channelA, myPk)];
+            async.elapse(const Duration(seconds: 61));
+            final beforeExplicit = unread();
+            unawaited(container.read(channelsProvider.notifier).refresh());
+            async.elapse(const Duration(seconds: 1));
+            expect(unread(), beforeExplicit + 1);
+          }
+          container.dispose();
+        });
+      });
+    }
+
+    test('a latest-message deadline keeps timestamps and is not replayed', () {
+      fakeAsync((async) {
+        final session = _FakeRelaySession(
+          memberships: [_membership(_channelA, myPk)],
+          metadata: [_meta(id: _channelA, name: 'general')],
+          recentMessages: const [
+            NostrEvent(
+              id: 'm1',
+              pubkey: 'alice',
+              createdAt: 30,
+              kind: EventKind.streamMessageV2,
+              tags: [
+                ['h', _channelA],
+              ],
+              content: 'hi',
+              sig: 'sig',
+            ),
+          ],
+        );
+        final container = _buildContainer(session: session);
+        container.listen(channelsProvider, (_, _) {});
+        async.elapse(const Duration(seconds: 1));
+        int latest() => session.queryBatches
+            .where((batch) => batch.isNotEmpty && !isUnread(batch))
+            .length;
+        expect(latest(), 1);
+        session.latestBatchError = deadline();
+        unawaited(container.read(channelsProvider.notifier).refresh());
+        async.elapse(const Duration(seconds: 1));
+        expect(latest(), 2);
+        expect(
+          container.read(channelsProvider).value!.single.lastMessageAt,
+          DateTime.fromMillisecondsSinceEpoch(30 * 1000, isUtc: true),
+        );
+        lifecycle(async, container, session);
+        expect(latest(), 2);
+        expect(
+          container.read(channelsProvider).value!.single.lastMessageAt,
+          isNotNull,
+        );
+        container.dispose();
+      });
+    });
+  });
+
   test(
     'loads all channel timestamps through one batched relay query',
     () async {
@@ -2296,6 +2416,8 @@ class _FakeRelaySession extends RelaySessionNotifier {
   final List<NostrFilter> historyFilters = [];
   final List<List<NostrFilter>> queryBatches = [];
   Object? messageBatchError;
+  Object? unreadBatchError;
+  Object? latestBatchError;
   final List<NostrFilter> directoryQueryFilters = [];
   final List<NostrFilter> membershipQueryFilters = [];
   final List<NostrFilter> subscribeFilters = [];
@@ -2655,6 +2777,10 @@ class _FakeRelaySession extends RelaySessionNotifier {
     // request time so a parked response reflects the scope that asked for it.
     final isUnreadCatchUp =
         filters.isNotEmpty && filters.every((filter) => filter.since != null);
+    if ((isUnreadCatchUp ? unreadBatchError : latestBatchError)
+        case final error?) {
+      throw error;
+    }
     final messageSnapshot = List.of(recentMessages);
     if (isUnreadCatchUp) {
       // Claim the parked slot so the refresh that follows the switch can run
@@ -2749,4 +2875,6 @@ class _FakeRelaySession extends RelaySessionNotifier {
 class _FakeAppLifecycleNotifier extends AppLifecycleNotifier {
   @override
   AppLifecycleState build() => AppLifecycleState.resumed;
+
+  void set(AppLifecycleState next) => state = next;
 }

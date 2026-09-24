@@ -53,12 +53,14 @@ class ForumThreadPage extends HookConsumerWidget {
         channelId: channelId,
         eventId: postEventId,
       ));
-      // Hooks run effects during build; defer the reopen retry past it.
-      Future.microtask(() {
-        if (context.mounted && isSettledRelayDeadline(ref.read(provider))) {
-          ref.invalidate(provider);
-        }
-      });
+      // Only a deadline already settled when this surface mounts is a
+      // reopen; a first load that fails after mounting is not retried.
+      // Hooks run effects during build, so defer the invalidation past it.
+      if (isSettledRelayDeadline(ref.read(provider))) {
+        Future.microtask(() {
+          if (context.mounted) ref.invalidate(provider);
+        });
+      }
       final timer = Stream.periodic(const Duration(seconds: 10)).listen((_) {
         if (!isSettledRelayDeadline(ref.read(provider))) {
           ref.invalidate(provider);

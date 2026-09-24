@@ -40,8 +40,6 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
   final Map<String, String> _localReplyRoots = {};
   final Map<String, ChannelWindowThreadSummary> _queryThreadSummaries = {};
   final Map<String, ChannelWindowThreadSummary> _overflowFloors = {};
-  // Recounts settled on a relay deadline; cleared by a complete thread query.
-  final Set<String> _deadlineRecountRoots = {};
   final Map<String, int> _threadQueryVersions = {};
   final Map<String, int> _threadEvidenceVersions = {};
   int _threadQuerySerial = 0;
@@ -230,7 +228,11 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
   Future<List<NostrEvent>> _fetchNewestHistory(
     RelaySessionNotifier session,
   ) async {
+    final windowKey = relayRequestKey([_channelWindowFilter(null)]);
     try {
+      // Rebuilds (reconnects) are automatic: a deadline stays terminal until
+      // [retryAfterDeadline] clears it on an explicit reopen.
+      if (_deadlines.terminalError(windowKey) case final error?) throw error;
       _initialWindowQueryInFlight = true;
       final pageVersion = ++_threadQuerySerial;
       final page = await _fetchWindowPage(session, null);
@@ -250,7 +252,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
       _initialWindowQueryInFlight = false;
       _liveSummaryRootsDuringInitialWindowQuery.clear();
       // Legacy history would re-run the timed-out work another way.
-      if (isRelayDeadlineError(error)) rethrow;
+      if (_deadlines.record(windowKey, error)) rethrow;
       debugPrint(
         '[ChannelMessagesNotifier] channel window unavailable for $channelId, falling back to WS history: $error',
       );
@@ -261,6 +263,15 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
       history.sort(compareChannelTimelineEventsChronologically);
       return history;
     }
+  }
+
+  /// Explicitly retries a newest-window query that settled on a relay
+  /// deadline; the channel page calls this when the user reopens it.
+  void retryAfterDeadline() {
+    final windowKey = relayRequestKey([_channelWindowFilter(null)]);
+    if (!_deadlines.isTerminal(windowKey)) return;
+    _deadlines.clear(windowKey);
+    ref.invalidateSelf();
   }
 
   Future<ChannelWindowPage> _fetchWindowPage(
@@ -389,17 +400,22 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     }
   }
 
-  /// A live reply must not replay a query settled on a relay deadline. The
+  /// A live reply must not replay a scan settled on a relay deadline. The
   /// open thread still shows the reply through the channel's live events.
   void _invalidateThreadQuery(String rootId) {
-    final provider = threadRepliesProvider(
-      ThreadRepliesArgs(channelId: channelId, rootId: rootId),
+    if (_deadlines.isTerminal(_threadScanKey(rootId))) return;
+    ref.invalidate(
+      threadRepliesProvider(
+        ThreadRepliesArgs(channelId: channelId, rootId: rootId),
+      ),
     );
-    if (ref.exists(provider) && isSettledRelayDeadline(ref.read(provider))) {
-      return;
-    }
-    ref.invalidate(provider);
   }
+
+  RelayDeadlineRegistry get _deadlines =>
+      ref.read(relayDeadlineRegistryProvider);
+
+  String _threadScanKey(String rootId) =>
+      threadScanKey(ThreadRepliesArgs(channelId: channelId, rootId: rootId));
 
   bool _mergeWindowEventIntoStore(NostrEvent event, {int? summaryVersion}) {
     final isTimelineRow = EventKind.channelTimelineContentKinds.contains(
@@ -672,7 +688,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     final evidenceVersion = queryVersion ?? ++_threadQuerySerial;
     _setThreadQueryVersion(rootId, evidenceVersion);
     _overflowFloors.remove(rootId);
-    _deadlineRecountRoots.remove(rootId);
+    _deadlines.clear(_threadScanKey(rootId));
     _clearDeletionUncertainty(rootId, evidenceVersion);
     final resultIds = replies.map((event) => event.id).toSet();
     final missing = queriedIds.difference(resultIds)

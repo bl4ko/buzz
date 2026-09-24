@@ -170,6 +170,10 @@ class _CountingForumSession extends RelaySessionNotifier {
   Object error;
   int fetchCount = 0;
 
+  /// Forum-surface attempts only: the posts list (45001) or thread replies
+  /// (`#e`), excluding shared sub-providers such as profiles and emoji.
+  int forumAttempts = 0;
+
   @override
   SessionState build() => const SessionState(status: SessionStatus.connected);
 
@@ -179,6 +183,10 @@ class _CountingForumSession extends RelaySessionNotifier {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     fetchCount++;
+    if (filter.ids == null &&
+        (filter.kinds.contains(45001) || filter.tags.containsKey('#e'))) {
+      forumAttempts++;
+    }
     throw error;
   }
 }
@@ -258,7 +266,7 @@ void main() {
         await tester.pumpWidget(_buildLiveForum(session, surface));
         await tester.pump();
         final settled = session.fetchCount;
-        expect(settled, greaterThan(0));
+        expect(session.forumAttempts, 1);
         for (var tick = 0; tick < 4; tick++) {
           await tester.pump(interval);
         }
@@ -283,12 +291,16 @@ void main() {
         final session = _CountingForumSession(deadline);
         await tester.pumpWidget(_buildLiveForum(session, surface));
         await tester.pump();
-        final settled = session.fetchCount;
+        expect(session.forumAttempts, 1);
         await tester.pumpWidget(_buildLiveForum(session, const SizedBox()));
         await tester.pumpWidget(_buildLiveForum(session, surface));
         await tester.pump();
         await tester.pump();
-        expect(session.fetchCount, greaterThan(settled));
+        expect(session.forumAttempts, 2);
+        for (var tick = 0; tick < 4; tick++) {
+          await tester.pump(interval);
+        }
+        expect(session.forumAttempts, 2);
         await tester.pumpWidget(const SizedBox());
       });
     }

@@ -393,6 +393,172 @@ void main() {
         expect(threadScans(session), replays ? 2 : 1);
       });
     }
+
+    // The route query and the recount are two owners of one thread scan;
+    // a deadline on either must stop both.
+    Future<(_RecordingRelaySessionNotifier, ProviderContainer)> routeFailed(
+      Object error,
+    ) async {
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          [_event(id: 'root', createdAt: 10), _bounds()],
+          error,
+          for (var i = 0; i < 8; i++) <NostrEvent>[],
+        ],
+      );
+      final container = ProviderContainer(
+        retry: (_, _) => null,
+        overrides: [relaySessionProvider.overrideWith(() => session)],
+      );
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
+      container.listen(threadRepliesProvider(args), (_, _) {});
+      await _pumpEventQueue();
+      expect(container.read(threadRepliesProvider(args)).hasError, true);
+      expect(threadScans(session), 1);
+      return (session, container);
+    }
+
+    for (final (name, error, recounts) in [
+      ('deadline', deadline() as Object, false),
+      ('ordinary failure', Exception('reset') as Object, true),
+    ]) {
+      test(
+        'replies past the cap after a route $name recount: $recounts',
+        () async {
+          final (session, _) = await routeFailed(error);
+          for (var i = 0; i < 300; i++) {
+            session.emit(reply(i));
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 2000));
+          final scans = threadScans(session);
+          if (recounts) {
+            expect(scans, greaterThan(1));
+          } else {
+            expect(scans, 1);
+          }
+        },
+      );
+    }
+
+    test('a deletion requeue after a route deadline does not scan', () async {
+      final (session, container) = await routeFailed(deadline());
+      session.emit(reply(0));
+      await _pumpEventQueue();
+      session.emit(
+        NostrEvent(
+          id: 'delete-reply-0',
+          pubkey: 'alice',
+          createdAt: 100,
+          kind: EventKind.deletion,
+          tags: const [
+            ['h', _channelId],
+            ['e', 'reply-0'],
+          ],
+          content: '',
+          sig: '',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 2000));
+      expect(threadScans(session), 1);
+      // User retry (reopen/invalidate) clears the shared record and re-runs.
+      container.invalidate(
+        threadRepliesProvider(
+          const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
+        ),
+      );
+      await _pumpEventQueue();
+      expect(threadScans(session), 2);
+    });
+
+    test('a user retry resets the shared record even if it fails', () async {
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          [_event(id: 'root', createdAt: 10), _bounds()],
+          deadline(),
+          Exception('reset'),
+          <NostrEvent>[],
+        ],
+      );
+      final container = ProviderContainer(
+        retry: (_, _) => null,
+        overrides: [relaySessionProvider.overrideWith(() => session)],
+      );
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
+      container.listen(threadRepliesProvider(args), (_, _) {});
+      await _pumpEventQueue();
+      container.invalidate(threadRepliesProvider(args));
+      await _pumpEventQueue();
+      expect(threadScans(session), 2);
+      // The retry ended in an ordinary failure, so live activity recovers.
+      session.emit(reply(0));
+      await _pumpEventQueue();
+      expect(threadScans(session), 3);
+    });
+
+    test(
+      'a window deadline survives reconnect until the channel reopens',
+      () async {
+        final session = _RecordingRelaySessionNotifier(
+          queryResults: [
+            deadline(),
+            <NostrEvent>[_bounds()],
+          ],
+        );
+        final container = _buildContainer(session);
+        addTearDown(container.dispose);
+        container.listen(channelMessagesProvider(_channelId), (_, _) {});
+        await _pumpEventQueue();
+        int windowQueries() => session.queryFilters
+            .where((filter) => filter.extensions['top_level'] == true)
+            .length;
+        expect(windowQueries(), 1);
+        session.setConnected(false);
+        await _pumpEventQueue();
+        session.setConnected(true);
+        await _pumpEventQueue();
+        expect(windowQueries(), 1);
+        expect(session.operations.where((op) => op == 'fetch'), isEmpty);
+        container
+            .read(channelMessagesProvider(_channelId).notifier)
+            .retryAfterDeadline();
+        await _pumpEventQueue();
+        expect(windowQueries(), 2);
+        expect(
+          container.read(channelMessagesProvider(_channelId)).hasError,
+          false,
+        );
+      },
+    );
+
+    test('an ordinary window failure still re-queries on reconnect', () async {
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          Exception('reset'),
+          <NostrEvent>[_bounds()],
+        ],
+        historyResults: [[]],
+      );
+      final container = _buildContainer(session);
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      session.setConnected(false);
+      await _pumpEventQueue();
+      session.setConnected(true);
+      await _pumpEventQueue();
+      expect(
+        session.queryFilters
+            .where((filter) => filter.extensions['top_level'] == true)
+            .length,
+        2,
+      );
+    });
   });
 
   test('still loads history when live subscription fails', () async {

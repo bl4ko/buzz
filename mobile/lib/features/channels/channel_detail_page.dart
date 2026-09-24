@@ -532,6 +532,15 @@ class ChannelDetailPage extends HookConsumerWidget {
       return session.registerVisibleChannel(channel.id);
     }, [channel.id]);
 
+    // Opening the channel is the explicit retry for a window query that a
+    // relay deadline made terminal; reconnect rebuilds never replay it.
+    useEffect(() {
+      if (channel.isForum) return null;
+      final notifier = ref.read(channelMessagesProvider(channel.id).notifier);
+      Future.microtask(notifier.retryAfterDeadline);
+      return null;
+    }, [channel.id]);
+
     useEffect(
       () {
         if (channel.isForum) return null;

@@ -10891,6 +10891,128 @@ void main() {
       expect(highlightedDecoration.color!.a, lessThan(0.12));
     });
 
+    group('after a first-load deadline', () {
+      final root = _textMsg(
+        id: 'root',
+        pubkey: 'alice',
+        content: 'Thread root',
+        createdAt: 1000,
+      );
+      final mid = _textMsg(
+        id: 'mid',
+        pubkey: 'bob',
+        content: 'Nested parent',
+        createdAt: 1100,
+        extraTags: const [
+          ['e', 'root', '', 'reply'],
+        ],
+      );
+
+      Future<(_FakeMessagesNotifier, int Function())> openDeadlined(
+        WidgetTester tester,
+        NostrEvent head,
+      ) async {
+        var attempts = 0;
+        final messages = _FakeMessagesNotifier([root, mid]);
+        final timeline = formatTimeline([root, mid]);
+        await tester.pumpWidget(
+          _buildTestable(
+            messages: [root, mid],
+            messagesNotifier: messages,
+            disableRetries: true,
+            threadReplyLoaders: {
+              'root': () {
+                attempts++;
+                return Future.error(
+                  RelayException(503, '{"error":"query timed out"}'),
+                );
+              },
+            },
+            home: ThreadDetailPage(
+              threadHead: timeline.firstWhere((m) => m.id == head.id),
+              allMessages: timeline,
+              channelId: _testChannel.id,
+              currentPubkey: 'me',
+              isMember: true,
+              isArchived: false,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(attempts, 1);
+        return (messages, () => attempts);
+      }
+
+      NostrEvent liveReply(String id, List<List<String>> tags) => _textMsg(
+        id: id,
+        pubkey: 'carol',
+        content: 'Live $id',
+        createdAt: 1200,
+        extraTags: tags,
+      );
+
+      testWidgets('shows an incoming direct reply', (tester) async {
+        final (messages, attempts) = await openDeadlined(tester, root);
+        messages.setMessages([
+          root,
+          mid,
+          liveReply('direct', const [
+            ['e', 'root', '', 'reply'],
+          ]),
+        ]);
+        await tester.pumpAndSettle();
+        expect(find.text('Live direct'), findsOneWidget);
+        expect(find.textContaining('Couldn’t refresh'), findsOneWidget);
+        expect(attempts(), 1);
+      });
+
+      testWidgets('shows an incoming nested reply', (tester) async {
+        final (messages, attempts) = await openDeadlined(tester, mid);
+        messages.setMessages([
+          root,
+          mid,
+          liveReply('nested', const [
+            ['e', 'root', '', 'root'],
+            ['e', 'mid', '', 'reply'],
+          ]),
+        ]);
+        await tester.pumpAndSettle();
+        expect(find.text('Live nested'), findsOneWidget);
+        expect(attempts(), 1);
+      });
+
+      testWidgets('keeps a sent reply visible after acceptance', (
+        tester,
+      ) async {
+        final (messages, attempts) = await openDeadlined(tester, root);
+        final sent = _textMsg(
+          id: 'sent',
+          pubkey: 'me',
+          content: 'My reply',
+          createdAt: 1300,
+          extraTags: const [
+            ['e', 'root', '', 'reply'],
+          ],
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ThreadDetailPage)),
+        );
+        const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
+        container.read(threadLocalRepliesProvider(args).notifier).add(sent);
+        await tester.pumpAndSettle();
+        expect(find.text('My reply'), findsOneWidget);
+        // Acceptance: the confirmed reply moves from the optimistic overlay
+        // into the channel cache (cacheConfirmedThreadReplies).
+        messages.setMessages([root, mid, sent]);
+        container.read(threadLocalRepliesProvider(args).notifier).confirm({
+          'sent',
+        });
+        await tester.pumpAndSettle();
+        expect(find.text('My reply'), findsOneWidget);
+        expect(attempts(), 1);
+      });
+    });
+
     testWidgets('opens a nested reply in its direct-parent thread', (
       tester,
     ) async {

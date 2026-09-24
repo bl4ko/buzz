@@ -137,7 +137,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     // another device while mobile was backgrounded appear immediately.
     ref.listen(appLifecycleProvider, (prev, next) {
       if (next == AppLifecycleState.resumed) {
-        refresh();
+        _refresh(explicit: false);
       }
     });
 
@@ -155,18 +155,24 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       await connected.future;
     }
 
-    return _fetch(subscribeLive: true);
+    // A (re)build is a lifecycle load; switching scope starts a fresh
+    // registry, so a new relay or account still sends every batch.
+    return _fetch(subscribeLive: true, explicit: false);
   }
 
+  /// [explicit] marks a user action, which retries batches that a relay
+  /// deadline made terminal; lifecycle refreshes leave them terminal.
   Future<List<Channel>> _fetch({
     bool subscribeLive = false,
     bool fetchLastMessage = true,
     bool fetchDirectory = false,
+    required bool explicit,
   }) async {
     final channels = await _fetchChannels(
       subscribeLive: subscribeLive,
       fetchLastMessage: fetchLastMessage,
       fetchDirectory: fetchDirectory,
+      explicit: explicit,
     );
     _hasLoaded = true;
     return channels;
@@ -176,6 +182,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     bool subscribeLive = false,
     bool fetchLastMessage = true,
     bool fetchDirectory = false,
+    required bool explicit,
   }) async {
     final myPk = ref.read(myPubkeyProvider);
     if (myPk == null) throw StateError('No signing identity available');
@@ -335,11 +342,21 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       };
       final events = await _fenced(
         fence,
-        _fetchLastMessageEvents(session, activeChannels),
+        _fetchLastMessageEvents(session, activeChannels, explicit: explicit),
       );
       final lastMessageMap = <String, int>{};
+      // An unavailable batch keeps the timestamps already known rather than
+      // installing channels whose latest message looks absent.
+      if (events == null) {
+        for (final channel in state.value ?? const <Channel>[]) {
+          final at = channel.lastMessageAt;
+          if (at != null) {
+            lastMessageMap[channel.id] = at.millisecondsSinceEpoch ~/ 1000;
+          }
+        }
+      }
       final mutedChannelIds = _mutedChannelIds();
-      for (final event in events) {
+      for (final event in events ?? const <NostrEvent>[]) {
         final channelId = event.channelId;
         if (channelId == null) continue;
         final channel = channelById[channelId];
@@ -411,7 +428,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     // part of the provider's readiness path. Every refresh queues a generation;
     // a later refresh or scope switch retires older queued/in-flight work.
     if (subscribeLive) {
-      unawaited(_subscribeLive(channels, fence));
+      unawaited(_subscribeLive(channels, fence, explicit: explicit));
     }
     // Guard the provider-state write in `retryDirectory` and `build`: the
     // caller assigns whatever this returns, so the last check belongs here.
@@ -423,10 +440,11 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
   /// bridge request. The relay preserves NIP-01 per-filter limits while
   /// executing the filters with bounded concurrency, avoiding an unbounded
   /// burst of websocket REQs on communities with many channels.
-  Future<List<NostrEvent>> _fetchLastMessageEvents(
+  Future<List<NostrEvent>?> _fetchLastMessageEvents(
     RelaySessionNotifier session,
-    List<Channel> channels,
-  ) async {
+    List<Channel> channels, {
+    required bool explicit,
+  }) async {
     if (channels.isEmpty) return const [];
 
     final filters = [
@@ -444,24 +462,32 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       session,
       filters,
       operation: 'latest-message query',
+      explicit: explicit,
     );
   }
 
-  Future<List<NostrEvent>> _fetchChannelHistoryBatch(
+  /// Returns null when the batch is unavailable: it settled on a relay
+  /// deadline, now or on an earlier identical request. Only an [explicit]
+  /// refresh re-sends it; changed filters are a different request.
+  Future<List<NostrEvent>?> _fetchChannelHistoryBatch(
     RelaySessionNotifier session,
     List<NostrFilter> filters, {
     required String operation,
+    required bool explicit,
   }) async {
     if (filters.isEmpty) return const [];
 
+    final deadlines = ref.read(relayDeadlineRegistryProvider);
+    final key = '$operation:${relayRequestKey(filters)}';
+    if (explicit) deadlines.clear(key);
+    if (deadlines.isTerminal(key)) return null;
     try {
       return await session.queryRelay(filters);
     } catch (error) {
       // Per-filter fallback would re-run the timed-out work another way.
-      // Degrade exactly as a fully failed fallback would: no events.
-      if (isRelayDeadlineError(error)) {
+      if (deadlines.record(key, error)) {
         debugPrint('[ChannelsNotifier] batched $operation hit the deadline');
-        return const [];
+        return null;
       }
       debugPrint(
         '[ChannelsNotifier] batched $operation failed; '
@@ -554,8 +580,9 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
   Future<void> _catchUpUnreadEvents(
     List<Channel> channels,
     _ChannelRefreshFence fence,
-    int subscriptionGeneration,
-  ) async {
+    int subscriptionGeneration, {
+    required bool explicit,
+  }) async {
     if (!ref.mounted) return;
     final myPk = ref.read(myPubkeyProvider);
     if (myPk == null) return;
@@ -597,7 +624,10 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
         session,
         filters,
         operation: 'unread catch-up',
+        explicit: explicit,
       );
+      // Unavailable: keep the unread state already observed.
+      if (events == null) return;
       // The relay round-trip above is the window Jed's probes park in: a newer
       // refresh, a community switch or an identity switch here means every
       // write below belongs to a channel list the user has left.
@@ -658,7 +688,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     state = state.whenData((channels) {
       final idx = channels.indexWhere((c) => c.id == channelId);
       if (idx == -1) {
-        refresh();
+        _refresh(explicit: false);
         return channels;
       }
       final updated = List<Channel>.of(channels);
@@ -770,6 +800,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
         subscribeLive: sessionState.status == SessionStatus.connected,
         fetchLastMessage: false,
         fetchDirectory: false,
+        explicit: false,
       );
       for (var i = 0; i < channels.length; i++) {
         final prev = prevLastMessage[channels[i].id];
@@ -788,7 +819,15 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
   /// Refreshes memberships and, when [fetchDirectory], the open directory.
   /// Invite starter recovery opts in to converge on another identity's
   /// starters instead of attempting duplicate creation from memberships.
-  Future<void> refresh({bool fetchDirectory = false}) async {
+  Future<void> refresh({bool fetchDirectory = false}) =>
+      _refresh(explicit: true, fetchDirectory: fetchDirectory);
+
+  /// Foreground resume and unknown-channel activity refresh with
+  /// [explicit] false, so they cannot replay a deadline-terminal batch.
+  Future<void> _refresh({
+    required bool explicit,
+    bool fetchDirectory = false,
+  }) async {
     final sessionState = ref.read(relaySessionProvider);
     // Don't attempt to fetch when the session isn't connected — fetchHistory
     // would send REQs over an unauthenticated socket that either time out
@@ -800,6 +839,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       final channels = await _fetch(
         subscribeLive: true,
         fetchDirectory: fetchDirectory,
+        explicit: explicit,
       );
       state = AsyncData(channels);
     } on _StaleChannelRefresh {
@@ -845,7 +885,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     }
     try {
       state = AsyncData(
-        await _fetch(subscribeLive: true, fetchDirectory: true),
+        await _fetch(subscribeLive: true, fetchDirectory: true, explicit: true),
       );
     } on _StaleChannelRefresh {
       // A community or identity switch retired this request. Its response
