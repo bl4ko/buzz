@@ -383,6 +383,24 @@ fn bounded_helper_kills_descendant_holding_stdout() {
     );
 }
 
+/// Assert `remote` enumerates refs successfully and holds none.
+fn assert_remote_empty(remote: &Path) {
+    let refs = hermetic_command("git")
+        .args(["-C", remote.to_str().unwrap(), "for-each-ref"])
+        .output()
+        .unwrap();
+    assert!(
+        refs.status.success(),
+        "for-each-ref failed: {:?}",
+        refs.status
+    );
+    assert!(
+        refs.stdout.is_empty(),
+        "remote must be empty; refs={}",
+        String::from_utf8_lossy(&refs.stdout)
+    );
+}
+
 /// The current `HEAD` commit SHA of `repo`, via real git (empty if unborn).
 fn head_sha(repo: &Path) -> String {
     let out = hermetic_command("git")
@@ -2819,15 +2837,15 @@ fn wrapper_refuses_push_plain_last_wins_primary_binary() {
     match primary_supports_subsection {
         ProbeVerdict::Supported => {
             // Supporting binary: .command=status wins; the push gate does not
-            // fire. Verify the wrapper allows the invocation; the remote stays
-            // empty because status never pushed anything.
+            // fire. The invocation must succeed, and the remote stays empty
+            // because status never pushed anything.
             let out = wrapper(&path, repo.path(), &["pub"]);
             assert!(
-                !String::from_utf8_lossy(&out.stderr)
-                    .contains("not authored by your agent identity"),
-                "supporting binary (.command wins): push-gate must not fire; stderr={}",
+                out.status.success(),
+                "supporting binary (.command wins): status alias must succeed; stderr={}",
                 String::from_utf8_lossy(&out.stderr),
             );
+            assert_remote_empty(remote.path());
         }
         ProbeVerdict::Unsupported => {
             // Non-supporting binary: .command is invisible; plain=push fires.
@@ -2984,15 +3002,15 @@ fn wrapper_refuses_push_plain_last_wins_alt_binary() {
 
         match alt_supports_subsection {
             ProbeVerdict::Supported => {
-                // Supporting alt binary: .command=status wins; push gate must
-                // not fire.
+                // Supporting alt binary: .command=status wins; the invocation
+                // must succeed and push nothing.
                 let out = wrapper(&path, repo.path(), &["pub"]);
                 assert!(
-                    !String::from_utf8_lossy(&out.stderr)
-                        .contains("not authored by your agent identity"),
-                    "alt binary ({alt_ver}, .command wins): push-gate must not fire; stderr={}",
+                    out.status.success(),
+                    "alt binary ({alt_ver}, .command wins): status alias must succeed; stderr={}",
                     String::from_utf8_lossy(&out.stderr),
                 );
+                assert_remote_empty(remote.path());
             }
             ProbeVerdict::Unsupported => {
                 // Non-supporting alt binary: .command invisible; plain=push.
