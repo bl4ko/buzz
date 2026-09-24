@@ -315,6 +315,31 @@ void main() {
           if (surface is ForumPostsView) expect(retry, findsNothing);
           await tester.pumpWidget(const SizedBox());
         });
+
+        testWidgets('$name hides Retry while a $kind retry is pending', (
+          tester,
+        ) async {
+          final session = _CountingForumSession(error);
+          await tester.pumpWidget(_buildLiveForum(session, surface));
+          await tester.pump();
+          await tester.pump();
+          final retry = find.byKey(const ValueKey('load-error-retry'));
+          expect(retry, findsOneWidget);
+          final before = session.forumAttempts;
+          final park = session.park = Completer<void>();
+          await tester.tap(retry);
+          await tester.pump();
+          await tester.pump();
+          expect(retry, findsNothing);
+          expect(session.forumAttempts, before + 1);
+          // The replacement fails the same way and settles on Retry again.
+          park.complete();
+          await tester.pump();
+          await tester.pump();
+          expect(retry, findsOneWidget);
+          expect(session.forumAttempts, before + 1);
+          await tester.pumpWidget(const SizedBox());
+        });
       }
 
       testWidgets('$name shows no Retry while loading', (tester) async {

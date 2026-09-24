@@ -94,6 +94,8 @@ class ForumThreadPage extends HookConsumerWidget {
         ],
       ),
       body: threadAsync.when(
+        // A retry from an error shows loading, not the stale error and its Retry.
+        skipLoadingOnRefresh: !threadAsync.hasError,
         loading: () => Padding(
           padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
           child: const Center(

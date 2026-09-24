@@ -11163,17 +11163,19 @@ void main() {
           'Retry ${provisional ? 'beside provisional replies' : 'in the empty state'} '
           'clears the scan record and loads once',
           (tester) async {
-            final timeline = formatTimeline([root, mid]);
+            // The empty variant has no reply at all, cached or provisional.
+            final seed = provisional ? [root, mid] : [root];
+            final timeline = formatTimeline(seed);
             final key = threadScanKey(
               const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
             );
             RelayDeadlineRegistry? registry;
             var fail = true;
             var loads = 0;
-            final messages = _FakeMessagesNotifier([root, mid]);
+            final messages = _FakeMessagesNotifier(seed);
             await tester.pumpWidget(
               _buildTestable(
-                messages: [root, mid],
+                messages: seed,
                 messagesNotifier: messages,
                 disableRetries: true,
                 threadReplyLoaders: {
@@ -11222,9 +11224,20 @@ void main() {
               ]);
               await tester.pumpAndSettle();
               expect(find.text('Live direct'), findsOneWidget);
+            } else {
+              expect(find.text('Couldn’t load replies'), findsOneWidget);
             }
             expect(deadlines.isTerminal(key), isTrue);
             expect(retry, findsOneWidget);
+            final target = tester.getSize(retry);
+            expect(
+              target.width,
+              greaterThanOrEqualTo(kMinInteractiveDimension),
+            );
+            expect(
+              target.height,
+              greaterThanOrEqualTo(kMinInteractiveDimension),
+            );
             final before = loads;
             fail = false;
             await tester.tap(retry);

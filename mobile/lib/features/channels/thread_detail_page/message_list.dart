@@ -172,7 +172,6 @@ class _ThreadMessageList extends StatelessWidget {
                                     key: const ValueKey('thread-replies-retry'),
                                     onPressed: onRetryReplies,
                                     tooltip: 'Retry',
-                                    visualDensity: VisualDensity.compact,
                                     icon: const Icon(
                                       LucideIcons.refreshCcw,
                                       size: 16,

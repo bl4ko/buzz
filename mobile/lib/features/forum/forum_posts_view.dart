@@ -79,6 +79,8 @@ class ForumPostsView extends HookConsumerWidget {
                   )
                 : null,
             body: postsAsync.when(
+              // A retry from an error shows loading, not the stale error and its Retry.
+              skipLoadingOnRefresh: !postsAsync.hasError,
               loading: () => Padding(
                 padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
                 child: const Center(
