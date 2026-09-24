@@ -2668,7 +2668,7 @@ async fn lock_community_deletion(
 ) -> Result<()> {
     crate::observability::observe_advisory_lock(
         crate::observability::LockType::Deletion,
-        sqlx::query("SELECT pg_advisory_xact_lock_shared(community_deletion_lock_key($1))")
+        sqlx::query("SELECT pg_advisory_xact_lock(community_deletion_lock_key($1))")
             .bind(community.as_uuid())
             .execute(&mut **tx),
     )
@@ -4212,6 +4212,66 @@ mod postgres_tests {
             ),
             "expected write-fenced access denial, got: {error:#}"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn begin_quiescing_waits_for_open_admitted_writer_note_update() {
+        let (db, store) = store().await;
+        let (request, _) = inventoried_request(&db, &store).await;
+        store
+            .approve(request.id, "approver", None)
+            .await
+            .expect("approve");
+        let claim = store
+            .claim_specific(request.id, "executor", DEFAULT_LEASE_DURATION)
+            .await
+            .expect("claim")
+            .expect("won claim");
+
+        let pubkey = [7_u8; 32];
+        let added_by = [8_u8; 32];
+        assert!(
+            db.add_to_allowlist(request.community_id, &pubkey, &added_by, Some("before"))
+                .await
+                .expect("seed allowlist row"),
+            "seeded allowlist row must insert"
+        );
+
+        let mut admitted_writer = db
+            .begin_community_write_transaction(request.community_id)
+            .await
+            .expect("open admitted writer");
+        let updated = sqlx::query(
+            "UPDATE pubkey_allowlist SET note = $3 WHERE community_id = $1 AND pubkey = $2",
+        )
+        .bind(request.community_id.as_uuid())
+        .bind(pubkey.to_vec())
+        .bind("during")
+        .execute(&mut *admitted_writer)
+        .await
+        .expect("update allowlist note")
+        .rows_affected();
+        assert_eq!(updated, 1, "note-only update must touch the seeded row");
+
+        let store_for_quiesce = store.clone();
+        let lease = claim.lease.clone();
+        let quiescing =
+            tokio::spawn(async move { store_for_quiesce.begin_quiescing(&lease).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !quiescing.is_finished(),
+            "begin_quiescing must wait for an admitted writer holding the shared deletion lock"
+        );
+
+        admitted_writer
+            .commit()
+            .await
+            .expect("release admitted writer");
+        quiescing
+            .await
+            .expect("quiesce task")
+            .expect("quiesce after writer release");
     }
 
     #[tokio::test]
