@@ -351,7 +351,7 @@ rather than offer an ineffective command. An authorized owner can instead use
 the CLI with the channel and target thread root:
 
 ```sh
-buzz messages send --channel <channel-id> --reply-to <thread-root-id> \
+buzz messages send --audience everyone --channel <channel-id> --reply-to <thread-root-id> \
   --mention <agent-pubkey> --content '!cancel'
 ```
 

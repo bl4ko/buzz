@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import type { RelayEvent } from "@/shared/api/types";
 import {
   getThreadReference,
@@ -8,6 +9,7 @@ export function hasMentionForEvent(
   event: RelayEvent,
   currentPubkey: string,
 ): boolean {
+  if (isAgentCoordination(event)) return false;
   return (
     currentPubkey.length > 0 &&
     event.tags.some(
@@ -30,6 +32,7 @@ export function shouldNotifyForEvent(
   currentPubkey: string,
   options: NotifyOptions,
 ): boolean {
+  if (isAgentCoordination(event)) return false;
   const {
     participatedRootIds,
     followedRootIds,
@@ -79,6 +82,7 @@ export function isHighPriorityEventForUser(
   event: RelayEvent,
   currentPubkey: string,
 ): boolean {
+  if (isAgentCoordination(event)) return false;
   if (
     currentPubkey.length > 0 &&
     event.tags.some(

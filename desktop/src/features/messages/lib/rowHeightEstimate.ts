@@ -4,6 +4,7 @@ import { dimensionsFromDim } from "@/shared/ui/markdown/utils";
 import type { TimelineItem } from "./timelineItems";
 import type { TimelineMessage } from "../types";
 import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
+import { isAgentCoordination } from "./messageAudience";
 
 /**
  * Estimate a timeline row's rendered height so its `content-visibility`
@@ -112,6 +113,8 @@ export function estimateRowHeight(
   message: TimelineMessage,
   { isContinuation = false }: { isContinuation?: boolean } = {},
 ): number {
+  // Coordination rows render collapsed to a single short line by default.
+  if (isAgentCoordination(message)) return CONTINUATION_MIN_ESTIMATE;
   const body = message.body ?? "";
   const { prose, codeLines } = splitFencedCode(body);
   const proseForLineCount = stripMediaOnlyLines(prose);

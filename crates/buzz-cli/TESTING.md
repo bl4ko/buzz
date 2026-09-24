@@ -190,27 +190,27 @@ buzz canvas get --channel "$CHANNEL_ID"
 
 ```bash
 # messages send
-MSG=$(buzz messages send --channel "$CHANNEL_ID" --content "Hello from CLI test" | jq .)
+MSG=$(buzz messages send --audience everyone --channel "$CHANNEL_ID" --content "Hello from CLI test" | jq .)
 echo "$MSG"
 EVENT_ID=$(echo "$MSG" | jq -r '.event_id')
 
 # messages send with reply + broadcast
-REPLY=$(buzz messages send --channel "$CHANNEL_ID" --content "Reply" \
+REPLY=$(buzz messages send --audience everyone --channel "$CHANNEL_ID" --content "Reply" \
   --reply-to "$EVENT_ID" --broadcast | jq .)
 echo "$REPLY"
 REPLY_ID=$(echo "$REPLY" | jq -r '.event_id')
 
 # messages send with mentions — @name in content is auto-resolved, no flag needed
-buzz messages send --channel "$CHANNEL_ID" --content "Hey @someone" | jq .
+buzz messages send --audience everyone --channel "$CHANNEL_ID" --content "Hey @someone" | jq .
 
 # messages send with NIP-27 nostr:npub1… inline mention — auto-resolved to p-tag
-buzz messages send --channel "$CHANNEL_ID" \
+buzz messages send --audience everyone --channel "$CHANNEL_ID" \
   --content "Check with nostr:npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg on this" | jq .
 
 # messages send from stdin — safe path for content with shell metacharacters
 # (backticks, $vars, code blocks) that would otherwise be expanded by the shell.
 echo 'Body with `backticks` and $vars stays literal.' \
-  | buzz messages send --channel "$CHANNEL_ID" --content - | jq .
+  | buzz messages send --audience everyone --channel "$CHANNEL_ID" --content - | jq .
 
 # messages get
 buzz messages get --channel "$CHANNEL_ID" | jq .
@@ -273,7 +273,7 @@ echo "diff content" | buzz messages send-diff \
 
 ```bash
 # Send a message to react to
-REACT_MSG=$(buzz messages send --channel "$CHANNEL_ID" --content "React to this")
+REACT_MSG=$(buzz messages send --audience everyone --channel "$CHANNEL_ID" --content "React to this")
 REACT_ID=$(echo "$REACT_MSG" | jq -r '.event_id')
 
 # reactions add
@@ -436,7 +436,7 @@ buzz feed get --limit 5 | jq .
 
 ```bash
 # Send a forum post (kind 45001) to the forum channel
-FORUM_POST=$(buzz messages send --channel "$FORUM_ID" \
+FORUM_POST=$(buzz messages send --audience everyone --channel "$FORUM_ID" \
   --content "Forum post for vote testing" --kind 45001 | jq .)
 echo "$FORUM_POST"
 FORUM_EVENT_ID=$(echo "$FORUM_POST" | jq -r '.event_id')

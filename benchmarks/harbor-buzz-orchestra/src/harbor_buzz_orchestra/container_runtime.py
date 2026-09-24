@@ -833,6 +833,8 @@ class BuzzContainerRuntime:
         args = [
             "messages",
             "send",
+            "--audience",
+            "everyone",
             "--channel",
             trial.channel_id,
             "--content",

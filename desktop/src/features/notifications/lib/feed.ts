@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import type { Channel, FeedItem, HomeFeedResponse } from "@/shared/api/types";
 import { formatMessageNotification } from "@/features/notifications/lib/notificationFormat";
 
@@ -53,7 +54,9 @@ export function notificationBody(item: FeedItem) {
 }
 
 export function collectHomeAlertItems(feed: HomeFeedResponse) {
-  return [...feed.feed.mentions, ...feed.feed.needsAction];
+  return [...feed.feed.mentions, ...feed.feed.needsAction].filter(
+    (item) => !isAgentCoordination(item),
+  );
 }
 
 export function eligibleFeedNotificationItems(
@@ -83,5 +86,7 @@ export function eligibleFeedNotificationItems(
     );
   }
 
-  return items.sort((left, right) => left.createdAt - right.createdAt);
+  return items
+    .filter((item) => !isAgentCoordination(item))
+    .sort((left, right) => left.createdAt - right.createdAt);
 }

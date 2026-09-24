@@ -76,7 +76,7 @@ printf 'PASS discovery-before-republish channel=%s members=%s late_pubkey=%s\n' 
   "$CHANNEL" "$BEFORE_COUNT" "$LATE_PUBKEY"
 
 export BUZZ_PRIVATE_KEY="$LATE_SK"
-ACTION="$(buzz messages send --channel "$CHANNEL" --content "member-1501-action")"
+ACTION="$(buzz messages send --audience everyone --channel "$CHANNEL" --content "member-1501-action")"
 jq -e '.accepted == true' <<<"$ACTION" >/dev/null
 ACTION_ID="$(jq -er '.event_id' <<<"$ACTION")"
 buzz messages get --channel "$CHANNEL" --limit 10 \

@@ -296,3 +296,34 @@ test("computeThreadUnreadMarker_selfAuthoredMixedCase_skipsOwnReplies", () => {
   assert.equal(marker.firstUnreadReplyId, "r2");
   assert.equal(marker.unreadCount, 1);
 });
+
+test("audience excludes automatic channel and thread unread, preserving manual intent", () => {
+  const messages = [
+    { ...topLevel("coord", 10), kind: 9, tags: [["audience", "agents"]] },
+    { ...topLevel("answer", 20), kind: 9, tags: [["audience", "everyone"]] },
+    { ...topLevel("legacy", 30), kind: 9, tags: [] },
+  ];
+  assert.deepEqual(computeChannelUnreadMarker(messages, null), {
+    firstUnreadMessageId: "answer",
+    unreadCount: 2,
+  });
+  assert.deepEqual(
+    computeThreadUnreadMarker(messages, () => null),
+    {
+      firstUnreadReplyId: "answer",
+      unreadCount: 2,
+    },
+  );
+  assert.deepEqual(
+    computeThreadUnreadMarker(
+      messages,
+      () => 100,
+      undefined,
+      (id) => id === "coord",
+    ),
+    {
+      firstUnreadReplyId: "coord",
+      unreadCount: 1,
+    },
+  );
+});

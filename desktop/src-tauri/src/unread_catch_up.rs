@@ -264,6 +264,9 @@ fn classify_batch(
     for item in &fetched {
         let mut discovered = DiscoveredRoots::default();
         for event in &item.events {
+            if buzz_sdk_pkg::audience::is_agent_coordination(event.kind, &event.tags) {
+                continue;
+            }
             if event.pubkey.eq_ignore_ascii_case(&self_pubkey) {
                 let reference = thread_reference(&event.tags);
                 if let Some(root_id) = reference.root_id {
@@ -416,6 +419,9 @@ fn should_notify(
     participated: &HashSet<String>,
     authored: &HashSet<String>,
 ) -> bool {
+    if buzz_sdk_pkg::audience::is_agent_coordination(event.kind, &event.tags) {
+        return false;
+    }
     if has_exact_tag(&event.tags, "broadcast", "1") || has_tag_value(&event.tags, "p", self_pubkey)
     {
         return true;
@@ -489,6 +495,67 @@ mod tests {
             self_pubkey: "self".into(),
             muted_channel_ids: HashSet::new(),
         }
+    }
+
+    #[test]
+    fn coordination_does_not_reappear_as_unread_after_restart() {
+        let req = request();
+        let fetched = vec![FetchedChannel {
+            order: 0,
+            channel: CatchUpChannel {
+                id: "ch".into(),
+                channel_type: "stream".into(),
+                name: "Ch".into(),
+                read_at: Some(9),
+            },
+            events: vec![
+                event(
+                    "coord",
+                    "other",
+                    10,
+                    &[
+                        &["audience", "agents"],
+                        &["p", "self"],
+                        &["broadcast", "1"],
+                        &["e", "root", "", "reply"],
+                    ],
+                ),
+                event(
+                    "answer",
+                    "other",
+                    11,
+                    &[&["audience", "everyone"], &["p", "self"]],
+                ),
+                event("legacy", "other", 12, &[]),
+                event(
+                    "ambiguous",
+                    "other",
+                    13,
+                    &[&["audience", "agents"], &["audience", "everyone"]],
+                ),
+            ],
+        }];
+        let result = classify_batch(&req, fetched, &HashMap::new());
+        let ChannelResult::Success {
+            observed_events,
+            discovered,
+            max_trigger,
+            activity_rows,
+            ..
+        } = &result[0]
+        else {
+            panic!("expected success")
+        };
+        assert_eq!(
+            observed_events
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["answer", "legacy", "ambiguous"]
+        );
+        assert!(discovered.mentioned.is_empty());
+        assert!(activity_rows.is_empty());
+        assert_eq!(*max_trigger, 13);
     }
 
     #[test]

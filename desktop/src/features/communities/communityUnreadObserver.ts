@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import { makeRootIdStore } from "@/features/channels/unreadRootIdStore";
 import {
   forcedUnreadMarker,
@@ -289,8 +290,10 @@ export async function fetchCommunityUnread(args: {
       );
     }
 
-    mentionCount += mentionEvents.filter((event) =>
-      isUnreadExternalEvent(event, readState, readAt, normalizedPubkey),
+    mentionCount += mentionEvents.filter(
+      (event) =>
+        !isAgentCoordination(event) &&
+        isUnreadExternalEvent(event, readState, readAt, normalizedPubkey),
     ).length;
   }
 

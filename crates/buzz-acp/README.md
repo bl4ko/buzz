@@ -174,7 +174,7 @@ Under the default `channel` policy, a session scope is the whole channel, so the
 Owner control commands must be kind:9 stream messages from the owner, must have body exactly `!cancel`, `!rotate`, or `!shutdown` after trimming, and must mention this agent with a separate `p` tag. They are consumed by the harness instead of being forwarded to the agent. An inline `@Name` changes the body and does not match. With the Buzz CLI, target a thread while preserving the exact command body by passing the mention separately:
 
 ```bash
-buzz messages send --channel <channel-id> --reply-to <thread-root-id> \
+buzz messages send --audience everyone --channel <channel-id> --reply-to <thread-root-id> \
   --mention <agent-pubkey> --content '!cancel'
 ```
 

@@ -1,3 +1,8 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
+import {
+  AgentCoordinationCollapseButton,
+  AgentCoordinationCollapsedRow,
+} from "./AgentCoordinationDisclosure";
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -164,7 +169,16 @@ export const MessageRow = React.memo(
   }) {
     // Keep the transient send state with its timestamp rather than collapsing
     // it into a grouped message row with no header.
-    const isDisplayedAsContinuation = isContinuation && !message.pending;
+    const isCoordination = isAgentCoordination(message);
+    const [coordinationExpanded, setCoordinationExpanded] =
+      React.useState(false);
+    const coordinationForcedOpen = highlighted || Boolean(searchQuery);
+    const coordinationCollapsed =
+      isCoordination && !coordinationExpanded && !coordinationForcedOpen;
+    // Collapsed coordination rows carry their own avatar, so an expanded one
+    // must too; never render it as a headerless continuation.
+    const isDisplayedAsContinuation =
+      isContinuation && !message.pending && !isCoordination;
     const [expandedDiffId, setExpandedDiffId] = React.useState<string | null>(
       null,
     );
@@ -675,6 +689,15 @@ export const MessageRow = React.memo(
             { key: "owner", node: agentOwnerNode },
             { key: "timestamp", node: inlineMetadataNode },
             { key: "persona", node: personaNode },
+            {
+              key: "coordination",
+              node:
+                isCoordination && !coordinationForcedOpen ? (
+                  <AgentCoordinationCollapseButton
+                    onCollapse={() => setCoordinationExpanded(false)}
+                  />
+                ) : null,
+            },
           ]}
         />
       </MessageHeaderRow>
@@ -727,6 +750,30 @@ export const MessageRow = React.memo(
         ) : null}
       </>
     );
+
+    if (coordinationCollapsed) {
+      return (
+        <div
+          className="relative"
+          style={
+            indentRem > 0
+              ? { paddingLeft: threadReplyLength(indentRem) }
+              : undefined
+          }
+        >
+          <AgentCoordinationCollapsedRow
+            accent={message.accent}
+            author={message.author}
+            avatarUrl={message.avatarUrl}
+            body={message.body}
+            createdAt={message.createdAt}
+            isAgent={isAuthorAgent}
+            messageId={message.id}
+            onExpand={() => setCoordinationExpanded(true)}
+          />
+        </div>
+      );
+    }
 
     return (
       <div

@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "./messageAudience";
 import type { TimelineMessage } from "@/features/messages/types";
 
 /**
@@ -51,7 +52,7 @@ export function computeChannelUnreadMarker(
   let unreadCount = 0;
 
   for (const message of messages) {
-    if (message.parentId) {
+    if (message.parentId || isAgentCoordination(message)) {
       continue;
     }
     if (
@@ -111,7 +112,8 @@ const EMPTY_THREAD_MARKER: ThreadUnreadMarker = {
  *   overlay, never in the read-line. Defaults to never-forced.
  */
 export function computeThreadUnreadMarker(
-  replies: Pick<TimelineMessage, "id" | "createdAt" | "pubkey">[],
+  replies: (Pick<TimelineMessage, "id" | "createdAt" | "pubkey"> &
+    Partial<Pick<TimelineMessage, "kind" | "tags">>)[],
   getReadAt: (messageId: string) => number | null,
   currentPubkey?: string,
   isForcedUnread: (messageId: string) => boolean = () => false,
@@ -126,6 +128,7 @@ export function computeThreadUnreadMarker(
     if (normalizedPubkey && reply.pubkey?.toLowerCase() === normalizedPubkey) {
       continue;
     }
+    if (isAgentCoordination(reply) && !isForcedUnread(reply.id)) continue;
     const readAt = getReadAt(reply.id);
     const isUnread =
       isForcedUnread(reply.id) || readAt === null || reply.createdAt > readAt;

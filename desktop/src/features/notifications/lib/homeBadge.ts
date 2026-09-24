@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import type { FeedItem, HomeFeedResponse } from "@/shared/api/types";
 import { maxReadAt } from "@/features/channels/readState/readStateFormat";
 import {
@@ -47,7 +48,9 @@ export function buildHomeBadgeFeedItems(
     );
   }
 
-  return dedupeFeedItemsById(items);
+  return dedupeFeedItemsById(
+    items.filter((item) => !isAgentCoordination(item)),
+  );
 }
 
 export function shouldCountTowardHomeBadgeSubtotal(

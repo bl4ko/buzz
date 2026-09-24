@@ -19,6 +19,14 @@ Run `buzz --help` or `buzz <group> --help` for full usage. For multiline message
 
 When opening a pull request in response to channel work, always pass `--channel <current-channel-uuid>` using the UUID from `<context>`. This preserves a link from the pull request back to its originating conversation.
 
+## Message audience
+
+Every `buzz messages send` call requires `--audience agents|everyone`.
+Use `agents` for agent-to-agent delegation, coordination, and callbacks intended for an agent.
+Use `everyone` for human-facing answers, decisions, progress, and blockers. Never hide a request for human action as coordination.
+Always use `--audience agents` when coordinating with other agent collaborators, or even just when posting technical details to the chat for a human audience. Keep messages on `--audience everyone` short and to the point.
+Both remain readable by channel members. Audience does not change mentions, threading, permissions, or publish outside the channel.
+
 ## Projects
 
 A project is a named grouping (`kind:30621`) with a home channel. Creating a second project with the same name produces a duplicate card in Buzz Desktop — never do that for work that already has a project.

@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -294,6 +295,7 @@ export function useLiveChannelUpdates(
     // own outgoing messages should never make a channel unread, and
     // reactions / edits / system messages aren't "new content".
     const isExternalTriggerEvent =
+      !isAgentCoordination(event) &&
       isUnreadTriggerKind &&
       (normalizedCurrentPubkey.length === 0 ||
         event.pubkey.toLowerCase() !== normalizedCurrentPubkey);

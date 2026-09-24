@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import {
   resolveUserLabel,
   type UserProfileLookup,
@@ -515,6 +516,7 @@ export function buildInboxItems({
   >();
 
   for (const item of feedItems) {
+    if (isAgentCoordination(item)) continue;
     const threadKey = getInboxThreadKey(item, channelById);
     const group = threadGroups.get(threadKey) ?? {
       items: [],

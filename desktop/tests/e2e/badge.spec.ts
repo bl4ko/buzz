@@ -993,3 +993,75 @@ test("remote read-state rollback is ignored while local mark-unread still increm
 
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
 });
+
+test("explicit agent audience collapses coordination without badge noise", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("channel-engineering").click();
+  await waitForMockLiveSubscription(page, "engineering", 9);
+  await page.getByTestId("channel-general").click();
+  const baseline = await getSettledBadgeState(page);
+  const coord = await page.evaluate(
+    (pubkey) =>
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "engineering",
+        content: "POC coordination: checking the patch",
+        kind: 9,
+        pubkey,
+        mentionPubkeys: ["deadbeef".repeat(8)],
+        extraTags: [
+          ["audience", "agents"],
+          ["broadcast", "1"],
+        ],
+      }),
+    TEST_IDENTITIES.alice.pubkey,
+  );
+  await page.waitForTimeout(1500);
+  expect(await getBadgeState(page)).toEqual(baseline);
+  await page.getByTestId("channel-engineering").click();
+  const collapsed = page.getByTestId("agent-coordination-collapsed");
+  await expect(collapsed).toHaveCount(1);
+  await expect(collapsed).toHaveAttribute("data-message-id", coord?.id ?? "");
+  await expect(collapsed).toContainText("POC coordination: checking the patch");
+  // Collapsed placeholder is a single short line, not a full message row.
+  const collapsedBox = await collapsed.boundingBox();
+  expect(collapsedBox?.height ?? 0).toBeLessThan(32);
+  // The placeholder keeps the author's avatar visible.
+  await expect(collapsed.locator("[data-avatar-shape]")).toBeVisible();
+  await expect(collapsed.locator("[data-avatar-shape]")).toContainText(/\S/);
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/audience-collapsed.png" });
+  await collapsed.click();
+  await expect(collapsed).toHaveCount(0);
+  const collapse = page.getByTestId("agent-coordination-collapse");
+  await expect(collapse).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/audience-expanded.png" });
+  await collapse.click();
+  await expect(page.getByTestId("agent-coordination-collapsed")).toHaveCount(1);
+  await page.getByTestId("channel-general").click();
+  const beforeAnswer = await getSettledBadgeState(page);
+  await page.evaluate(
+    (pubkey) =>
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "engineering",
+        content: "POC answer: ready for your review",
+        kind: 9,
+        pubkey,
+        mentionPubkeys: ["deadbeef".repeat(8)],
+        extraTags: [["audience", "everyone"]],
+      }),
+    TEST_IDENTITIES.alice.pubkey,
+  );
+  await expect
+    .poll(async () => (await getBadgeState(page)).count)
+    .toBeGreaterThan(beforeAnswer.count);
+  await page.getByTestId("channel-engineering").click();
+  await expect(
+    page
+      .getByText("POC answer: ready for your review", { exact: true })
+      .first(),
+  ).toBeVisible();
+  await page.screenshot({ path: "test-results/audience-poc.png" });
+});

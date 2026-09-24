@@ -1,3 +1,4 @@
+import { isAgentCoordination } from "@/features/messages/lib/messageAudience";
 import { buildDescendantStatsByMessageId } from "@/features/messages/lib/threadPanel";
 import type { TimelineMessage } from "@/features/messages/types";
 
@@ -51,6 +52,7 @@ export function computeThreadReplyUnreadCounts(params: {
         if (!subtree.has(message.id)) return false;
         if (currentPubkey && message.pubkey === currentPubkey) return false;
         if (isForcedUnread(message.id)) return true;
+        if (isAgentCoordination(message)) return false;
         const readAt = getReadAt(message.id);
         return readAt === null || message.createdAt > readAt;
       })

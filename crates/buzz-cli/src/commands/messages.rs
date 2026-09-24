@@ -599,6 +599,7 @@ fn match_profiles_by_name(events: &[serde_json::Value], name: &str) -> Vec<(Stri
 }
 
 pub struct SendMessageParams {
+    pub audience: buzz_sdk::MessageAudience,
     pub channel_id: String,
     pub content: String,
     pub kind: Option<u16>,
@@ -742,12 +743,17 @@ pub async fn cmd_send_message(
         }
     };
 
+    let builder = p
+        .audience
+        .apply(builder)
+        .map_err(|e| CliError::Other(format!("audience tag failed: {e}")))?;
     let event = client.sign_event(builder)?;
     let emitted_mentions = event_mention_pubkeys(&event);
     let resp = client.submit_event(event).await?;
     let mut output: serde_json::Value = serde_json::from_str(&normalize_write_response(&resp))
         .unwrap_or_else(|_| serde_json::json!({ "response": resp }));
     if let Some(object) = output.as_object_mut() {
+        object.insert("audience".into(), serde_json::json!(p.audience.as_str()));
         object.insert(
             "mention_pubkeys".into(),
             serde_json::json!(emitted_mentions),
@@ -938,6 +944,7 @@ pub async fn dispatch(
     use crate::MessagesCmd;
     match cmd {
         MessagesCmd::Send {
+            audience,
             channel,
             content,
             kind,
@@ -949,6 +956,7 @@ pub async fn dispatch(
             cmd_send_message(
                 client,
                 SendMessageParams {
+                    audience,
                     channel_id: channel,
                     content,
                     kind,
@@ -1710,6 +1718,7 @@ mod tests {
 
     fn send_params(content: &str) -> super::SendMessageParams {
         super::SendMessageParams {
+            audience: buzz_sdk::MessageAudience::Everyone,
             channel_id: SEND_TEST_CHANNEL.to_string(),
             content: content.to_string(),
             kind: None,
@@ -1717,6 +1726,34 @@ mod tests {
             broadcast: false,
             files: vec![],
             mentions: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn cmd_send_message_signs_explicit_audience_for_each_supported_kind() {
+        for kind in [None, Some(9), Some(45001)] {
+            for audience in [
+                buzz_sdk::MessageAudience::Agents,
+                buzz_sdk::MessageAudience::Everyone,
+            ] {
+                let (url, _, captured) = fake_send_relay("[]".into()).await;
+                let client = BuzzClient::new(url, Keys::generate(), None, None).unwrap();
+                let mut params = send_params("audience canary");
+                params.kind = kind;
+                params.audience = audience;
+                cmd_send_message(&client, params).await.unwrap();
+                let raw = captured.lock().unwrap();
+                let event: nostr::Event =
+                    serde_json::from_str(&raw.as_ref().unwrap().body).unwrap();
+                event.verify().unwrap();
+                let tags: Vec<_> = event
+                    .tags
+                    .iter()
+                    .filter(|tag| tag.as_slice()[0] == "audience")
+                    .collect();
+                assert_eq!(tags.len(), 1);
+                assert_eq!(tags[0].as_slice(), &["audience", audience.as_str()]);
+            }
         }
     }
 

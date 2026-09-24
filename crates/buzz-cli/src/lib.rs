@@ -410,9 +410,12 @@ buzz agents archived"
 pub enum MessagesCmd {
     /// Send a message to a channel
     #[command(
-        after_help = "Examples:\n  buzz messages send --channel <UUID> --content \"hello\"\n  buzz messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | buzz messages send --channel <UUID> --content -"
+        after_help = "Examples:\n  buzz messages send --audience everyone --channel <UUID> --content \"hello\"\n  buzz messages send --audience everyone --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | buzz messages send --audience everyone --channel <UUID> --content -"
     )]
     Send {
+        /// Required intent: agents (coordination) or everyone (normal conversation). Not an access restriction.
+        #[arg(long)]
+        audience: buzz_sdk::MessageAudience,
         /// Channel UUID (from 'buzz channels list')
         #[arg(long)]
         channel: String,
@@ -425,7 +428,7 @@ pub enum MessagesCmd {
         /// Event ID to reply to (creates a thread)
         #[arg(long)]
         reply_to: Option<String>,
-        /// Also publish to the Nostr network
+        /// Also show a depth-1 reply in the channel timeline
         #[arg(long, default_value_t = false)]
         broadcast: bool,
         /// Attach file(s) — uploads and includes as imeta tags
@@ -2266,6 +2269,28 @@ mod tests {
         ] {
             assert_eq!(normalize_auth_tag_input(garbage), garbage.trim());
         }
+    }
+
+    #[test]
+    fn message_send_requires_an_explicit_audience() {
+        let args = [
+            "buzz",
+            "messages",
+            "send",
+            "--channel",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "--content",
+            "hello",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
+        for audience in ["agents", "everyone"] {
+            let mut explicit = args.to_vec();
+            explicit.extend(["--audience", audience]);
+            assert!(Cli::try_parse_from(explicit).is_ok());
+        }
+        let mut invalid = args.to_vec();
+        invalid.extend(["--audience", "broadcast"]);
+        assert!(Cli::try_parse_from(invalid).is_err());
     }
 
     /// Smoke test: CLI definition is valid and parseable.
