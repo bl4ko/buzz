@@ -3557,8 +3557,8 @@ fn nested_agent_distinct_binaries_child_first_uses_child_identity() {
 ///
 /// Both child and parent install dirs use symlinks to the same buzz-acp binary;
 /// their canonical paths are identical. The child's own dir is skipped by the
-/// self-skip (canonicalization) check; the parent's dir is skipped by the
-/// marker check. Real git is selected, and the child's identity (injected by
+/// self-skip (canonicalization) check, which runs before the marker check, so
+/// it skips the parent's dir too. Real git is selected, and the child's identity (injected by
 /// the child wrapper's manifest) is used for the commit.
 #[cfg(unix)]
 #[test]

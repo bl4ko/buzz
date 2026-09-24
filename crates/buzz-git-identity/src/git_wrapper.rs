@@ -8280,38 +8280,32 @@ mod tests {
     }
 
     /// `find_real_git` returns an absolute path even when the PATH entry is
-    /// relative. Without the absolutize step the capability probe's re-search
-    /// would be reached for relative candidates and could select a different
-    /// binary. This is tested by mutation: removing the absolutize block causes
-    /// `find_real_git_skips_marker_directory_and_resolves_past_it` to return a
-    /// relative path (when tmpdir happens to have a relative prefix) and the
-    /// probe's fallback search fires — mutation RED. Restoring it is GREEN.
-    /// See /tmp/evidence-6177-r11/mutation-absolutize-{red,green}.txt.
+    /// relative: the relative candidate is joined onto the process cwd, so every
+    /// consumer runs the exact binary discovery selected. Removing that join
+    /// returns a relative path and fails the `is_absolute` assertion below.
     #[cfg(unix)]
     #[test]
     fn find_real_git_returns_absolute_path_for_relative_entry() {
+        /// Restores the process cwd on drop, including on panic.
+        struct CwdGuard(PathBuf);
+        impl Drop for CwdGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.0);
+            }
+        }
+
         let (_real_td, real_dir) = make_stub_git_dir("real", false);
-
-        // Build a relative PATH entry: "./<dirname>" resolved against parent.
-        // This simulates a user who has `./bin` in their PATH.
         let parent = real_dir.parent().unwrap().to_path_buf();
-        let dir_name = real_dir.file_name().unwrap();
-        let relative_entry = std::path::Path::new(".").join(dir_name);
+        let relative_entry = std::path::Path::new(".").join(real_dir.file_name().unwrap());
 
-        // We need cwd == parent for the relative entry to resolve.  Use the
-        // ENV_LOCK (via TestEnv) to serialize; cwd mutation is kept local to
-        // this test via catch_unwind + restore in all exit paths.
-        let original_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&parent).unwrap();
-
-        let path = std::env::join_paths([&relative_entry]).unwrap();
+        // Take ENV_LOCK before touching cwd; the guard is declared after `env`
+        // so it drops (restoring cwd) while the lock is still held.
         let mut env = TestEnv::lock();
-        env.set("PATH", &path);
+        let _cwd = CwdGuard(std::env::current_dir().unwrap());
+        std::env::set_current_dir(&parent).unwrap();
+        env.set("PATH", std::env::join_paths([&relative_entry]).unwrap());
 
         let found = find_real_git();
-
-        drop(env); // release ENV_LOCK before restoring cwd
-        std::env::set_current_dir(&original_cwd).unwrap();
 
         let found = found.expect("find_real_git must find real git via relative entry");
         assert!(
