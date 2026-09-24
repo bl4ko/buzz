@@ -38,11 +38,14 @@ final threadRepliesProvider = FutureProvider.autoDispose
       // one-shot query. Refresh mounted threads when the session recovers;
       // auto-dispose also makes reopening a thread start from relay truth.
       // A deadline is terminal for this scan across every owner (see
-      // [threadScanKey]). Building this provider is the explicit retry:
-      // automatic owners consult the registry before invalidating it.
-      final deadlines = ref.read(relayDeadlineRegistryProvider);
+      // [threadScanKey]). Builds are automatic (Riverpod retry, reconnect,
+      // live invalidation), so they honor it; only
+      // [retryThreadRepliesAfterDeadline] clears it. Watching the registry
+      // moves a mounted query to the new scope on a relay/account switch.
+      final deadlines = ref.watch(relayDeadlineRegistryProvider);
       final scanKey = threadScanKey(args);
-      deadlines.clear(scanKey);
+      if (deadlines.terminalError(scanKey) case final error?) throw error;
+      final attempt = deadlines.attempt(scanKey);
       ref.listen(relaySessionProvider, (previous, next) {
         if (!deadlines.isTerminal(scanKey) &&
             previous?.status != SessionStatus.connected &&
@@ -120,13 +123,26 @@ final threadRepliesProvider = FutureProvider.autoDispose
         }
         return replies;
       } catch (error) {
-        deadlines.record(scanKey, error);
+        deadlines.record(scanKey, error, attempt: attempt);
         if (queryVersion != null) {
           channelMessages?.failThreadQuery(args.rootId, queryVersion);
         }
         rethrow;
       }
     });
+
+/// Explicit retry (opening the thread page, a retry control) of a thread
+/// scan that settled on a relay deadline. No-op otherwise.
+void retryThreadRepliesAfterDeadline(
+  RelayDeadlineRegistry deadlines,
+  ThreadRepliesArgs args,
+  void Function() invalidate,
+) {
+  final scanKey = threadScanKey(args);
+  if (!deadlines.isTerminal(scanKey)) return;
+  deadlines.clear(scanKey);
+  invalidate();
+}
 
 /// Deadline-registry identity of [fetchCompleteThreadReplies] for [args],
 /// shared by the route query and the channel's background recount.

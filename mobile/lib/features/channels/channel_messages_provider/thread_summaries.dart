@@ -310,6 +310,7 @@ extension _ThreadSummaryState on ChannelMessagesNotifier {
     if (!_hasVisibleThreadRows(root) || _deadlines.isTerminal(scanKey)) {
       return;
     }
+    final scanAttempt = _deadlines.attempt(scanKey);
     final generation = _initVersion;
     final version = beginThreadQuery(root);
     final snapshot = cachedThreadReplyIds(root);
@@ -336,8 +337,10 @@ extension _ThreadSummaryState on ChannelMessagesNotifier {
         if (_summaryRefreshes.isDirty(root)) _queueOverflowSummary(root);
       }
     } catch (error) {
+      // Record against the attempt, not the display generation: only a
+      // reset or fenced success since this scan started may drop it.
+      if (_deadlines.record(scanKey, error, attempt: scanAttempt)) return;
       if (!current()) return;
-      if (_deadlines.record(scanKey, error)) return;
       if (attempt < 2) {
         // Retain this active queue slot during backoff, so retries share the
         // same concurrency budget and stop when newer work supersedes them.

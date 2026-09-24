@@ -319,6 +319,18 @@ void main() {
         .queryFilters
         .where((filter) => filter.extensions.containsKey('depth_limit'))
         .length;
+    NostrEvent deleteReply(int i) => NostrEvent(
+      id: 'delete-reply-$i',
+      pubkey: 'alice',
+      createdAt: 100 + i,
+      kind: EventKind.deletion,
+      tags: [
+        ['h', _channelId],
+        ['e', 'reply-$i'],
+      ],
+      content: '',
+      sig: '',
+    );
     NostrEvent reply(int i) => _event(
       id: 'reply-$i',
       createdAt: 20 + i,
@@ -463,12 +475,8 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 2000));
       expect(threadScans(session), 1);
-      // User retry (reopen/invalidate) clears the shared record and re-runs.
-      container.invalidate(
-        threadRepliesProvider(
-          const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
-        ),
-      );
+      // User retry (reopen) clears the shared record and re-runs.
+      _retryThread(container, 'root');
       await _pumpEventQueue();
       expect(threadScans(session), 2);
     });
@@ -492,7 +500,7 @@ void main() {
       const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
       container.listen(threadRepliesProvider(args), (_, _) {});
       await _pumpEventQueue();
-      container.invalidate(threadRepliesProvider(args));
+      _retryThread(container, 'root');
       await _pumpEventQueue();
       expect(threadScans(session), 2);
       // The retry ended in an ordinary failure, so live activity recovers.
@@ -535,6 +543,190 @@ void main() {
         );
       },
     );
+
+    // HTTP fails ordinarily, then the legacy websocket history times out.
+    for (final (name, wsError, replays) in [
+      ('deadline', Exception('error: query timed out') as Object, false),
+      ('ordinary error', Exception('ws reset') as Object, true),
+    ]) {
+      test('a window websocket fallback $name replays: $replays', () async {
+        final session = _RecordingRelaySessionNotifier(
+          queryResults: [
+            Exception('reset'),
+            for (var i = 0; i < 4; i++) <NostrEvent>[_bounds()],
+          ],
+        )..historyError = wsError;
+        final container = _buildContainer(session);
+        addTearDown(container.dispose);
+        container.listen(channelMessagesProvider(_channelId), (_, _) {});
+        await _pumpEventQueue();
+        int windowQueries() => session.queryFilters
+            .where((filter) => filter.extensions['top_level'] == true)
+            .length;
+        int fetches() => session.operations.where((op) => op == 'fetch').length;
+        expect((windowQueries(), fetches()), (1, 1));
+        session.historyError = null;
+        for (var i = 0; i < 2; i++) {
+          session.setConnected(false);
+          await _pumpEventQueue();
+          session.setConnected(true);
+          await _pumpEventQueue();
+        }
+        if (replays) {
+          expect(windowQueries(), greaterThan(1));
+        } else {
+          expect((windowQueries(), fetches()), (1, 1));
+          container
+              .read(channelMessagesProvider(_channelId).notifier)
+              .retryAfterDeadline();
+          await _pumpEventQueue();
+          expect(windowQueries(), 2);
+        }
+      });
+    }
+
+    test(
+      'a recount deadline during the route retry backoff stops the retry',
+      () async {
+        final recount = Completer<List<NostrEvent>>();
+        final session = _RecordingRelaySessionNotifier(
+          queryResults: [
+            [_event(id: 'root', createdAt: 10), _bounds()],
+            recount.future,
+            Exception('reset'),
+            for (var i = 0; i < 8; i++) <NostrEvent>[],
+          ],
+        );
+        // Production retry: ordinary errors retry, deadlines do not.
+        final container = ProviderContainer(
+          retry: relayProviderRetry,
+          overrides: [relaySessionProvider.overrideWith(() => session)],
+        );
+        addTearDown(container.dispose);
+        container.listen(channelMessagesProvider(_channelId), (_, _) {});
+        await _pumpEventQueue();
+        // Replies past the cap start the overflow recount, parked in flight.
+        for (var i = 0; i < 300; i++) {
+          session.emit(reply(i));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1000));
+        expect(threadScans(session), 1);
+        const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
+        container.listen(threadRepliesProvider(args), (_, _) {});
+        await _pumpEventQueue();
+        expect(threadScans(session), 2);
+        // The route failed ordinarily; Riverpod's retry is now scheduled.
+        expect(container.read(threadRepliesProvider(args)).isLoading, true);
+        recount.completeError(deadline());
+        await Future<void>.delayed(const Duration(seconds: 3));
+        expect(threadScans(session), 2);
+        // Explicit retry re-runs.
+        _retryThread(container, 'root');
+        await _pumpEventQueue();
+        expect(threadScans(session), 3);
+      },
+    );
+
+    test('without a deadline the route retry backoff recovers', () async {
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          [_event(id: 'root', createdAt: 10), _bounds()],
+          Exception('reset'),
+          for (var i = 0; i < 8; i++) <NostrEvent>[],
+        ],
+      );
+      final container = ProviderContainer(
+        retry: relayProviderRetry,
+        overrides: [relaySessionProvider.overrideWith(() => session)],
+      );
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
+      container.listen(threadRepliesProvider(args), (_, _) {});
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(threadScans(session), 2);
+      expect(container.read(threadRepliesProvider(args)).hasValue, true);
+    });
+
+    test('a parked recount deadline outlives a deletion requeue', () async {
+      final parked = Completer<List<NostrEvent>>();
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [
+          [_event(id: 'root', createdAt: 10), _bounds()],
+          parked.future,
+          for (var i = 0; i < 8; i++) <NostrEvent>[],
+        ],
+      );
+      final container = _buildContainer(session);
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      await _pumpEventQueue();
+      session
+        ..emit(reply(0))
+        ..emit(reply(1));
+      await _pumpEventQueue();
+      session.emit(deleteReply(0));
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(threadScans(session), 1);
+      // A second deletion moves the presentation version and requeues.
+      session.emit(deleteReply(1));
+      await Future<void>.delayed(const Duration(seconds: 1));
+      parked.completeError(deadline());
+      await Future<void>.delayed(const Duration(seconds: 2));
+      expect(threadScans(session), 1);
+      // Explicit retry re-runs.
+      _retryThread(container, 'root');
+      container.listen(
+        threadRepliesProvider(
+          const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
+        ),
+        (_, _) {},
+      );
+      await _pumpEventQueue();
+      expect(threadScans(session), 2);
+    });
+
+    for (final switchScope in [true, false]) {
+      test(
+        'a mounted route after a deadline and '
+        '${switchScope ? 'a relay switch recovers' : 'a same-scope reconnect stays terminal'}',
+        () async {
+          final session = _RecordingRelaySessionNotifier(
+            queryResults: [
+              [_event(id: 'root', createdAt: 10), _bounds()],
+              deadline(),
+              for (var i = 0; i < 8; i++) <NostrEvent>[],
+            ],
+          );
+          final container = ProviderContainer(
+            retry: relayProviderRetry,
+            overrides: [relaySessionProvider.overrideWith(() => session)],
+          );
+          addTearDown(container.dispose);
+          container.listen(channelMessagesProvider(_channelId), (_, _) {});
+          await _pumpEventQueue();
+          const args = ThreadRepliesArgs(channelId: _channelId, rootId: 'root');
+          container.listen(threadRepliesProvider(args), (_, _) {});
+          await _pumpEventQueue();
+          expect(threadScans(session), 1);
+          if (switchScope) {
+            container
+                .read(relayConfigProvider.notifier)
+                .update(baseUrl: 'https://other.example');
+          }
+          session.setConnected(false);
+          await _pumpEventQueue();
+          session.setConnected(true);
+          await _pumpEventQueue();
+          expect(threadScans(session), switchScope ? greaterThan(1) : 1);
+          expect(
+            container.read(threadRepliesProvider(args)).hasValue,
+            switchScope,
+          );
+        },
+      );
+    }
 
     test('an ordinary window failure still re-queries on reconnect', () async {
       final session = _RecordingRelaySessionNotifier(
@@ -5564,6 +5756,7 @@ class _RecordingRelaySessionNotifier extends RelaySessionNotifier {
   final Completer<void> _subscribed = Completer<void>();
   final Completer<List<NostrEvent>> _history = Completer<List<NostrEvent>>();
   final Queue<Completer<List<NostrEvent>>> _targetHistories = Queue();
+  Object? historyError;
 
   _RecordingRelaySessionNotifier({
     this.failSubscribe = false,
@@ -5615,6 +5808,7 @@ class _RecordingRelaySessionNotifier extends RelaySessionNotifier {
       _targetHistories.add(completer);
       return completer.future;
     }
+    if (historyError case final error?) return Future.error(error);
     if (_historyResults.isNotEmpty) {
       return Future.value(_historyResults.removeFirst());
     }
@@ -5662,4 +5856,14 @@ class _RecordingRelaySessionNotifier extends RelaySessionNotifier {
       _history.completeError(error);
     }
   }
+}
+
+/// The thread page's explicit reopen/retry of a deadline-terminal scan.
+void _retryThread(ProviderContainer container, String rootId) {
+  final args = ThreadRepliesArgs(channelId: _channelId, rootId: rootId);
+  retryThreadRepliesAfterDeadline(
+    container.read(relayDeadlineRegistryProvider),
+    args,
+    () => container.invalidate(threadRepliesProvider(args)),
+  );
 }

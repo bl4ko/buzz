@@ -15,6 +15,36 @@ void main() {
     expect(registry.isTerminal('a'), isFalse);
   });
 
+  test('a reset since an attempt started wins over its deadline', () {
+    final registry = RelayDeadlineRegistry();
+    final stale = registry.attempt('a');
+    registry.clear('a');
+    expect(registry.record('a', deadline, attempt: stale), isTrue);
+    expect(registry.isTerminal('a'), isFalse);
+    expect(
+      registry.record('a', deadline, attempt: registry.attempt('a')),
+      true,
+    );
+    expect(registry.isTerminal('a'), isTrue);
+  });
+
+  test('batch identity ignores filter order', () {
+    final a = NostrFilter(
+      kinds: const [1],
+      tags: const {
+        '#h': ['a'],
+      },
+    );
+    final b = NostrFilter(
+      kinds: const [1],
+      tags: const {
+        '#h': ['b'],
+      },
+    );
+    expect(relayRequestKey([a, b]), relayRequestKey([b, a]));
+    expect(relayRequestKey([a]), isNot(relayRequestKey([b])));
+  });
+
   test('a relay or account switch starts an empty registry', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

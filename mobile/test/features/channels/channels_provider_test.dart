@@ -1784,6 +1784,107 @@ void main() {
         container.dispose();
       });
     });
+
+    // HTTP fails ordinarily, then the per-filter websocket fallback times out:
+    // the same operation, so it is just as terminal.
+    for (final (name, wsError, replays) in [
+      ('deadline', deadline(), false),
+      ('ordinary error', Exception('ws reset') as Object, true),
+    ]) {
+      test('a websocket fallback $name replays: $replays', () {
+        fakeAsync((async) {
+          final session = _FakeRelaySession(
+            memberships: [_membership(_channelA, myPk)],
+            metadata: [_meta(id: _channelA, name: 'general')],
+            recentMessages: const [
+              NostrEvent(
+                id: 'm1',
+                pubkey: 'alice',
+                createdAt: 30,
+                kind: EventKind.streamMessageV2,
+                tags: [
+                  ['h', _channelA],
+                ],
+                content: 'hi',
+                sig: 'sig',
+              ),
+            ],
+          );
+          final container = _buildContainer(session: session);
+          container.listen(channelsProvider, (_, _) {});
+          async.elapse(const Duration(seconds: 1));
+          final lastMessageAt = container
+              .read(channelsProvider)
+              .value!
+              .single
+              .lastMessageAt;
+          expect(lastMessageAt, isNotNull);
+          session
+            ..messageBatchError = Exception('bridge down')
+            ..messageHistoryError = wsError;
+          unawaited(container.read(channelsProvider.notifier).refresh());
+          async.elapse(const Duration(seconds: 1));
+          final attempts = session.messageHistoryCount;
+          expect(attempts, greaterThan(0));
+          if (!replays) {
+            // Unavailable, not empty: known timestamps survive.
+            expect(
+              container.read(channelsProvider).value!.single.lastMessageAt,
+              lastMessageAt,
+            );
+          }
+          lifecycle(async, container, session);
+          if (replays) {
+            expect(session.messageHistoryCount, greaterThan(attempts));
+          } else {
+            expect(session.messageHistoryCount, attempts);
+            // An explicit refresh re-runs it.
+            unawaited(container.read(channelsProvider.notifier).refresh());
+            async.elapse(const Duration(seconds: 1));
+            expect(session.messageHistoryCount, greaterThan(attempts));
+          }
+          container.dispose();
+        });
+      });
+    }
+
+    test('reordering unchanged channels keeps a batch terminal', () {
+      fakeAsync((async) {
+        final session = _FakeRelaySession(
+          memberships: [
+            _membership(_channelA, myPk),
+            _membership(_channelB, myPk),
+          ],
+          metadata: [
+            _meta(id: _channelA, name: 'alpha'),
+            _meta(id: _channelB, name: 'beta'),
+          ],
+        )..messageBatchError = deadline();
+        final container = _buildContainer(session: session);
+        container.listen(channelsProvider, (_, _) {});
+        async.elapse(const Duration(seconds: 1));
+        int batches() => session.queryBatches.where((b) => b.isNotEmpty).length;
+        final settled = batches();
+        expect(settled, greaterThan(0));
+        // Rename across the other channel and reverse metadata order: same
+        // queries, different construction order.
+        session.metadata = [
+          _meta(id: _channelB, name: 'beta'),
+          _meta(id: _channelA, name: 'zeta'),
+        ];
+        lifecycle(async, container, session);
+        expect(container.read(channelsProvider).value!.map((c) => c.name), [
+          'beta',
+          'zeta',
+        ]);
+        expect(batches(), settled);
+        // Control: a changed membership is new work and runs.
+        session.memberships = [_membership(_channelA, myPk)];
+        async.elapse(const Duration(seconds: 61));
+        expect(batches(), greaterThan(settled));
+        container.dispose();
+      });
+    });
   });
 
   test(
@@ -2418,6 +2519,8 @@ class _FakeRelaySession extends RelaySessionNotifier {
   Object? messageBatchError;
   Object? unreadBatchError;
   Object? latestBatchError;
+  Object? messageHistoryError;
+  int messageHistoryCount = 0;
   final List<NostrFilter> directoryQueryFilters = [];
   final List<NostrFilter> membershipQueryFilters = [];
   final List<NostrFilter> subscribeFilters = [];
@@ -2693,6 +2796,9 @@ class _FakeRelaySession extends RelaySessionNotifier {
       // Member metadata query — return only matching `d` tags.
       return metadata.where((e) => ids.contains(e.getTagValue('d'))).toList();
     }
+    // Per-filter websocket fallback of a message batch.
+    messageHistoryCount++;
+    if (messageHistoryError case final error?) throw error;
     return const [];
   }
 

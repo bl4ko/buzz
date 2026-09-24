@@ -83,8 +83,16 @@ void main() {
         RelayException(503, '{"error":"query timed out"}'),
       );
       expect(session.queryCount, 1);
-      // Reopening the thread is the explicit retry.
+      // A plain rebuild (Riverpod retry, invalidation) honors the deadline.
       container.invalidate(threadRepliesProvider(args));
+      await Future<void>.delayed(Duration.zero);
+      expect(session.queryCount, 1);
+      // Reopening the thread is the explicit retry.
+      retryThreadRepliesAfterDeadline(
+        container.read(relayDeadlineRegistryProvider),
+        args,
+        () => container.invalidate(threadRepliesProvider(args)),
+      );
       await Future<void>.delayed(Duration.zero);
       expect(session.queryCount, 2);
     });

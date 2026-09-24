@@ -14,26 +14,40 @@ import 'relay_provider.dart';
 /// a completed request clears an entry; a changed request has a new key.
 class RelayDeadlineRegistry {
   final _terminal = <String, Object>{};
+  final _epochs = <String, int>{};
 
   /// The deadline error [key] settled on, or null when it may run.
   Object? terminalError(String key) => _terminal[key];
 
   bool isTerminal(String key) => _terminal.containsKey(key);
 
+  /// Token for an attempt starting now; pass it to [record] so a reset or
+  /// fenced success that happens meanwhile wins over the old attempt.
+  int attempt(String key) => _epochs[key] ?? 0;
+
   /// Records [error] against [key] when it is a relay deadline.
-  /// Returns whether it was one.
-  bool record(String key, Object error) {
+  /// Returns whether it was one. An [attempt] older than the latest [clear]
+  /// is still classified but no longer recorded.
+  bool record(String key, Object error, {int? attempt}) {
     if (!isRelayDeadlineError(error)) return false;
-    _terminal[key] = error;
+    if (attempt == null || attempt == this.attempt(key)) {
+      _terminal[key] = error;
+    }
     return true;
   }
 
-  void clear(String key) => _terminal.remove(key);
+  /// Explicit reset or fenced complete result; supersedes open attempts.
+  void clear(String key) {
+    _terminal.remove(key);
+    _epochs[key] = attempt(key) + 1;
+  }
 }
 
-/// Request identity for [filters]: equal filters address the same work.
-String relayRequestKey(List<NostrFilter> filters) =>
-    jsonEncode([for (final filter in filters) filter.toJson()]);
+/// Request identity for [filters]: equal filters address the same work,
+/// whatever order the caller built them in.
+String relayRequestKey(List<NostrFilter> filters) => jsonEncode(
+  [for (final filter in filters) jsonEncode(filter.toJson())]..sort(),
+);
 
 /// Scoped to the relay and signing identity: switching either starts empty,
 /// so a terminal outcome never crosses communities or accounts.

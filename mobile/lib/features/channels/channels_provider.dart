@@ -481,11 +481,12 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     final key = '$operation:${relayRequestKey(filters)}';
     if (explicit) deadlines.clear(key);
     if (deadlines.isTerminal(key)) return null;
+    final attempt = deadlines.attempt(key);
     try {
       return await session.queryRelay(filters);
     } catch (error) {
       // Per-filter fallback would re-run the timed-out work another way.
-      if (deadlines.record(key, error)) {
+      if (deadlines.record(key, error, attempt: attempt)) {
         debugPrint('[ChannelsNotifier] batched $operation hit the deadline');
         return null;
       }
@@ -497,13 +498,16 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
 
     const fallbackConcurrency = 4;
     final events = <NostrEvent>[];
+    var deadline = false;
     for (var start = 0; start < filters.length; start += fallbackConcurrency) {
       final end = min(start + fallbackConcurrency, filters.length);
       final results = await Future.wait(
         filters.sublist(start, end).map((filter) async {
           try {
             return await session.fetchHistory(filter);
-          } catch (_) {
+          } catch (error) {
+            // A timed-out filter makes the batch unavailable, not empty.
+            if (deadlines.record(key, error, attempt: attempt)) deadline = true;
             return const <NostrEvent>[];
           }
         }),
@@ -511,6 +515,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       for (final result in results) {
         events.addAll(result);
       }
+      if (deadline) return null;
     }
     return events;
   }

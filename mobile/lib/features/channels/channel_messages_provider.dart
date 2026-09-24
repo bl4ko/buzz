@@ -229,10 +229,11 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     RelaySessionNotifier session,
   ) async {
     final windowKey = relayRequestKey([_channelWindowFilter(null)]);
+    // Rebuilds (reconnects) are automatic: a deadline stays terminal until
+    // [retryAfterDeadline] clears it on an explicit reopen.
+    if (_deadlines.terminalError(windowKey) case final error?) throw error;
+    final attempt = _deadlines.attempt(windowKey);
     try {
-      // Rebuilds (reconnects) are automatic: a deadline stays terminal until
-      // [retryAfterDeadline] clears it on an explicit reopen.
-      if (_deadlines.terminalError(windowKey) case final error?) throw error;
       _initialWindowQueryInFlight = true;
       final pageVersion = ++_threadQuerySerial;
       final page = await _fetchWindowPage(session, null);
@@ -252,16 +253,22 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
       _initialWindowQueryInFlight = false;
       _liveSummaryRootsDuringInitialWindowQuery.clear();
       // Legacy history would re-run the timed-out work another way.
-      if (_deadlines.record(windowKey, error)) rethrow;
+      if (_deadlines.record(windowKey, error, attempt: attempt)) rethrow;
       debugPrint(
         '[ChannelMessagesNotifier] channel window unavailable for $channelId, falling back to WS history: $error',
       );
       _usingChannelWindow = false;
+    }
+    try {
       final history = await session.fetchHistory(
         NostrFilters.messages(channelId),
       );
       history.sort(compareChannelTimelineEventsChronologically);
       return history;
+    } catch (error) {
+      // The fallback is the same operation: its deadline is terminal too.
+      _deadlines.record(windowKey, error, attempt: attempt);
+      rethrow;
     }
   }
 
