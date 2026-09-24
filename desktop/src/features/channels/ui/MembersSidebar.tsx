@@ -443,6 +443,7 @@ export function MembersSidebar({
 
   const {
     canModerate,
+    canModerateOwner,
     isModerationPending,
     moderationStateByPubkey,
     onBan,
@@ -635,6 +636,7 @@ export function MembersSidebar({
       <MembersSidebarMemberCard
         canChangeRole={canManageMembers && member.pubkey !== currentPubkey}
         canModerate={canModerate && member.pubkey !== currentPubkey}
+        canModerateOwner={canModerateOwner}
         canRemoveMember={canRemoveMember(member)}
         isActionPending={
           isActionPending || changeRoleMutation.isPending || isModerationPending

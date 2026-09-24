@@ -8,6 +8,7 @@ import {
   KIND_MODERATION_UNTIMEOUT,
   KIND_REPORT,
 } from "@/shared/constants/kinds";
+import type { RelayStaffRole } from "@/features/moderation/lib/moderationAccess";
 
 // Community-moderation data layer. Writes are signed Nostr events published over
 // the same WebSocket path as every other desktop write (mirrors relayMembers.ts);
@@ -373,4 +374,15 @@ export async function listAuditActions(
 export async function listRestrictions(): Promise<CommunityRestriction[]> {
   const rows = await moderationGet<RawRestriction[]>("/moderation/restricted");
   return rows.map(toRestriction);
+}
+
+/**
+ * The caller's own relay-staff role (`GET /moderation/me`): `"operator"`,
+ * `"moderator"`, or `null`. Never reveals anyone else's role.
+ */
+export async function getMyRelayStaff(): Promise<RelayStaffRole | null> {
+  const body = await moderationGet<{ relayStaff: RelayStaffRole | null }>(
+    "/moderation/me",
+  );
+  return body.relayStaff;
 }

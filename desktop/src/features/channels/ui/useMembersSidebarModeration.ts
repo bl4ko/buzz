@@ -4,11 +4,16 @@ import { toast } from "sonner";
 import {
   useBanMemberMutation,
   useModerationRestrictionsQuery,
+  useMyRelayStaffQuery,
   useTimeoutMemberMutation,
   useUnbanMemberMutation,
   useUntimeoutMemberMutation,
 } from "@/features/moderation/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import {
+  canRestrictMembers,
+  canRestrictOwner,
+} from "@/features/moderation/lib/moderationAccess";
 import {
   hasObservableTimeout,
   isTimedOut,
@@ -19,15 +24,17 @@ import { normalizePubkey } from "@/shared/lib/pubkey";
 import type { MemberModerationState } from "./MembersSidebarMemberCard";
 
 /**
- * Owns community ban/timeout wiring for the members sidebar. Gated by relay
- * role (owner/admin), independent of the per-channel role — the relay rejects
+ * Owns community ban/timeout wiring for the members sidebar. Gated by community
+ * role (owner/admin) or relay staff, independent of the per-channel role — the relay rejects
  * the command events otherwise. Restrictions are only fetched while the sidebar
  * is open and the caller can moderate.
  */
 export function useMembersSidebarModeration(open: boolean) {
   const relayMembershipQuery = useMyRelayMembershipQuery();
   const relayRole = relayMembershipQuery.data?.role;
-  const canModerate = relayRole === "owner" || relayRole === "admin";
+  const relayStaff = useMyRelayStaffQuery().data;
+  const canModerate = canRestrictMembers(relayRole, relayStaff);
+  const canModerateOwner = canRestrictOwner(relayStaff);
   const restrictionsQuery = useModerationRestrictionsQuery(open && canModerate);
   const banMutation = useBanMemberMutation();
   const unbanMutation = useUnbanMemberMutation();
@@ -124,6 +131,7 @@ export function useMembersSidebarModeration(open: boolean) {
 
   return {
     canModerate,
+    canModerateOwner,
     isModerationPending,
     moderationStateByPubkey,
     onBan,

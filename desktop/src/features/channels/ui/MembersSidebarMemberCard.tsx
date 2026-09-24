@@ -50,6 +50,7 @@ import {
 type MembersSidebarMemberCardProps = {
   canChangeRole: boolean;
   canModerate: boolean;
+  canModerateOwner: boolean;
   canRemoveMember: boolean;
   isActionPending: boolean;
   isArchived: boolean;
@@ -121,6 +122,7 @@ function formatRespondToLabel(agent: ManagedAgent) {
 export function MembersSidebarMemberCard({
   canChangeRole,
   canModerate,
+  canModerateOwner,
   canRemoveMember,
   isActionPending,
   isArchived,
@@ -153,10 +155,12 @@ export function MembersSidebarMemberCard({
     memberIsBot &&
     (viewerIsOwner || managedAgent?.backend.type === "local") &&
     Boolean(onViewActivity);
-  // Community ban/timeout applies to people, never bots, and never the community
-  // owner (whom no moderator can restrict).
+  // Community ban/timeout applies to people, never bots. Only relay staff may
+  // restrict an owner.
   const canModerateMember =
-    canModerate && !memberIsBot && member.role !== "owner";
+    canModerate &&
+    !memberIsBot &&
+    (member.role !== "owner" || canModerateOwner);
   const hasActions = memberIsBot
     ? Boolean(managedAgent) || canRemoveMember || canViewActivity
     : canRemoveMember || canChangeRole || canModerateMember;

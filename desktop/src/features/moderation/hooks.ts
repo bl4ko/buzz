@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRelaySelf } from "@/features/moderation/lib/relaySelf";
 import {
   banMember,
+  getMyRelayStaff,
   listRestrictions,
   type ReportType,
   submitReport,
@@ -15,6 +16,7 @@ export const moderationRestrictionsQueryKey = [
   "moderationRestrictions",
 ] as const;
 export const relaySelfQueryKey = ["relaySelf"] as const;
+export const myRelayStaffQueryKey = ["myRelayStaff"] as const;
 
 /**
  * The active relay's NIP-11 `self` pubkey (hex), or `null` when it advertises
@@ -28,6 +30,19 @@ export function useRelaySelfQuery(enabled = true) {
     queryKey: relaySelfQueryKey,
     queryFn: getRelaySelf,
     staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/**
+ * The viewer's relay-staff role on the active relay, or `null`. Relay staff
+ * hold ban/timeout/lift in every community, so this widens the restriction
+ * menus beyond community owners/admins.
+ */
+export function useMyRelayStaffQuery() {
+  return useQuery({
+    queryKey: myRelayStaffQueryKey,
+    queryFn: getMyRelayStaff,
+    staleTime: 60_000,
   });
 }
 

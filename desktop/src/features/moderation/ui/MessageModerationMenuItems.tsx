@@ -6,12 +6,14 @@ import { useRemoveChannelMemberMutation } from "@/features/channels/hooks";
 import {
   useBanMemberMutation,
   useModerationRestrictionsQuery,
+  useMyRelayStaffQuery,
   useTimeoutMemberMutation,
   useUnbanMemberMutation,
   useUntimeoutMemberMutation,
 } from "@/features/moderation/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import type { TimelineMessage } from "@/features/messages/types";
+import { canRestrictMembers } from "@/features/moderation/lib/moderationAccess";
 import { isTimedOut } from "@/features/moderation/lib/restrictionState";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -34,7 +36,8 @@ const TIMEOUT_PRESETS: { label: string; seconds: number }[] = [
  * kick from the current channel. Self-contained (wires its own hooks, no props
  * threaded from the message row), mirroring ReportMessageDialog.
  *
- * Renders nothing unless the viewer is a relay owner/admin, the message has a
+ * Renders nothing unless the viewer is a community owner/admin or relay staff
+ * (kick stays owner/admin only), the message has a
  * real signer, and that signer is not the viewer. Actions target
  * `signerPubkey` — the raw signer, never a relay-delegated display author — per
  * the security note on TimelineMessage.
@@ -48,7 +51,10 @@ export function MessageModerationMenuItems({
 }) {
   const relayMembershipQuery = useMyRelayMembershipQuery();
   const relayRole = relayMembershipQuery.data?.role;
-  const canModerate = relayRole === "owner" || relayRole === "admin";
+  const relayStaff = useMyRelayStaffQuery().data;
+  const canModerate = canRestrictMembers(relayRole, relayStaff);
+  // Kicking is channel-local authority; relay staff do not hold it.
+  const canKick = relayRole === "owner" || relayRole === "admin";
 
   const identityQuery = useIdentityQuery();
   // Moderate the raw signer, never a relay-delegated display author. A message
@@ -154,7 +160,7 @@ export function MessageModerationMenuItems({
         </DropdownMenuSub>
       )}
 
-      {channelId ? (
+      {channelId && canKick ? (
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
           data-testid={`message-kick-${message.id}`}
