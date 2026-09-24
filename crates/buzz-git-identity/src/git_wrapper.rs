@@ -543,23 +543,15 @@ enum SubsectionSupport {
 /// Do NOT apply this isolation to normal push execution — real pushes need
 /// `git-receive-pack` and other git helpers on `GIT_EXEC_PATH`.
 fn git_supports_subsection_alias(real_git: &Path) -> SubsectionSupport {
-    // Resolve the git binary to an absolute path so we can create a controlled
-    // symlink inside the probe-only directory.
-    let resolved_git = if real_git.is_absolute() {
-        real_git.to_owned()
-    } else {
-        let git_name = real_git.file_name().unwrap_or(real_git.as_os_str());
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-            .find_map(|dir| {
-                let candidate = dir.join(git_name);
-                if candidate.is_file() {
-                    Some(candidate)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| real_git.to_owned())
-    };
+    // Callers always pass the path returned by find_real_git(), which is
+    // guaranteed to be absolute. A non-absolute path here means a caller
+    // bypassed that guarantee; treat it as a probe failure (fail closed)
+    // rather than re-searching PATH by basename, which could select a
+    // different binary than the one discovery chose.
+    if !real_git.is_absolute() {
+        return SubsectionSupport::ProbeFailure;
+    }
+    let resolved_git = real_git.to_owned();
 
     // Probe-only private directory: contains only a controlled `git` symlink
     // to the exact binary under test.  Used for BOTH PATH and GIT_EXEC_PATH
@@ -3218,12 +3210,14 @@ fn find_real_git() -> Option<PathBuf> {
         // downstream code that re-searches PATH by basename could select a
         // different binary. Making the path absolute here is the single place
         // where this invariant is established, regardless of how PATH was built.
+        // If current_dir() fails (e.g. the process cwd was deleted), skip the
+        // relative candidate rather than returning a relative path to callers.
         let absolute = if candidate.is_absolute() {
             candidate
         } else {
             match std::env::current_dir() {
                 Ok(cwd) => cwd.join(&candidate),
-                Err(_) => candidate,
+                Err(_) => continue,
             }
         };
         return Some(absolute);
@@ -3902,7 +3896,18 @@ mod tests {
     }
 
     fn real_git() -> PathBuf {
-        PathBuf::from("git")
+        // Unit tests call git_supports_subsection_alias, which requires an absolute
+        // path. Resolve git from PATH here so the guarantee holds.
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .find_map(|dir| {
+                let candidate = dir.join("git");
+                if candidate.is_file() {
+                    Some(candidate)
+                } else {
+                    None
+                }
+            })
+            .expect("git must be on PATH for these unit tests")
     }
 
     #[test]
