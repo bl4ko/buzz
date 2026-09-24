@@ -554,7 +554,7 @@ async fn websocket_batch_enforces_token_scope_and_rejects_queue_truncation() {
     let drained: Vec<_> = std::iter::from_fn(|| slow_rx.try_recv().ok())
         .map(|m| serde_json::from_str::<Value>(m.to_text().unwrap()).unwrap())
         .collect();
-    assert_eq!(drained.len(), 4);
+    assert_eq!(drained.len(), 3);
     assert!(
         drained.iter().all(|frame| frame[0] == "EVENT"),
         "{drained:?}"

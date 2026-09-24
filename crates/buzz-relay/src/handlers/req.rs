@@ -589,20 +589,46 @@ pub(crate) async fn serve_thread_windows<'a>(
     Ok(true)
 }
 
-// Finite pages must not fail merely because the producer briefly outruns the
-// socket writer. The same deadline bounds both query and queue delivery.
+// Leave space for live fan-out, which uses try_send rather than a queued
+// reservation. Waiting on send() would claim every freed slot before fan-out
+// can use it; a bounded retry only takes a slot when headroom remains.
 async fn send_thread_window_frame(
     conn: &ConnectionState,
     frame: String,
     deadline: tokio::time::Instant,
 ) -> bool {
-    tokio::select! {
-        biased;
-        _ = conn.cancel.cancelled() => false,
-        result = tokio::time::timeout_at(
-            deadline,
-            conn.send_tx.send(axum::extract::ws::Message::Text(frame.into())),
-        ) => matches!(result, Ok(Ok(()))),
+    let reserve = (conn.send_tx.max_capacity() / 4)
+        .max(1)
+        .min(conn.send_tx.max_capacity().saturating_sub(1));
+    let mut frame = axum::extract::ws::Message::Text(frame.into());
+    loop {
+        if conn.cancel.is_cancelled() || tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        if conn.send_tx.is_closed() {
+            return false;
+        }
+        if conn.send_tx.capacity() > reserve {
+            match conn.send_tx.try_send(frame) {
+                Ok(()) => {
+                    conn.backpressure_count
+                        .store(0, std::sync::atomic::Ordering::Relaxed);
+                    return true;
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => return false,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(message)) => {
+                    frame = message;
+                }
+            }
+        }
+        // No reservation: a live producer can take the reserved slots before
+        // our next attempt. Polling is bounded by the common request deadline.
+        tokio::select! {
+            biased;
+            _ = conn.cancel.cancelled() => return false,
+            _ = tokio::time::sleep_until(deadline) => return false,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(1)) => {}
+        }
     }
 }
 
@@ -2678,5 +2704,104 @@ mod tests {
         ));
         // No #p tag — fallback required.
         assert!(!result_gated_count_safe_for_pushdown(&f, &owner));
+    }
+}
+
+#[cfg(test)]
+mod thread_window_queue_tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use tokio::time::{timeout, Duration, Instant};
+
+    #[tokio::test]
+    async fn finite_frames_leave_live_capacity_and_reset_stale_backpressure() {
+        let (conn, mut rx) = crate::connection::tests::test_conn_with_auth(
+            crate::connection::tests::authenticated_state(),
+        );
+        let manager = crate::state::ConnectionManager::new();
+        manager.register(
+            conn.conn_id,
+            conn.send_tx.clone(),
+            conn.ctrl_tx.clone(),
+            None,
+            conn.cancel.clone(),
+            conn.tenant.community(),
+            conn.backpressure_count.clone(),
+            conn.subscriptions.clone(),
+            conn.grace_limit,
+        );
+        conn.backpressure_count.store(2, Ordering::Relaxed);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        for n in 0..3 {
+            assert!(send_thread_window_frame(&conn, format!("finite-{n}"), deadline).await);
+        }
+        assert_eq!(conn.backpressure_count.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            conn.send_tx.capacity(),
+            1,
+            "one slot reserved for live frames"
+        );
+        assert!(manager.send_to(conn.conn_id, "live-0".into()));
+        assert!(!manager.send_to(conn.conn_id, "transient-full".into()));
+        assert_eq!(conn.backpressure_count.load(Ordering::Relaxed), 1);
+        assert!(!conn.cancel.is_cancelled());
+        // A queued finite frame must not steal capacity before the live
+        // producer can use it when the reader frees a slot.
+        let pending = tokio::spawn({
+            let conn = conn.clone();
+            async move { send_thread_window_frame(&conn, "finite-3".into(), deadline).await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!pending.is_finished());
+        assert_eq!(rx.recv().await.unwrap().to_text().unwrap(), "finite-0");
+        assert!(manager.send_to(conn.conn_id, "live-1".into()));
+        assert_eq!(rx.recv().await.unwrap().to_text().unwrap(), "finite-1");
+        assert_eq!(rx.recv().await.unwrap().to_text().unwrap(), "finite-2");
+        assert!(timeout(Duration::from_secs(1), pending)
+            .await
+            .unwrap()
+            .unwrap());
+        let remaining: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+            .map(|msg| msg.to_text().unwrap().to_owned())
+            .collect();
+        assert_eq!(remaining, ["live-0", "live-1", "finite-3"]);
+        for n in 4..7 {
+            assert!(send_thread_window_frame(&conn, format!("finite-{n}"), deadline).await);
+        }
+        for n in 4..7 {
+            assert_eq!(
+                rx.recv().await.unwrap().to_text().unwrap(),
+                format!("finite-{n}")
+            );
+        }
+        assert!(!conn.cancel.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn finite_frame_stalled_reader_expires_without_filling_reserved_slot() {
+        let (conn, mut rx) = crate::connection::tests::test_conn_with_auth(
+            crate::connection::tests::authenticated_state(),
+        );
+        for n in 0..3 {
+            assert!(conn.send(format!("padding-{n}")));
+        }
+        assert!(
+            !send_thread_window_frame(
+                &conn,
+                "finite".into(),
+                Instant::now() + Duration::from_millis(20),
+            )
+            .await
+        );
+        assert_eq!(rx.try_recv().unwrap().to_text().unwrap(), "padding-0");
+        conn.cancel.cancel();
+        assert!(
+            !send_thread_window_frame(
+                &conn,
+                "cancelled".into(),
+                Instant::now() + Duration::from_secs(1),
+            )
+            .await
+        );
     }
 }
