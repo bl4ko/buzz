@@ -1,0 +1,13 @@
+# Layer over docker-compose.yml for the disposable AMD64 integration runners.
+# Build once with `docker compose build minio`; both services use that local image.
+services:
+  minio:
+    image: buzz-ci-minio:local
+    platform: linux/amd64
+    pull_policy: never
+    build:
+      context: .github/ci/minio
+  minio-init:
+    image: buzz-ci-minio:local
+    platform: linux/amd64
+    pull_policy: never

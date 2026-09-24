@@ -83,4 +83,17 @@ if grep -Eq '^  desktop-build-macos:|desktop_macos_result:' "$desktop_workflow";
   fail "Desktop Domain must not own the isolated macOS required check"
 fi
 
+# Each job has an isolated Docker daemon: every Compose consumer must build
+# the local MinIO image before starting services, including the script caller.
+for job in desktop-e2e-integration-shard backend-integration relay-e2e; do
+  body=$(extract_job "$job" "$relay_workflow")
+  [[ "$body" == *'COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml'* ]] ||
+    fail "$job must select the CI Compose override"
+  [[ "$body" == *'docker compose build minio'* ]] ||
+    fail "$job must build its own CI MinIO image"
+  before_build=${body%%docker compose build minio*}
+  [[ "$before_build" != *'docker compose up'* && "$before_build" != *'./scripts/start-relay-for-tests.sh'* ]] ||
+    fail "$job must build MinIO before starting services"
+done
+
 echo "CI required-context isolation contract passed"
