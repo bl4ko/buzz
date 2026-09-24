@@ -10187,6 +10187,69 @@ void main() {
   });
 
   group('Error and loading states', () {
+    Widget errorScope(ChannelMessagesNotifier notifier) => ProviderScope(
+      overrides: [
+        channelMessagesProvider(_channelId).overrideWith(() => notifier),
+        channelTypingProvider(
+          _channelId,
+        ).overrideWith(() => _FakeTypingNotifier([])),
+        userCacheProvider.overrideWith(() => _FakeUserCacheNotifier({})),
+        channelsProvider.overrideWith(
+          () => _FakeChannelsNotifier([_testChannel]),
+        ),
+        relayClientProvider.overrideWithValue(
+          RelayClient(baseUrl: 'http://localhost:3000'),
+        ),
+        savedPrefsProvider.overrideWithValue(_testPrefs),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: ChannelDetailPage(channel: _testChannel),
+      ),
+    );
+    final retry = find.byKey(const ValueKey('load-error-retry'));
+
+    for (final (name, error) in [
+      (
+        'deadline',
+        RelayException(503, '{"error":"query timed out"}') as Object,
+      ),
+      ('ordinary error', Exception('bridge down') as Object),
+    ]) {
+      testWidgets('Retry after a $name clears the record and loads once', (
+        tester,
+      ) async {
+        final notifier = _RetryCountingMessagesNotifier(
+          () => AsyncError(error, StackTrace.current),
+        );
+        await tester.pumpWidget(errorScope(notifier));
+        await tester.pumpAndSettle();
+        expect(find.text('Failed to load messages'), findsOneWidget);
+        expect(notifier.loads, 1);
+        // Automatic rebuilds of a deadline never reload.
+        notifier.rebuild();
+        await tester.pumpAndSettle();
+        expect(notifier.loads, error is RelayException ? 1 : 2);
+        final before = notifier.loads;
+        notifier.nextResult = () => const AsyncData([]);
+        await tester.tap(retry);
+        await tester.pumpAndSettle();
+        expect(notifier.loads, before + 1);
+        expect(notifier.windowTerminal, isFalse);
+        expect(retry, findsNothing);
+      });
+    }
+
+    testWidgets('no Retry while messages load', (tester) async {
+      final notifier = _RetryCountingMessagesNotifier(
+        () => const AsyncLoading(),
+      );
+      await tester.pumpWidget(errorScope(notifier));
+      await tester.pump();
+      expect(retry, findsNothing);
+      expect(find.text('Failed to load messages'), findsNothing);
+    });
+
     testWidgets('shows error message on failure', (tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -11093,6 +11156,111 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('other')), findsOneWidget);
         expect(deadlines.isTerminal(key), isTrue);
+      });
+
+      for (final provisional in [false, true]) {
+        testWidgets(
+          'Retry ${provisional ? 'beside provisional replies' : 'in the empty state'} '
+          'clears the scan record and loads once',
+          (tester) async {
+            final timeline = formatTimeline([root, mid]);
+            final key = threadScanKey(
+              const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
+            );
+            RelayDeadlineRegistry? registry;
+            var fail = true;
+            var loads = 0;
+            final messages = _FakeMessagesNotifier([root, mid]);
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: [root, mid],
+                messagesNotifier: messages,
+                disableRetries: true,
+                threadReplyLoaders: {
+                  'root': () {
+                    // Like the provider: a terminal scan rethrows unsent.
+                    if (registry?.terminalError(key) case final error?) {
+                      return Future.error(error);
+                    }
+                    loads++;
+                    if (!fail) return Future.value(const <NostrEvent>[]);
+                    final error = RelayException(
+                      503,
+                      '{"error":"query timed out"}',
+                    );
+                    registry?.record(key, error);
+                    return Future.error(error);
+                  },
+                },
+                home: ThreadDetailPage(
+                  threadHead: timeline.firstWhere((m) => m.id == 'root'),
+                  allMessages: timeline,
+                  channelId: _testChannel.id,
+                  currentPubkey: 'me',
+                  isMember: true,
+                  isArchived: false,
+                ),
+              ),
+            );
+            final RelayDeadlineRegistry deadlines = ProviderScope.containerOf(
+              tester.element(find.byType(ThreadDetailPage)),
+            ).read(relayDeadlineRegistryProvider);
+            registry = deadlines;
+            deadlines.record(
+              key,
+              RelayException(503, '{"error":"query timed out"}'),
+            );
+            await tester.pumpAndSettle();
+            final retry = find.byKey(const ValueKey('thread-replies-retry'));
+            if (provisional) {
+              messages.setMessages([
+                root,
+                mid,
+                liveReply('direct', const [
+                  ['e', 'root', '', 'reply'],
+                ]),
+              ]);
+              await tester.pumpAndSettle();
+              expect(find.text('Live direct'), findsOneWidget);
+            }
+            expect(deadlines.isTerminal(key), isTrue);
+            expect(retry, findsOneWidget);
+            final before = loads;
+            fail = false;
+            await tester.tap(retry);
+            await tester.pumpAndSettle();
+            expect(loads, before + 1);
+            expect(deadlines.isTerminal(key), isFalse);
+            expect(retry, findsNothing);
+          },
+        );
+      }
+
+      testWidgets('no replies Retry while the scan loads', (tester) async {
+        final timeline = formatTimeline([root, mid]);
+        await tester.pumpWidget(
+          _buildTestable(
+            messages: [root, mid],
+            threadReplyLoaders: {
+              'root': () => Completer<List<NostrEvent>>().future,
+            },
+            home: ThreadDetailPage(
+              threadHead: timeline.firstWhere((m) => m.id == 'root'),
+              allMessages: timeline,
+              channelId: _testChannel.id,
+              currentPubkey: 'me',
+              isMember: true,
+              isArchived: false,
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.textContaining('Couldn’t'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('thread-replies-retry')),
+          findsNothing,
+        );
       });
 
       testWidgets('shows an incoming nested reply', (tester) async {
@@ -14898,6 +15066,43 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
     _messages = messages;
     _hasLoadedMessages = true;
     state = AsyncData(messages);
+  }
+}
+
+/// Real [ChannelMessagesNotifier.retry] over a counting loader: a build whose
+/// newest-window key is terminal rethrows the stored error without loading,
+/// like the production provider; otherwise it counts a load.
+class _RetryCountingMessagesNotifier extends ChannelMessagesNotifier {
+  _RetryCountingMessagesNotifier(this.nextResult) : super(_channelId);
+
+  /// Result of the next permitted load; errors are recorded as the
+  /// provider does.
+  AsyncValue<List<NostrEvent>> Function() nextResult;
+  int loads = 0;
+
+  /// An automatic rebuild, as reconnects and lifecycle refreshes cause.
+  void rebuild() => ref.invalidateSelf();
+
+  bool get windowTerminal =>
+      ref.read(relayDeadlineRegistryProvider).isTerminal(newestWindowKey);
+
+  @override
+  AsyncValue<List<NostrEvent>> build() {
+    final deadlines = ref.read(relayDeadlineRegistryProvider);
+    if (deadlines.terminalError(newestWindowKey) case final error?) {
+      return AsyncError(error, StackTrace.current);
+    }
+    loads++;
+    final result = nextResult();
+    if (result is AsyncLoading) return result;
+    // Settles after mount, like the real network load.
+    Future(() {
+      if (result case AsyncError(:final error)) {
+        deadlines.record(newestWindowKey, error);
+      }
+      state = result;
+    });
+    return const AsyncLoading();
   }
 }
 

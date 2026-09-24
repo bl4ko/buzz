@@ -138,9 +138,18 @@ void retryThreadRepliesAfterDeadline(
   ThreadRepliesArgs args,
   void Function() invalidate,
 ) {
-  final scanKey = threadScanKey(args);
-  if (!deadlines.isTerminal(scanKey)) return;
-  deadlines.clear(scanKey);
+  if (!deadlines.isTerminal(threadScanKey(args))) return;
+  retryThreadReplies(deadlines, args, invalidate);
+}
+
+/// Explicit retry of a failed thread scan (the Retry control): clears any
+/// deadline record and reloads, whatever the failure was.
+void retryThreadReplies(
+  RelayDeadlineRegistry deadlines,
+  ThreadRepliesArgs args,
+  void Function() invalidate,
+) {
+  deadlines.clear(threadScanKey(args));
   invalidate();
 }
 

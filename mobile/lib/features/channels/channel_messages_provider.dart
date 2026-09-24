@@ -228,7 +228,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
   Future<List<NostrEvent>> _fetchNewestHistory(
     RelaySessionNotifier session,
   ) async {
-    final windowKey = relayRequestKey([_channelWindowFilter(null)]);
+    final windowKey = newestWindowKey;
     // Rebuilds (reconnects) are automatic: a deadline stays terminal until
     // [retryAfterDeadline] clears it on an explicit reopen.
     if (_deadlines.terminalError(windowKey) case final error?) throw error;
@@ -276,13 +276,21 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     }
   }
 
+  /// Deadline-registry identity of the newest-window query.
+  String get newestWindowKey => relayRequestKey([_channelWindowFilter(null)]);
+
   /// Explicitly retries a newest-window query that settled on a relay
   /// deadline; the channel page calls this when the user reopens it.
   void retryAfterDeadline() {
     _deadlines.clearPrefix(_olderPageKeyPrefix);
-    final windowKey = relayRequestKey([_channelWindowFilter(null)]);
-    if (!_deadlines.isTerminal(windowKey)) return;
-    _deadlines.clear(windowKey);
+    if (_deadlines.isTerminal(newestWindowKey)) retry();
+  }
+
+  /// Explicit retry of a failed load (the error state's Retry): clears any
+  /// deadline record and reloads, whatever the failure was.
+  void retry() {
+    _deadlines.clearPrefix(_olderPageKeyPrefix);
+    _deadlines.clear(newestWindowKey);
     ref.invalidateSelf();
   }
 

@@ -13,6 +13,7 @@ import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/frosted_scaffold.dart';
+import '../../shared/widgets/load_error_view.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import '../channels/compose_bar.dart';
 import '../channels/message_content.dart';
@@ -104,12 +105,10 @@ class ForumThreadPage extends HookConsumerWidget {
         ),
         error: (e, _) => Padding(
           padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
-          child: Center(
-            child: Text(
-              'Failed to load thread',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: context.colors.error,
-              ),
+          child: LoadErrorView(
+            message: 'Failed to load thread',
+            onRetry: () => ref.invalidate(
+              forumThreadProvider((channelId: channelId, eventId: postEventId)),
             ),
           ),
         ),

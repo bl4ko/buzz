@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -167,8 +169,9 @@ Widget _buildThreadPage({
 class _CountingForumSession extends RelaySessionNotifier {
   _CountingForumSession(this.error);
 
-  Object error;
+  Object? error;
   int fetchCount = 0;
+  Completer<void>? park;
 
   /// Forum-surface attempts only: the posts list (45001) or thread replies
   /// (`#e`), excluding shared sub-providers such as profiles and emoji.
@@ -187,8 +190,10 @@ class _CountingForumSession extends RelaySessionNotifier {
     if (filter.ids == null &&
         (filter.kinds.contains(45001) || filter.tags.containsKey('#e'))) {
       forumAttempts++;
+      if (park case final park?) await park.future;
     }
-    throw error;
+    if (error case final error?) throw error;
+    return const [];
   }
 }
 
@@ -285,6 +290,44 @@ void main() {
         await tester.pump(interval);
         await tester.pump();
         expect(session.fetchCount, greaterThan(settled));
+        await tester.pumpWidget(const SizedBox());
+      });
+
+      for (final (kind, error) in [
+        ('deadline', deadline as Object),
+        ('ordinary error', Exception('reset') as Object),
+      ]) {
+        testWidgets('$name Retry after a $kind loads once', (tester) async {
+          final session = _CountingForumSession(error);
+          await tester.pumpWidget(_buildLiveForum(session, surface));
+          await tester.pump();
+          await tester.pump();
+          final retry = find.byKey(const ValueKey('load-error-retry'));
+          expect(retry, findsOneWidget);
+          final before = session.forumAttempts;
+          session.error = null;
+          await tester.tap(retry);
+          await tester.pump();
+          await tester.pump();
+          expect(session.forumAttempts, before + 1);
+          // The post list settles empty; the thread page has no fake post,
+          // so it settles on not-found again (the count shows the reload).
+          if (surface is ForumPostsView) expect(retry, findsNothing);
+          await tester.pumpWidget(const SizedBox());
+        });
+      }
+
+      testWidgets('$name shows no Retry while loading', (tester) async {
+        final session = _CountingForumSession(deadline)
+          ..park = Completer<void>();
+        await tester.pumpWidget(_buildLiveForum(session, surface));
+        await tester.pump();
+        expect(session.forumAttempts, 1);
+        expect(find.byKey(const ValueKey('load-error-retry')), findsNothing);
+        session.park!.complete();
+        await tester.pump();
+        await tester.pump();
+        expect(find.byKey(const ValueKey('load-error-retry')), findsOneWidget);
         await tester.pumpWidget(const SizedBox());
       });
 
