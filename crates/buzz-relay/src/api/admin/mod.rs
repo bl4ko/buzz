@@ -7,11 +7,13 @@
 mod auth;
 mod error;
 
+pub(crate) use auth::{resolve_relay_staff, AdminRole};
+
 use std::sync::Arc;
 
 use auth::{
     admin_role_str, admin_source_str, authorize, require_mutation_principal, require_operator,
-    AdminRole, AdminSource,
+    AdminSource,
 };
 use axum::{
     body::Bytes,

@@ -23,6 +23,8 @@ use crate::state::AppState;
 
 use super::{api_error, internal_error, not_found};
 
+#[cfg(test)]
+mod relay_staff_moderation_tests;
 mod thread_roots;
 mod thread_window;
 
@@ -2623,6 +2625,43 @@ pub async fn moderation_restricted(
         .await
         .map_err(|e| internal_error(&format!("list restrictions: {e}")))?;
     Ok(Json(Value::Array(rows.iter().map(ban_json).collect())))
+}
+
+/// `GET /moderation/me` — the caller's own relay-staff role, so the desktop can
+/// show relay-staff moderation menus. NIP-98 signature and replay are verified
+/// before the roster is consulted, and only the signer's own role is returned.
+pub async fn moderation_me(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let raw_host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let tenant = crate::tenant::bind_community(&state.db, raw_host)
+        .await
+        .map_err(|_| {
+            api_error(
+                StatusCode::NOT_FOUND,
+                "relay: no community is configured for this host",
+            )
+        })?;
+    let url = nip98_expected_url(&state.config.relay_url, &tenant, "/moderation/me");
+    let VerifiedBridgeAuth {
+        pubkey,
+        event_id_bytes,
+        ..
+    } = verify_bridge_auth(&headers, "GET", &url, None, state.config.require_auth_token)?;
+    check_nip98_replay(&state, &tenant, event_id_bytes).await?;
+
+    let staff = crate::api::admin::resolve_relay_staff(&state, pubkey.to_bytes())
+        .await
+        .map_err(|_| internal_error("relay staff lookup failed"))?;
+    let relay_staff = staff.map(|p| match p.role {
+        crate::api::admin::AdminRole::Operator => "operator",
+        crate::api::admin::AdminRole::Moderator => "moderator",
+    });
+    Ok(Json(serde_json::json!({ "relayStaff": relay_staff })))
 }
 
 fn report_json(r: &buzz_db::moderation::ReportRecord) -> Value {

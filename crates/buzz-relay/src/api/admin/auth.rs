@@ -259,6 +259,19 @@ pub async fn resolve_admin_principal(
     state: &AppState,
     pubkey: [u8; 32],
 ) -> Result<AdminPrincipal, ApiError> {
+    resolve_relay_staff(state, pubkey)
+        .await?
+        .ok_or_else(ApiError::forbidden)
+}
+
+/// The relay-staff roster lookup behind [`resolve_admin_principal`], with the
+/// same precedence, returning `Ok(None)` for a pubkey with no grant (or an
+/// unknown DB role). This is the single roster source: the admin API and
+/// community moderation authz (`moderation_authz`) both resolve staff here.
+pub(crate) async fn resolve_relay_staff(
+    state: &AppState,
+    pubkey: [u8; 32],
+) -> Result<Option<AdminPrincipal>, ApiError> {
     let pubkey_hex = hex::encode(pubkey);
     let cfg = &state.config;
 
@@ -268,11 +281,11 @@ pub async fn resolve_admin_principal(
         .iter()
         .any(|pk| pk == &pubkey_hex)
     {
-        return Ok(AdminPrincipal {
+        return Ok(Some(AdminPrincipal {
             pubkey,
             role: AdminRole::Operator,
             source: AdminSource::Config,
-        });
+        }));
     }
 
     // 2. Owner fallback B: only when configured RELAY_OPERATOR_PUBKEYS is empty.
@@ -280,11 +293,11 @@ pub async fn resolve_admin_principal(
     if cfg.relay_operator_pubkeys.is_empty() {
         if let Some(ref owner_hex) = cfg.relay_owner_pubkey {
             if owner_hex == &pubkey_hex {
-                return Ok(AdminPrincipal {
+                return Ok(Some(AdminPrincipal {
                     pubkey,
                     role: AdminRole::Operator,
                     source: AdminSource::OwnerFallback,
-                });
+                }));
             }
         }
     }
@@ -296,7 +309,8 @@ pub async fn resolve_admin_principal(
         ApiError::internal()
     })?;
 
-    if let Some(row) = row {
+    // 4. No grant (or an unknown role) → None.
+    Ok(row.and_then(|row| {
         let role = match row.role.as_str() {
             "operator" => AdminRole::Operator,
             "moderator" => AdminRole::Moderator,
@@ -306,18 +320,15 @@ pub async fn resolve_admin_principal(
                     role = other,
                     "unknown role in relay_operators"
                 );
-                return Err(ApiError::forbidden());
+                return None;
             }
         };
-        return Ok(AdminPrincipal {
+        Some(AdminPrincipal {
             pubkey,
             role,
             source: AdminSource::Db,
-        });
-    }
-
-    // 4. No grant found.
-    Err(ApiError::forbidden())
+        })
+    }))
 }
 
 /// Require that this request resolved a principal (nip98 mode) and return it.

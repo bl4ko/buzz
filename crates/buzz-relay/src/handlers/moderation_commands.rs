@@ -69,7 +69,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::handlers::moderation_authz::{
-    authorize_moderation_action, ModerationAction, ModerationTarget,
+    authorize_moderation_action, ModerationAction, ModerationAuthority, ModerationTarget,
 };
 use crate::handlers::moderation_notices::{send_moderation_notice, ModerationNotice};
 use crate::handlers::report_resolution::{enforcement_audit_action, resolve_report_decision_only};
@@ -154,7 +154,7 @@ async fn handle_ban(
     let expires_at = extract_expiration(event)?; // None ⇒ permanent
     let reason = extract_tag_value(event, "reason");
 
-    authorize_moderation_action(
+    let authority = authorize_moderation_action(
         tenant,
         state,
         actor,
@@ -181,6 +181,7 @@ async fn handle_ban(
         state,
         tenant,
         actor,
+        authority,
         "ban",
         Some(&target),
         None,
@@ -235,7 +236,7 @@ async fn handle_unban(
 ) -> Result<(), String> {
     let target = extract_p_tag_bytes(event).ok_or_else(|| invalid("missing or invalid p tag"))?;
 
-    authorize_moderation_action(
+    let authority = authorize_moderation_action(
         tenant,
         state,
         actor,
@@ -255,7 +256,17 @@ async fn handle_unban(
         return Err(invalid("member is not banned"));
     }
 
-    insert_audit(state, tenant, actor, "unban", Some(&target), None, None).await?;
+    insert_audit(
+        state,
+        tenant,
+        actor,
+        authority,
+        "unban",
+        Some(&target),
+        None,
+        None,
+    )
+    .await?;
 
     info!(target = %hex::encode(&target), "community ban lifted");
     Ok(())
@@ -274,7 +285,7 @@ async fn handle_timeout(
         extract_expiration(event)?.ok_or_else(|| invalid("timeout requires an expiration tag"))?;
     let reason = extract_tag_value(event, "reason");
 
-    authorize_moderation_action(
+    let authority = authorize_moderation_action(
         tenant,
         state,
         actor,
@@ -301,6 +312,7 @@ async fn handle_timeout(
         state,
         tenant,
         actor,
+        authority,
         "timeout",
         Some(&target),
         None,
@@ -340,7 +352,7 @@ async fn handle_untimeout(
 ) -> Result<(), String> {
     let target = extract_p_tag_bytes(event).ok_or_else(|| invalid("missing or invalid p tag"))?;
 
-    authorize_moderation_action(
+    let authority = authorize_moderation_action(
         tenant,
         state,
         actor,
@@ -360,7 +372,17 @@ async fn handle_untimeout(
         return Err(invalid("member is not timed out"));
     }
 
-    insert_audit(state, tenant, actor, "untimeout", Some(&target), None, None).await?;
+    insert_audit(
+        state,
+        tenant,
+        actor,
+        authority,
+        "untimeout",
+        Some(&target),
+        None,
+        None,
+    )
+    .await?;
 
     info!(target = %hex::encode(&target), "community timeout cleared");
     Ok(())
@@ -405,7 +427,7 @@ pub(crate) async fn handle_resolve(
         ));
     }
 
-    authorize_moderation_action(
+    let authority = authorize_moderation_action(
         tenant,
         state,
         actor,
@@ -437,7 +459,7 @@ pub(crate) async fn handle_resolve(
     // - CAS `open → terminal` AND decision audit row in ONE transaction.
     // - No orphan audit row on concurrent close (transaction rolls back both).
     // - Preserves the event's signed `status` field verbatim (resolved|dismissed).
-    // - `actor_authority = "community"` marks this as a 9044 community-path resolution.
+    // - `actor_authority` records whether community or relay-staff authority resolved it.
     let audit_action = enforcement_audit_action(&action);
     let reporter_pubkey = report.reporter_pubkey.clone();
     let report_id = report.id;
@@ -448,7 +470,7 @@ pub(crate) async fn handle_resolve(
         &status,
         audit_action,
         actor,
-        "community",
+        authority.audit_str(),
         target_pubkey,
         target_event_id,
         report.channel_id,
@@ -493,6 +515,7 @@ async fn insert_audit(
     state: &Arc<AppState>,
     tenant: &TenantContext,
     actor: &[u8],
+    authority: ModerationAuthority,
     action: &str,
     target_pubkey: Option<&[u8]>,
     target_event_id: Option<&[u8]>,
@@ -512,7 +535,7 @@ async fn insert_audit(
                 public_reason,
                 private_reason: None,
                 matched_principal: None,
-                actor_authority: None, // community path
+                actor_authority: Some(authority.audit_str()),
             },
         )
         .await

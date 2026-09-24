@@ -19,6 +19,7 @@ use std::sync::Arc;
 use buzz_core::tenant::TenantContext;
 use uuid::Uuid;
 
+use crate::api::admin::AdminRole;
 use crate::state::AppState;
 
 /// A moderation capability being exercised.
@@ -66,6 +67,37 @@ pub enum ModerationAuthority {
     CommunityAdmin,
     /// Actor is channel owner/admin of the target's channel.
     ChannelRole,
+    /// Actor is a relay operator (`RELAY_OPERATOR_PUBKEYS`, owner fallback, or
+    /// an `operator` row in `relay_operators`).
+    RelayOperator,
+    /// Actor is a relay moderator (`moderator` row in `relay_operators`).
+    RelayModerator,
+}
+
+impl ModerationAuthority {
+    /// The `moderation_actions.actor_authority` value for this authority.
+    pub fn audit_str(self) -> &'static str {
+        match self {
+            Self::CommunityOwner | Self::CommunityAdmin | Self::ChannelRole => "community",
+            Self::RelayOperator => "relay_operator",
+            Self::RelayModerator => "relay_moderator",
+        }
+    }
+}
+
+/// Moderation-only capabilities relay staff hold in every community on their
+/// relay. Deliberately excludes `DeleteMessage`/`Kick`: relay staff moderate
+/// through restrictions and report decisions, never channel-local powers.
+fn is_relay_staff_action(action: ModerationAction) -> bool {
+    matches!(
+        action,
+        ModerationAction::Ban
+            | ModerationAction::Unban
+            | ModerationAction::Timeout
+            | ModerationAction::Untimeout
+            | ModerationAction::ResolveReport
+            | ModerationAction::ViewQueue
+    )
 }
 
 /// Decide whether `actor` may perform `action` on `target`.
@@ -99,6 +131,19 @@ pub async fn authorize_moderation_action(
         .await?
         .map(|m| m.role);
 
+    // Relay staff: the same roster as the admin API. Only consulted when it
+    // could change the outcome — a community owner already holds everything.
+    let relay_staff = match (actor_role.as_deref(), <[u8; 32]>::try_from(actor_pubkey)) {
+        (Some("owner"), _) | (_, Err(_)) => None,
+        (_, Ok(pubkey)) if is_relay_staff_action(action) => {
+            crate::api::admin::resolve_relay_staff(state, pubkey)
+                .await
+                .map_err(|_| anyhow::anyhow!("relay staff lookup failed"))?
+                .map(|p| p.role)
+        }
+        _ => None,
+    };
+
     // The target's community role is read only for the admin guard rail — i.e.
     // an admin actioning a pubkey with ban/timeout — so the owner and
     // channel-role paths stay at a single query.
@@ -131,6 +176,7 @@ pub async fn authorize_moderation_action(
 
     decide_authority(
         actor_role.as_deref(),
+        relay_staff,
         target_role.as_deref(),
         channel_role.as_deref(),
         action,
@@ -141,10 +187,15 @@ pub async fn authorize_moderation_action(
 /// of the I/O so it is exhaustively unit-testable.
 ///
 /// - `actor_role` / `target_role`: community `relay_members` role, if any.
+/// - `relay_staff`: the actor's relay roster role, if any. Staff hold the
+///   moderation-only set ([`is_relay_staff_action`]) in every community, with
+///   no target-role guard (they may restrict a community owner or admin). A
+///   community owner still records community authority.
 /// - `channel_role`: the actor's channel role, resolved by the caller only when
 ///   community authority does not apply and the action is channel-local.
 fn decide_authority(
     actor_role: Option<&str>,
+    relay_staff: Option<AdminRole>,
     target_role: Option<&str>,
     channel_role: Option<&str>,
     action: ModerationAction,
@@ -152,6 +203,10 @@ fn decide_authority(
     match actor_role {
         // Owner holds every capability, community-wide, with no guard rail.
         Some("owner") => Ok(ModerationAuthority::CommunityOwner),
+        _ if relay_staff.is_some() && is_relay_staff_action(action) => Ok(match relay_staff {
+            Some(AdminRole::Operator) => ModerationAuthority::RelayOperator,
+            _ => ModerationAuthority::RelayModerator,
+        }),
         // Admin holds every capability, but cannot ban/timeout the owner or a
         // fellow admin — only the owner may action an admin. The guard trips only
         // on a target *role* of owner/admin: a target with no `relay_members` row
@@ -206,7 +261,13 @@ mod tests {
         for action in ALL_ACTIONS {
             // Even against another owner/admin target: the owner has no guard rail.
             assert_eq!(
-                ok(decide_authority(Some("owner"), Some("admin"), None, action)),
+                ok(decide_authority(
+                    Some("owner"),
+                    None,
+                    Some("admin"),
+                    None,
+                    action
+                )),
                 ModerationAuthority::CommunityOwner,
                 "owner must be authorized for {action:?}"
             );
@@ -220,6 +281,7 @@ mod tests {
             assert_eq!(
                 ok(decide_authority(
                     Some("admin"),
+                    None,
                     Some("member"),
                     None,
                     action
@@ -228,7 +290,7 @@ mod tests {
                 "admin must be authorized for {action:?} against a member"
             );
             assert_eq!(
-                ok(decide_authority(Some("admin"), None, None, action)),
+                ok(decide_authority(Some("admin"), None, None, None, action)),
                 ModerationAuthority::CommunityAdmin,
                 "admin must be authorized for {action:?} against a non-member"
             );
@@ -240,7 +302,7 @@ mod tests {
         for target in ["owner", "admin"] {
             for action in [ModerationAction::Ban, ModerationAction::Timeout] {
                 assert!(
-                    decide_authority(Some("admin"), Some(target), None, action).is_err(),
+                    decide_authority(Some("admin"), None, Some(target), None, action).is_err(),
                     "admin must not {action:?} a community {target}"
                 );
             }
@@ -254,7 +316,7 @@ mod tests {
         // *role*, never on a missing row.
         for action in [ModerationAction::Ban, ModerationAction::Timeout] {
             assert_eq!(
-                ok(decide_authority(Some("admin"), None, None, action)),
+                ok(decide_authority(Some("admin"), None, None, None, action)),
                 ModerationAuthority::CommunityAdmin,
                 "admin must be able to {action:?} a non-member target"
             );
@@ -262,6 +324,7 @@ mod tests {
             assert_eq!(
                 ok(decide_authority(
                     Some("admin"),
+                    None,
                     Some("member"),
                     None,
                     action
@@ -285,7 +348,13 @@ mod tests {
             ModerationAction::ViewQueue,
         ] {
             assert_eq!(
-                ok(decide_authority(Some("admin"), Some("admin"), None, action)),
+                ok(decide_authority(
+                    Some("admin"),
+                    None,
+                    Some("admin"),
+                    None,
+                    action
+                )),
                 ModerationAuthority::CommunityAdmin,
                 "admin must be authorized for {action:?} even against an admin target"
             );
@@ -297,7 +366,7 @@ mod tests {
         for role in ["owner", "admin"] {
             for action in [ModerationAction::DeleteMessage, ModerationAction::Kick] {
                 assert_eq!(
-                    ok(decide_authority(None, None, Some(role), action)),
+                    ok(decide_authority(None, None, None, Some(role), action)),
                     ModerationAuthority::ChannelRole,
                     "channel {role} must be authorized for {action:?}"
                 );
@@ -312,7 +381,7 @@ mod tests {
                 ModerationAction::ViewQueue,
             ] {
                 assert!(
-                    decide_authority(None, None, Some(role), action).is_err(),
+                    decide_authority(None, None, None, Some(role), action).is_err(),
                     "channel {role} must NOT be authorized for community action {action:?}"
                 );
             }
@@ -323,12 +392,96 @@ mod tests {
     fn plain_channel_member_and_stranger_are_denied() {
         for action in ALL_ACTIONS {
             assert!(
-                decide_authority(None, None, Some("member"), action).is_err(),
+                decide_authority(None, None, None, Some("member"), action).is_err(),
                 "channel member must be denied {action:?}"
             );
             assert!(
-                decide_authority(None, None, None, action).is_err(),
+                decide_authority(None, None, None, None, action).is_err(),
                 "user with no role must be denied {action:?}"
+            );
+        }
+    }
+    const STAFF_ACTIONS: [ModerationAction; 6] = [
+        ModerationAction::Ban,
+        ModerationAction::Unban,
+        ModerationAction::Timeout,
+        ModerationAction::Untimeout,
+        ModerationAction::ResolveReport,
+        ModerationAction::ViewQueue,
+    ];
+
+    #[test]
+    fn relay_staff_hold_moderation_set_against_any_target() {
+        for (staff, expected) in [
+            (AdminRole::Operator, ModerationAuthority::RelayOperator),
+            (AdminRole::Moderator, ModerationAuthority::RelayModerator),
+        ] {
+            for action in STAFF_ACTIONS {
+                for target in [Some("owner"), Some("admin"), Some("member"), None] {
+                    assert_eq!(
+                        ok(decide_authority(None, Some(staff), target, None, action)),
+                        expected,
+                        "{staff:?} must be authorized for {action:?} against {target:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn relay_staff_never_hold_delete_or_kick() {
+        for staff in [AdminRole::Operator, AdminRole::Moderator] {
+            for action in [ModerationAction::DeleteMessage, ModerationAction::Kick] {
+                assert!(
+                    decide_authority(None, Some(staff), None, None, action).is_err(),
+                    "{staff:?} must NOT be authorized for {action:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn community_owner_who_is_staff_is_audited_as_community() {
+        for action in ALL_ACTIONS {
+            let authority = ok(decide_authority(
+                Some("owner"),
+                Some(AdminRole::Operator),
+                None,
+                None,
+                action,
+            ));
+            assert_eq!(authority, ModerationAuthority::CommunityOwner);
+            assert_eq!(authority.audit_str(), "community");
+        }
+    }
+
+    #[test]
+    fn community_admin_who_is_staff_can_ban_owner_as_relay_staff() {
+        for action in [ModerationAction::Ban, ModerationAction::Timeout] {
+            let authority = ok(decide_authority(
+                Some("admin"),
+                Some(AdminRole::Moderator),
+                Some("owner"),
+                None,
+                action,
+            ));
+            assert_eq!(authority, ModerationAuthority::RelayModerator);
+            assert_eq!(authority.audit_str(), "relay_moderator");
+        }
+    }
+
+    #[test]
+    fn community_admin_who_is_staff_keeps_admin_delete_and_kick() {
+        for action in [ModerationAction::DeleteMessage, ModerationAction::Kick] {
+            assert_eq!(
+                ok(decide_authority(
+                    Some("admin"),
+                    Some(AdminRole::Operator),
+                    None,
+                    None,
+                    action
+                )),
+                ModerationAuthority::CommunityAdmin
             );
         }
     }
