@@ -354,6 +354,7 @@ class _FakeRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async {
     fetchCount++;
     if (fetchFailures > 0) {

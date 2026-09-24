@@ -1895,6 +1895,94 @@ void main() {
       );
     }
 
+    for (final peerDeadline in [true, false]) {
+      test(
+        'a multi-chunk fallback after a peer deadline between chunks '
+        '${peerDeadline ? 'sends no later chunk' : 'sends every chunk'}',
+        () async {
+          final ids = [for (var i = 0; i < 6; i++) 'chunk-channel-$i'];
+          final session = _FakeRelaySession(
+            memberships: [for (final id in ids) _membership(id, myPk)],
+            metadata: [for (final id in ids) _meta(id: id, name: id)],
+          );
+          final container = _buildContainer(session: session);
+          addTearDown(container.dispose);
+          await container.read(channelsProvider.future);
+          await _settle();
+          // Attempt A: HTTP fails ordinarily; its first fallback chunk parks.
+          final gate = session.fallbackGate = Completer<void>();
+          session.messageBatchError = Exception('bridge down');
+          session.setStatus(SessionStatus.reconnecting);
+          session.setStatus(SessionStatus.connected);
+          await _settle();
+          final firstChunks = session.messageHistoryCount;
+          expect(firstChunks, greaterThan(0));
+          expect(firstChunks % 4, 0, reason: 'only whole first chunks sent');
+          // Attempt B: an overlapping resume refresh for the same batches.
+          session.messageBatchError = peerDeadline ? deadline() : null;
+          final lifecycle =
+              container.read(appLifecycleProvider.notifier)
+                  as _FakeAppLifecycleNotifier;
+          lifecycle.set(AppLifecycleState.paused);
+          lifecycle.set(AppLifecycleState.resumed);
+          await _settle();
+          expect(session.messageHistoryCount, firstChunks);
+          session
+            ..messageBatchError = null
+            ..fallbackGate = null;
+          gate.complete();
+          await _settle();
+          if (peerDeadline) {
+            expect(session.messageHistoryCount, firstChunks);
+          } else {
+            expect(session.messageHistoryCount, greaterThan(firstChunks));
+          }
+        },
+      );
+    }
+
+    for (final peerDeadline in [true, false]) {
+      test(
+        'a rate-limit-parked batch fallback after a peer '
+        '${peerDeadline ? 'deadline sends nothing' : 'success still sends'}',
+        () async {
+          final session = _FakeRelaySession(
+            memberships: [_membership(_channelA, myPk)],
+            metadata: [_meta(id: _channelA, name: 'general')],
+          );
+          final container = _buildContainer(session: session);
+          addTearDown(container.dispose);
+          await container.read(channelsProvider.future);
+          await _settle();
+          final before = session.messageHistoryCount;
+          // A: HTTP fails ordinarily; its fallback parks at the gate.
+          final gate = session.parkBeforeSend = Completer<void>();
+          session.messageBatchError = Exception('rate limited');
+          session.setStatus(SessionStatus.reconnecting);
+          session.setStatus(SessionStatus.connected);
+          await _settle();
+          expect(session.messageHistoryCount, before);
+          // B: an overlapping resume refresh for the same batches.
+          session.messageBatchError = peerDeadline ? deadline() : null;
+          final lifecycle =
+              container.read(appLifecycleProvider.notifier)
+                  as _FakeAppLifecycleNotifier;
+          lifecycle.set(AppLifecycleState.paused);
+          lifecycle.set(AppLifecycleState.resumed);
+          await _settle();
+          session
+            ..messageBatchError = null
+            ..parkBeforeSend = null;
+          gate.complete();
+          await _settle();
+          expect(
+            session.messageHistoryCount,
+            peerDeadline ? before : greaterThan(before),
+          );
+        },
+      );
+    }
+
     test('reordering unchanged channels keeps a batch terminal', () {
       fakeAsync((async) {
         final session = _FakeRelaySession(
@@ -2568,6 +2656,13 @@ class _FakeRelaySession extends RelaySessionNotifier {
   Object? latestBatchError;
   Object? messageHistoryError;
   int messageHistoryCount = 0;
+
+  /// Parks per-filter websocket fallbacks of message batches while set.
+  Completer<void>? fallbackGate;
+
+  /// Parks per-filter fallbacks *before* they count as sent, then honours
+  /// `stopWith` like the production send boundary.
+  Completer<void>? parkBeforeSend;
   final List<NostrFilter> directoryQueryFilters = [];
   final List<NostrFilter> membershipQueryFilters = [];
   final List<NostrFilter> subscribeFilters = [];
@@ -2776,6 +2871,7 @@ class _FakeRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async {
     historyFilters.add(filter);
     if (filter.kinds.contains(39002) && filter.tags['#d'] != null) {
@@ -2844,8 +2940,15 @@ class _FakeRelaySession extends RelaySessionNotifier {
       return metadata.where((e) => ids.contains(e.getTagValue('d'))).toList();
     }
     // Per-filter websocket fallback of a message batch.
+    if (parkBeforeSend case final gate?) {
+      // Models the production rate-limit wait: [stopWith] is evaluated
+      // after it, at the actual send.
+      await gate.future;
+      if (stopWith?.call() case final error?) throw error;
+    }
     messageHistoryCount++;
     if (messageHistoryError case final error?) throw error;
+    if (fallbackGate case final gate?) await gate.future;
     return const [];
   }
 

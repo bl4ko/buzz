@@ -10977,8 +10977,8 @@ void main() {
         // One scope throughout; the head (and a rebuild counter) change.
         final shown = ValueNotifier(('root', 0));
         addTearDown(shown.dispose);
-        // Counts real sends: like the production provider, a build whose
-        // scan is terminal throws the stored deadline without sending.
+        // Counts loader calls the fake permits: like the production provider,
+        // a build whose scan is terminal throws the stored deadline first.
         var loads = 0;
         RelayDeadlineRegistry? registry;
         final key = threadScanKey(
@@ -11034,6 +11034,65 @@ void main() {
         await tester.pumpAndSettle();
         expect(deadlines.isTerminal(key), isFalse);
         expect(loads, opened + 1);
+      });
+
+      testWidgets('a reopen disposed before its microtask resets nothing', (
+        tester,
+      ) async {
+        final other = _textMsg(
+          id: 'other',
+          pubkey: 'alice',
+          content: 'Other root',
+          createdAt: 900,
+        );
+        final timeline = formatTimeline([other, root, mid]);
+        final shown = ValueNotifier('other');
+        addTearDown(shown.dispose);
+        final key = threadScanKey(
+          const ThreadRepliesArgs(channelId: _channelId, rootId: 'root'),
+        );
+        await tester.pumpWidget(
+          _buildTestable(
+            messages: [other, root, mid],
+            disableRetries: true,
+            threadReplyLoaders: {
+              'root': () => Future.value(const <NostrEvent>[]),
+            },
+            home: ValueListenableBuilder(
+              valueListenable: shown,
+              builder: (_, value, _) => ThreadDetailPage(
+                key: ValueKey(value),
+                threadHead: timeline.firstWhere((m) => m.id == value),
+                allMessages: timeline,
+                channelId: _testChannel.id,
+                currentPubkey: 'me',
+                isMember: true,
+                isArchived: false,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final deadlines = ProviderScope.containerOf(
+          tester.element(find.byType(ThreadDetailPage)),
+        ).read(relayDeadlineRegistryProvider);
+        deadlines.record(
+          key,
+          RelayException(503, '{"error":"query timed out"}'),
+        );
+        // Open the thread and replace it again synchronously, before the
+        // open's microtask runs: the disposed page must not reset the scan.
+        final owner = tester.binding.buildOwner!;
+        final rootElement = tester.binding.rootElement!;
+        shown.value = 'root';
+        owner.buildScope(rootElement);
+        expect(find.byKey(const ValueKey('root')), findsOneWidget);
+        shown.value = 'other';
+        owner.buildScope(rootElement);
+        owner.finalizeTree();
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('other')), findsOneWidget);
+        expect(deadlines.isTerminal(key), isTrue);
       });
 
       testWidgets('shows an incoming nested reply', (tester) async {
@@ -14898,6 +14957,7 @@ class _ReconnectingRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async => [];
 
   @override
@@ -14951,6 +15011,7 @@ class _IdentityUpdateRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async {
     if (filter.kinds.length == 1 && filter.kinds.single == 0) {
       return profileRefresh ?? const [];
@@ -15076,6 +15137,7 @@ class _ProfileSubscriptionRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async => const [];
 
   @override
@@ -15107,6 +15169,7 @@ class _HuddleReactionRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async => const [];
 
   @override

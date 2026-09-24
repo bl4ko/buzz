@@ -501,6 +501,7 @@ class _RecordingProfileSession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async {
     requestCount++;
     requestedFilter = filter;
@@ -516,5 +517,6 @@ class _FailingProfileSession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) => Future.error('profile unavailable');
 }

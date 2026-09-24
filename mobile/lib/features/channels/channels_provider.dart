@@ -507,7 +507,10 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       final results = await Future.wait(
         filters.sublist(start, end).map((filter) async {
           try {
-            return await session.fetchHistory(filter);
+            return await session.fetchHistory(
+              filter,
+              stopWith: () => deadlines.terminalError(key),
+            );
           } catch (error) {
             // A timed-out filter makes the batch unavailable, not empty.
             if (deadlines.record(key, error, attempt: attempt)) deadline = true;

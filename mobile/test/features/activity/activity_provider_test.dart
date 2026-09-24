@@ -36,6 +36,7 @@ class _RecordingSessionNotifier extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async {
     final h = filter.tags['#h'];
     if (h != null) dmQueries.add(h);

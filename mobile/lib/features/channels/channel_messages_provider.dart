@@ -265,6 +265,7 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     try {
       final history = await session.fetchHistory(
         NostrFilters.messages(channelId),
+        stopWith: () => _deadlines.terminalError(windowKey),
       );
       history.sort(compareChannelTimelineEventsChronologically);
       return history;
@@ -1002,7 +1003,10 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
     final attempt = _deadlines.attempt(key);
     final List<NostrEvent> older;
     try {
-      older = await session.fetchHistory(filter);
+      older = await session.fetchHistory(
+        filter,
+        stopWith: () => _deadlines.terminalError(key),
+      );
     } catch (error) {
       _deadlines.record(key, error, attempt: attempt);
       rethrow;

@@ -628,6 +628,104 @@ void main() {
       );
     }
 
+    for (final peerDeadline in [true, false]) {
+      test(
+        'a rate-limit-gated window fallback after a peer '
+        '${peerDeadline ? 'deadline sends no REQ' : 'success still sends'}',
+        () async {
+          final gateTimers = <_GateTimer>[];
+          final gate = RelayRateLimitGate(
+            timerFactory: (_, callback) {
+              final timer = _GateTimer(callback);
+              gateTimers.add(timer);
+              return timer;
+            },
+          );
+          final parkedA = Completer<List<NostrEvent>>();
+          final session = _GatedHistorySession(
+            Queue<Object>.of([
+              parkedA.future,
+              peerDeadline ? deadline() : <NostrEvent>[_bounds()],
+            ]),
+            gate,
+          );
+          final container = ProviderContainer(
+            overrides: [relaySessionProvider.overrideWith(() => session)],
+          );
+          addTearDown(container.dispose);
+          container.listen(channelMessagesProvider(_channelId), (_, _) {});
+          await _pumpEventQueue();
+          // A's HTTP is rate-limited: its WS fallback queues at the gate.
+          gate.activate(4);
+          parkedA.completeError(Exception('rate limited'));
+          await _pumpEventQueue();
+          expect(session.reqs, isEmpty);
+          // A same-scope reconnect starts B for the same window.
+          session.setConnected(false);
+          await _pumpEventQueue();
+          session.setConnected(true);
+          await _pumpEventQueue();
+          gateTimers.single.fire();
+          await _pumpEventQueue();
+          final fallbacks = session.reqs
+              .where((req) => (req[2] as Map)['kinds'] != null)
+              .length;
+          expect(fallbacks, peerDeadline ? 0 : 1);
+        },
+      );
+    }
+
+    for (final peerDeadline in [true, false]) {
+      test(
+        'a rate-limit-parked legacy older page after a peer '
+        '${peerDeadline ? 'deadline sends nothing' : 'success still sends'}',
+        () async {
+          final session = _RecordingRelaySessionNotifier(
+            historyResults: [
+              [_event(id: 'head', createdAt: 20)],
+            ],
+          );
+          final container = _buildContainer(session);
+          addTearDown(container.dispose);
+          container.listen(channelMessagesProvider(_channelId), (_, _) {});
+          await session.subscribed;
+          await _pumpEventQueue();
+          final notifier = container.read(
+            channelMessagesProvider(_channelId).notifier,
+          );
+          final sendsBefore = session.historyFilters.length;
+          // A parks at the gate; B for the same page settles meanwhile.
+          final gate = session.parkBeforeSend = Completer<void>();
+          final a = notifier.fetchOlder();
+          await _pumpEventQueue();
+          session.parkBeforeSend = null;
+          if (peerDeadline) {
+            session.historyError = deadline();
+            await expectLater(
+              notifier.fetchOlder(),
+              throwsA(isA<RelayException>()),
+            );
+            session.historyError = null;
+          } else {
+            session.historyError = Exception('page failed');
+            await expectLater(notifier.fetchOlder(), throwsA(isA<Exception>()));
+            session.historyError = null;
+          }
+          final afterPeer = session.historyFilters.length;
+          expect(afterPeer, sendsBefore + 1);
+          session.completeHistory(const []);
+          gate.complete();
+          if (peerDeadline) {
+            await expectLater(a, throwsA(isA<RelayException>()));
+            expect(session.historyFilters.length, afterPeer);
+          } else {
+            await a;
+            expect(session.historyFilters.length, afterPeer + 1);
+          }
+        },
+      );
+    }
+
     Future<(_RecordingRelaySessionNotifier, ProviderContainer)> olderFailed(
       Object error,
     ) async {
@@ -5893,6 +5991,9 @@ class _RecordingRelaySessionNotifier extends RelaySessionNotifier {
   final Queue<Completer<List<NostrEvent>>> _targetHistories = Queue();
   Object? historyError;
 
+  /// Parks the next history calls before they count as sent.
+  Completer<void>? parkBeforeSend;
+
   _RecordingRelaySessionNotifier({
     this.failSubscribe = false,
     List<Object> queryResults = const [],
@@ -5935,7 +6036,14 @@ class _RecordingRelaySessionNotifier extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
-  }) {
+    Object? Function()? stopWith,
+  }) async {
+    if (parkBeforeSend case final gate?) {
+      // Models the production rate-limit wait: [stopWith] is evaluated
+      // after it, at the actual send.
+      await gate.future;
+      if (stopWith?.call() case final error?) throw error;
+    }
     operations.add('fetch');
     historyFilters.add(filter);
     if (filter.ids != null) {
@@ -5991,6 +6099,84 @@ class _RecordingRelaySessionNotifier extends RelaySessionNotifier {
       _history.completeError(error);
     }
   }
+}
+
+/// Production [RelaySessionNotifier.fetchHistory] (rate-limit gate, REQ
+/// send) with only HTTP queries and live subscriptions faked.
+class _GatedHistorySession extends RelaySessionNotifier {
+  _GatedHistorySession(this.queryResults, RelayRateLimitGate gate)
+    : super(rateLimitGate: gate);
+
+  final Queue<Object> queryResults;
+  final socket = _RecordingSocket();
+
+  List<List<dynamic>> get reqs =>
+      socket.messages.where((message) => message.first == 'REQ').toList();
+
+  @override
+  SessionState build() {
+    debugAttachSocketForTest(socket);
+    return const SessionState(status: SessionStatus.connected);
+  }
+
+  void setConnected(bool connected) => state = SessionState(
+    status: connected ? SessionStatus.connected : SessionStatus.disconnected,
+  );
+
+  @override
+  Future<List<NostrEvent>> queryRelay(
+    List<NostrFilter> filters, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final result = queryResults.removeFirst();
+    if (result is Future<List<NostrEvent>>) return result;
+    if (result is! List) throw result;
+    return result as List<NostrEvent>;
+  }
+
+  @override
+  Future<void Function()> subscribe(
+    NostrFilter filter,
+    void Function(NostrEvent) onEvent, {
+    void Function(String message)? onClosed,
+  }) async => () {};
+}
+
+class _RecordingSocket extends RelaySocket {
+  _RecordingSocket()
+    : super(
+        wsUrl: 'wss://relay.example',
+        nsec: null,
+        onMessage: (_) {},
+        onConnected: () {},
+        onDisconnected: (_) {},
+      );
+
+  final List<List<dynamic>> messages = [];
+
+  @override
+  void send(List<dynamic> payload) => messages.add(payload);
+
+  @override
+  void dispose() {}
+}
+
+class _GateTimer implements Timer {
+  _GateTimer(this._callback);
+  final void Function() _callback;
+  bool _active = true;
+  void fire() {
+    if (!_active) return;
+    _active = false;
+    _callback();
+  }
+
+  @override
+  void cancel() => _active = false;
+  @override
+  bool get isActive => _active;
+  @override
+  int get tick => 0;
 }
 
 /// The thread page's explicit reopen/retry of a deadline-terminal scan.

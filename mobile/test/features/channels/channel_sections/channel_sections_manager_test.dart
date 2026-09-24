@@ -297,6 +297,7 @@ class _DelayedSubscribeRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async => const [];
 
   @override
@@ -376,6 +377,7 @@ class _RateLimitedRelaySession extends RelaySessionNotifier {
   Future<List<NostrEvent>> fetchHistory(
     NostrFilter filter, {
     Duration timeout = const Duration(seconds: 8),
+    Object? Function()? stopWith,
   }) async {
     fetchCalls++;
     if (fetchCalls <= failuresBeforeSuccess) {
