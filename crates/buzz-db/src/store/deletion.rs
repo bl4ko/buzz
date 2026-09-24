@@ -2666,7 +2666,7 @@ async fn lock_community_deletion(
 ) -> Result<()> {
     crate::observability::observe_advisory_lock(
         crate::observability::LockType::Deletion,
-        sqlx::query("SELECT pg_advisory_xact_lock(community_deletion_lock_key($1))")
+        sqlx::query("SELECT pg_advisory_xact_lock_shared(community_deletion_lock_key($1))")
             .bind(community.as_uuid())
             .execute(&mut **tx),
     )
@@ -4093,6 +4093,19 @@ mod postgres_tests {
             .await
             .expect("open writer transaction with community lock");
 
+        let mut shared_contender = db.pool.begin().await.expect("begin shared contender");
+        let shared_taken: bool = sqlx::query_scalar(
+            "SELECT pg_try_advisory_xact_lock_shared(community_deletion_lock_key($1))",
+        )
+        .bind(community.as_uuid())
+        .fetch_one(&mut *shared_contender)
+        .await
+        .expect("try shared deletion lock");
+        assert!(
+            shared_taken,
+            "compliant writer must allow another shared community deletion lock holder"
+        );
+
         let mut deleter = db.pool.begin().await.expect("begin deletion contender");
         let exclusive_taken: bool =
             sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(community_deletion_lock_key($1))")
@@ -4108,6 +4121,10 @@ mod postgres_tests {
             .rollback()
             .await
             .expect("rollback deletion contender");
+        shared_contender
+            .rollback()
+            .await
+            .expect("rollback shared contender");
         writer
             .rollback()
             .await

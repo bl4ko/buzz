@@ -2838,7 +2838,7 @@ async fn replica_floor_writer_transaction_holds_shared_lock() {
     let scratch_url = format!("{}/{}", &base[..idx], name);
     let db = Db::new(&DbConfig {
         database_url: scratch_url,
-        max_connections: 2,
+        max_connections: 3,
         ..DbConfig::default()
     })
     .await
@@ -2848,6 +2848,17 @@ async fn replica_floor_writer_transaction_holds_shared_lock() {
         .begin_replica_floor_locked_event_write_transaction()
         .await
         .expect("open compliant floor-guarded writer tx");
+
+    let mut shared_contender = db.pool.begin().await.expect("begin shared contender");
+    let shared_taken: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock_shared($1)")
+        .bind(crate::replica_fence::REPLICA_FLOOR_LOCK_KEY)
+        .fetch_one(&mut *shared_contender)
+        .await
+        .expect("probe shared floor lock");
+    assert!(
+        shared_taken,
+        "compliant writer must allow another shared replica-floor lock holder"
+    );
 
     let mut contender = db.pool.begin().await.expect("begin exclusive contender");
     let exclusive_taken: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock($1)")
@@ -2864,6 +2875,10 @@ async fn replica_floor_writer_transaction_holds_shared_lock() {
         .rollback()
         .await
         .expect("rollback exclusive contender");
+    shared_contender
+        .rollback()
+        .await
+        .expect("rollback shared contender");
     writer.rollback().await.expect("rollback writer tx");
     db.pool.close().await;
     drop_scratch_db(&admin, seed_pool, &name).await;
