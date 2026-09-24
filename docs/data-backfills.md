@@ -255,14 +255,21 @@ in-flight work MUST also advance it.
 Every transaction that changes target data or progress, or commits a validation
 or lifecycle result that can advance execution, MUST verify before commit that:
 
-- the lifecycle permits the operation;
-- the presented owner holds the current claim;
-- the presented generation equals the current generation; and
+- the lifecycle permits the operation; and
+- the presented generation equals the current generation.
+
+A claim-authorized worker execution commit MUST additionally verify that:
+
+- the presented owner holds the current claim; and
 - the claim remains valid.
 
-Failure of any check MUST reject the entire transaction. A check made only
-before work starts is insufficient because a paused, expired, or replaced owner
-may finish after takeover.
+Operator transitions and diagnostic validation do not require a claim. Operator
+actions remain lifecycle- and generation-fenced, as do validation or completion
+results that advance execution.
+
+Failure of any applicable check MUST reject the entire transaction. For a
+claim-authorized worker, checking only before work starts is insufficient
+because a paused, expired, or replaced owner may finish after takeover.
 
 Claims MUST have bounded validity and require renewal. Takeover MUST eventually
 be possible after renewal stops. PostgreSQL time and state decide validity;
