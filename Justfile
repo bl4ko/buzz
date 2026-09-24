@@ -414,6 +414,10 @@ test-unit:
         # because nothing in CI runs `cargo test --workspace` — workspace
         # membership alone buys clippy/check, not a single executed test.
         cargo nextest run -p buzz-backend-kubernetes
+        # Feature-flag crate coverage: run once with LaunchDarkly enabled.
+        # This includes all default tests plus the cfg(feature="launchdarkly")
+        # tests, avoiding duplicate default-only execution in the unit lane.
+        cargo nextest run -p buzz-feature-flags --features launchdarkly
         # buzz-agent: two infra-free concerns run together by executing the
         # whole crate (lib + integration tests), because nothing in CI runs
         # `cargo test --workspace`, so without this stanza neither the crate's
@@ -517,23 +521,23 @@ mesh-dev-fresh:
 mesh-e2e-hardware:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo run -p buzz-relay --example mesh_serve_client_smoke
+    cargo run -p buzz-mesh-smoke --example mesh_serve_client_smoke
 
 # Three isolated node processes: trusted member joins and infers; stranger is rejected.
 # Uses temp homes and explicit mesh owner keystores. Never reads the Buzz Keychain.
 mesh-e2e-admission:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo run -p buzz-relay --example mesh_admission_smoke
+    cargo run -p buzz-mesh-smoke --example mesh_admission_smoke
 
 # Full hardware confidence suite: routing, owner admission, and real agent inference.
 mesh-e2e-confidence:
     #!/usr/bin/env bash
     set -euo pipefail
     cargo build --release -p buzz-agent -p buzz-dev-mcp
-    cargo run -p buzz-relay --example mesh_serve_client_smoke
-    cargo run -p buzz-relay --example mesh_admission_smoke
-    cargo run -p buzz-relay --example mesh_agent_e2e
+    cargo run -p buzz-mesh-smoke --example mesh_serve_client_smoke
+    cargo run -p buzz-mesh-smoke --example mesh_admission_smoke
+    cargo run -p buzz-mesh-smoke --example mesh_agent_e2e
 
 # Take desktop screenshots using the mock bridge
 desktop-screenshot *ARGS:
