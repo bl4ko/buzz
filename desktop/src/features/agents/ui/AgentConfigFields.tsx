@@ -274,8 +274,13 @@ export function AgentConfigFields({
   ]);
   const bakedEnvMap = Object.fromEntries(bakedEnv.map((e) => [e.key, e.value]));
   const bakedProvider = React.useMemo(
-    () => bakedEnv.find((e) => e.key === "BUZZ_AGENT_PROVIDER")?.value ?? null,
-    [bakedEnv],
+    () =>
+      (selectedRuntime?.providerEnvVar
+        ? selectedRuntime.definitionEnv?.[selectedRuntime.providerEnvVar]
+        : undefined) ??
+      bakedEnv.find((e) => e.key === "BUZZ_AGENT_PROVIDER")?.value ??
+      null,
+    [bakedEnv, selectedRuntime],
   );
   const selectedRuntimeId = selectedRuntime?.id ?? "";
   const providerFieldVisible = hasRenderableAgentConfigField(
@@ -285,10 +290,20 @@ export function AgentConfigFields({
   const effectiveProvider = providerFieldVisible
     ? config.provider?.trim() || bakedProvider || ""
     : "";
-  const fallbackModel = React.useMemo(
-    () => getGlobalModelFallback(bakedEnv, effectiveProvider, config.env_vars),
-    [bakedEnv, config.env_vars, effectiveProvider],
-  );
+  const fallbackModel = React.useMemo(() => {
+    const key = selectedRuntime?.modelEnvVar;
+    const providerKey = selectedRuntime?.providerEnvVar;
+    const defaults = selectedRuntime?.definitionEnv;
+    if (
+      key &&
+      providerKey &&
+      defaults?.[providerKey] === effectiveProvider &&
+      defaults[key]
+    ) {
+      return defaults[key];
+    }
+    return getGlobalModelFallback(bakedEnv, effectiveProvider, config.env_vars);
+  }, [bakedEnv, config.env_vars, effectiveProvider, selectedRuntime]);
   const modelField = fieldModel.fields.find(
     (field) => field.kind === "model" && field.render === "control",
   );

@@ -162,6 +162,19 @@ pub(crate) struct KnownAcpRuntime {
 }
 
 impl KnownAcpRuntime {
+    /// Build-provided settings for the bundled pilot, below explicit user choices.
+    /// External runtimes retain their existing configuration and environment policy.
+    pub(crate) fn configuration_defaults(&self) -> std::collections::BTreeMap<String, String> {
+        if self.id != "goose-bundled" {
+            return Default::default();
+        }
+        self.default_env
+            .iter()
+            .filter(|(key, _)| *key != "GOOSE_MODE")
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
     /// Return the CLI install commands for the current platform.
     ///
     /// On Windows, returns `cli_install_commands_windows` when non-empty,

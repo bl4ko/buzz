@@ -215,6 +215,11 @@ pub(crate) fn build_deploy_payload<R: tauri::Runtime>(
     let descriptor =
         crate::managed_agents::resolve_effective_harness_descriptor(record, &personas, &global)
             .map_err(|error| crate::managed_agents::user_facing_harness_error(&error))?;
+    if crate::managed_agents::known_acp_runtime(&descriptor.command)
+        .is_some_and(|rt| rt.id == "goose-bundled")
+    {
+        return Err("Goose (bundled) is available only on this Mac. Select Goose for a separately configured remote runtime.".into());
+    }
     let owner_pubkey = super::workspace_owner_hex(state)?;
     let launch = build_launch_block_for_policy(
         record,

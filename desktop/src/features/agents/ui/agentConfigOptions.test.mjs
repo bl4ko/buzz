@@ -7,6 +7,7 @@ import {
   getPersonaProviderOptions,
   getProviderApiKeyLabel,
   resetConfigForHarnessChange,
+  requiredCredentialEnvKeys,
   runtimeSupportsLlmProviderSelection,
 } from "./agentConfigOptions.tsx";
 import { formatModelDiscoveryErrorStatus } from "./personaModelDiscoveryStatus.ts";
@@ -293,4 +294,12 @@ test("getProviderApiKeyLabel_unknown_provider_returns_null", () => {
 test("getProviderApiKeyLabel_provider_id_trimmed_and_lowercased", () => {
   // Mirrors getProviderApiKeyEnvVar normalisation behaviour.
   assert.equal(getProviderApiKeyLabel(" Anthropic "), "Anthropic API Key");
+});
+
+test("bundled Goose uses Goose provider credentials", () => {
+  assert.equal(runtimeSupportsLlmProviderSelection("goose-bundled"), true);
+  assert.deepEqual(
+    requiredCredentialEnvKeys("goose-bundled", "databricks_v2"),
+    requiredCredentialEnvKeys("goose", "databricks_v2"),
+  );
 });

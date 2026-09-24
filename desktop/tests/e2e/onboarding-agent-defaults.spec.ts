@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { passThroughBackupStep } from "../helpers/onboarding";
 
 function runtime(
-  id: "buzz-agent" | "claude" | "codex" | "goose",
+  id: "buzz-agent" | "claude" | "codex" | "goose" | "goose-bundled",
   availability: string,
   authStatus: Record<string, unknown>,
   overrides: Record<string, unknown> = {},
@@ -102,6 +103,19 @@ test("setup filters the bundled harnesses by connection method", async ({
       acpRuntimesCatalog: [
         runtime("buzz-agent", "available", { status: "not_applicable" }),
         runtime("goose", "available", { status: "not_applicable" }),
+        runtime(
+          "goose-bundled",
+          "available",
+          { status: "not_applicable" },
+          {
+            label: "Goose (bundled)",
+            command: "goose-acp",
+            requires_external_cli: false,
+            provider_env_var: "GOOSE_PROVIDER",
+            model_env_var: "GOOSE_MODEL",
+            can_auto_install: false,
+          },
+        ),
         runtime("codex", "available", { status: "logged_in" }),
         runtime("claude", "available", { status: "logged_in" }),
       ],
@@ -177,7 +191,14 @@ test("setup filters the bundled harnesses by connection method", async ({
     page.getByRole("heading", { name: "Choose a harness" }),
   ).toBeVisible();
   await expect(page.getByTestId("onboarding-runtime-goose")).toBeVisible();
+  await expect(
+    page.getByTestId("onboarding-runtime-goose-bundled"),
+  ).toContainText("Goose (bundled)");
   await expect(page.getByTestId("onboarding-runtime-buzz-agent")).toBeVisible();
+  await waitForAnimations(page);
+  await page.getByTestId("onboarding-page-2").screenshot({
+    path: "test-results/screenshots/bundled-goose.png",
+  });
   await expect(page.getByTestId("onboarding-runtime-claude")).toHaveCount(0);
   await expect(page.getByTestId("onboarding-runtime-codex")).toHaveCount(0);
   await expect(page.getByRole("checkbox")).toHaveCount(0);
@@ -1211,4 +1232,54 @@ test("baked build config keeps Finish enabled without manual provider setup", as
   // baked config as complete and never block Finish.
   await expect(page.getByTestId("global-agent-default-harness")).toHaveCount(0);
   await expect(page.getByTestId("onboarding-finish")).toBeEnabled();
+});
+
+test("bundled Goose displays its own provider and model defaults", async ({
+  page,
+}) => {
+  await installMockBridge(
+    page,
+    {
+      acpRuntimesCatalog: [
+        runtime("buzz-agent", "available", { status: "not_applicable" }),
+        runtime(
+          "goose-bundled",
+          "available",
+          { status: "not_applicable" },
+          {
+            label: "Goose (bundled)",
+            command: "goose-acp",
+            requires_external_cli: false,
+            provider_env_var: "GOOSE_PROVIDER",
+            model_env_var: "GOOSE_MODEL",
+            definition_env: {
+              GOOSE_PROVIDER: "databricks_v2",
+              GOOSE_MODEL: "bundled-pilot-model",
+            },
+            can_auto_install: false,
+          },
+        ),
+      ],
+      bakedBuildEnv: [
+        { key: "BUZZ_AGENT_PROVIDER", masked: false, value: "anthropic" },
+      ],
+      globalAgentConfig: {
+        env_vars: {},
+        provider: null,
+        model: null,
+        preferred_runtime: null,
+      },
+    },
+    { skipCommunitySeed: true, skipOnboardingSeed: true },
+  );
+  await page.goto("/");
+  await navigateToSetupPage(page, "api");
+  await page.getByTestId("onboarding-use-different-harness").click();
+  await page.getByTestId("onboarding-runtime-details-goose-bundled").click();
+  await expect(page.getByTestId("global-agent-provider")).toContainText(
+    "Databricks",
+  );
+  await expect(page.getByTestId("global-agent-model")).toContainText(
+    "bundled-pilot-model",
+  );
 });

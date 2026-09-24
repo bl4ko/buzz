@@ -26,16 +26,13 @@
 //!
 //! 1. Baked build defaults (`baked_build_env()`) — injected first so the
 //!    layers above can override them.
-//! 2. Runtime metadata env vars (`runtime_metadata_env_vars`) — provider /
-//!    model env keys derived from the record's `model`/`provider` fields and
-//!    the runtime's `model_env_var`/`provider_env_var`.
+//! 2. Runtime defaults, then structured provider/model selections.
 //! 3. Merged user env (`merged_user_env`) — live persona env under the
 //!    record's `env_vars` overrides, after reserved-key and malformed-key
 //!    filtering.  Last-wins on collision.
 //!
-//! The config-file tier (Goose `~/.config/goose/config.yaml`) is tracked
-//! separately because it is not part of the process env — the harness reads
-//! it at startup.  We do not evaluate it here; it is exposed for future
+//! Runtime file configuration is read separately from process environment.
+//! It is exposed for future
 //! UI display only.
 
 use serde::{Deserialize, Serialize};
@@ -230,6 +227,7 @@ fn resolve_effective_agent_env_with_def(
         super::global_config::resolve_effective_model_provider(record, personas, global);
 
     if let Some(rt) = runtime {
+        env.extend(rt.configuration_defaults());
         for (key, value) in super::runtime::runtime_metadata_env_vars(
             rt.model_env_var,
             rt.provider_env_var,
@@ -443,7 +441,7 @@ fn collect_missing_requirements(
 
     match rt.id {
         "buzz-agent" => buzz_agent_requirements(effective),
-        "goose" => {
+        "goose" | "goose-bundled" => {
             // Read the file config once at the call site so the inner fn is
             // pure and unit-testable by injection.
             let file_cfg = read_goose_file_config();

@@ -408,3 +408,14 @@ matches the code is worse than no rule; a new pattern that isn't written down
 here will be broken by the next agent that never learns it existed. Reviewers:
 treat a config-behavior diff without a matching AGENTS.md diff (or an explicit
 "no rules changed" note) as incomplete.
+
+## Bundled Goose pilot
+
+The internal macOS `bundled-goose` Cargo feature adds `goose-bundled` / "Goose
+(bundled)" to the Rust catalog. It runs the pinned `goose-acp` sidecar directly;
+`goose` remains the external CLI with its `acp` argument. Buzz Agent remains the
+default. Do not alias or migrate existing Goose records to the bundled runtime.
+Bundled provider/model defaults belong to that runtime's catalog metadata and
+are below explicit structured and user environment settings. File configuration
+and credentials follow Goose's existing configuration paths. The pilot is local
+only; remote images do not yet contain this executable.

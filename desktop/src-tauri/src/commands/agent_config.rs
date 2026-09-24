@@ -154,13 +154,13 @@ fn resolve_config_surface(
 /// "Set in goose config" instead of surfacing a false required-field marker.
 ///
 /// Returns `null` when the runtime has no config file or it cannot be parsed.
-/// Currently only "goose" is supported; other runtimes return `null`.
+/// Both Goose runtimes share file configuration; other runtimes return `null`.
 #[tauri::command]
 pub async fn get_runtime_file_config(
     runtime_id: String,
 ) -> Result<Option<RuntimeFileConfigSubset>, String> {
     tokio::task::spawn_blocking(move || match runtime_id.as_str() {
-        "goose" => {
+        "goose" | "goose-bundled" => {
             let cfg = read_goose_file_config()?;
             let satisfied_env_keys = cfg
                 .extra

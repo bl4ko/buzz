@@ -24,12 +24,15 @@ pub(crate) fn read_config_surface(
     claude_config_dir: Option<&std::path::Path>,
 ) -> RuntimeConfigSurface {
     let is_pre_spawn = session_cache.is_none();
+    let defaults = runtime_meta
+        .map(|m| m.configuration_defaults())
+        .unwrap_or_default();
 
     // Tier 2b: config file values.
     let (file_config, file_was_read) = runtime_meta
         .map(|m| m.id)
         .and_then(|id| match id {
-            "goose" => super::goose::read_config_file().map(|c| (c, true)),
+            "goose" | "goose-bundled" => super::goose::read_config_file().map(|c| (c, true)),
             "claude" => super::claude::read_config_file(claude_config_dir).map(|c| (c, true)),
             "codex" => super::codex::read_config_file().map(|c| (c, true)),
             "buzz-agent" => super::buzz_agent::read_config_file().map(|c| (c, true)),
@@ -82,6 +85,9 @@ pub(crate) fn read_config_surface(
             required_fields.contains(&"model"),
             model_overridden,
             tiers,
+            model_env_var
+                .and_then(|key| defaults.get(key))
+                .map(String::as_str),
         )),
         provider: build_provider_field(
             record,
@@ -90,6 +96,9 @@ pub(crate) fn read_config_surface(
             provider_locked,
             required_fields.contains(&"provider"),
             tiers,
+            provider_env_var
+                .and_then(|key| defaults.get(key))
+                .map(String::as_str),
         ),
         mode: build_mode_field(&file_config.mode, &acp_mode, is_pre_spawn, session_cache),
         thinking_effort: build_thinking_field(
@@ -272,7 +281,7 @@ fn mcp_config_file_path_for_runtime(
     claude_config_dir: Option<&std::path::Path>,
 ) -> Option<String> {
     match runtime.id {
-        "goose" => {
+        "goose" | "goose-bundled" => {
             super::goose::goose_config_path().map(|path| path.to_string_lossy().into_owned())
         }
         // #3493: the claude 2.1.x binary resolves .claude.json as
@@ -326,6 +335,7 @@ fn build_model_field(
     is_required: bool,
     model_overridden: bool,
     tiers: &InheritedConfigTiers,
+    runtime_default: Option<&str>,
 ) -> NormalizedField {
     let [rec_env, pers_env, glob_env, def_env] = model_env_var
         .map(|k| {
@@ -356,6 +366,7 @@ fn build_model_field(
         (struct_record, ConfigOrigin::BuzzExplicit),
         (struct_persona, ConfigOrigin::PersonaDefault),
         (struct_global, ConfigOrigin::GlobalDefault),
+        (runtime_default, ConfigOrigin::HarnessDefault),
         (file_model.as_deref(), ConfigOrigin::ConfigFile),
     ];
     // "Configured" = any non-file candidate. The file entry is always last, so
@@ -474,6 +485,7 @@ fn build_provider_field(
     provider_locked: bool,
     is_required: bool,
     tiers: &InheritedConfigTiers,
+    runtime_default: Option<&str>,
 ) -> Option<NormalizedField> {
     if provider_locked {
         return Some(NormalizedField {
@@ -514,6 +526,7 @@ fn build_provider_field(
             tiers.global_provider.as_deref(),
             ConfigOrigin::GlobalDefault,
         ),
+        (runtime_default, ConfigOrigin::HarnessDefault),
         (file_provider.as_deref(), ConfigOrigin::ConfigFile),
     ];
 

@@ -186,7 +186,7 @@ export function requiredCredentialEnvKeys(
   provider: string,
 ): readonly string[] {
   const normalizedRuntime = runtimeId.trim();
-  if (normalizedRuntime !== "buzz-agent" && normalizedRuntime !== "goose") {
+  if (!runtimeSupportsLlmProviderSelection(normalizedRuntime)) {
     return [];
   }
   const config = PROVIDER_CREDENTIAL_CONFIG[provider.trim().toLowerCase()];
@@ -201,7 +201,11 @@ export function isMissingRequiredDropdownField(
 }
 
 export function runtimeSupportsLlmProviderSelection(runtimeId: string) {
-  return runtimeId === "buzz-agent" || runtimeId === "goose";
+  return (
+    runtimeId === "buzz-agent" ||
+    runtimeId === "goose" ||
+    runtimeId === "goose-bundled"
+  );
 }
 
 /** Clears values whose meaning or support changes with the selected harness. */
@@ -555,6 +559,7 @@ function runtimePreferenceSortRank(runtimeId: string) {
     case "buzz-agent":
       return 0;
     case "goose":
+    case "goose-bundled":
       return 1;
     default:
       return 2;
