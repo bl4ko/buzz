@@ -1745,49 +1745,26 @@ async fn run_usage_metrics_tick(
     Ok(())
 }
 
-/// Storage-sweep half of the leader-only tick: harvest/spawn (never awaits
-/// the sweep itself) then re-emit whatever snapshot is cached. Split out of
-/// [`run_usage_metrics_tick`] because it has its own always-on config
-/// (independent of `EmissionScope`) and a hard kill switch — a disabled
-/// sweep must never touch a single storage-family gauge, including the
-/// health ones, so a relay without `s3:ListBucket` can turn the whole
-/// feature off cleanly.
+/// Read worker storage snapshots only on the existing leader metrics tick.
 async fn run_storage_sweep_tick(
     state: &AppState,
     emission_scope: &EmissionScope,
     host_map: &HashMap<Uuid, String>,
 ) {
-    static SWEEP_CONFIG: std::sync::OnceLock<storage_sweep::StorageSweepConfig> =
+    static MODE: std::sync::OnceLock<storage_sweep::StorageMetricsMode> =
         std::sync::OnceLock::new();
-    // SWEEP_CONFIG is a function-local OnceLock by design: it is localized
-    // feature config consumed only by this code path, read once on the first
-    // leader tick, and stable for the process lifetime (env is immutable).
-    // Keeping it here avoids widening Config/AppState for a single consumer.
-    let config = *SWEEP_CONFIG.get_or_init(storage_sweep::StorageSweepConfig::from_env);
-    if !config.enabled {
-        return;
-    }
-
-    let media_storage = Arc::clone(&state.media_storage);
-    let max_objects = config.max_objects;
-    storage_sweep::maybe_spawn_sweep(
+    let mode = *MODE.get_or_init(storage_sweep::StorageMetricsMode::from_env);
+    if let Err(error) = storage_sweep::run_storage_metrics_tick(
+        &state.db,
         &state.storage_sweep,
-        config.interval,
-        config.timeout,
-        async move {
-            buzz_media::fold_bucket_listing(max_objects, move |token| {
-                let media_storage = Arc::clone(&media_storage);
-                async move { media_storage.list_page(token, 1000).await }
-            })
-            .await
-        },
+        mode,
+        host_map,
+        |id| emission_scope.allows(id),
     )
-    .await;
-
-    storage_sweep::emit_storage_metrics(&state.storage_sweep, host_map, |id| {
-        emission_scope.allows(id)
-    })
-    .await;
+    .await
+    {
+        warn!(error = %error, "failed to load stored storage snapshot; retrying next usage tick");
+    }
 }
 
 /// Emit the database-derived usage snapshot from the stable leader only.
