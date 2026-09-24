@@ -312,8 +312,8 @@ fn wrapper(path: &str, cwd: &Path, args: &[&str]) -> std::process::Output {
         .expect("run wrapper git")
 }
 
-/// Like `wrapper`, but bounded: kills the child after `timeout` and panics if
-/// the deadline is exceeded. Used for nested-agent tests where a recursion
+/// Like `wrapper`, but bounded: the whole process tree is killed after
+/// `timeout` and the test panics. Used for nested-agent tests where a recursion
 /// regression would otherwise hang CI indefinitely.
 #[cfg(unix)]
 fn wrapper_bounded(
@@ -322,39 +322,65 @@ fn wrapper_bounded(
     args: &[&str],
     timeout: std::time::Duration,
 ) -> std::process::Output {
-    use std::process::Stdio;
-    use std::time::Instant;
-    let mut child = hermetic_command("git")
-        .args(args)
+    let mut cmd = hermetic_command("git");
+    cmd.args(args)
         .current_dir(cwd)
         .env("PATH", path)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_SYSTEM", "/dev/null")
         .env_remove("NOSTR_PRIVATE_KEY")
         .env_remove("BUZZ_PRIVATE_KEY")
-        .env_remove("BUZZ_AUTH_TAG")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn wrapper_bounded git");
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait().unwrap() {
-            Some(_) => break,
-            None if Instant::now() >= deadline => {
-                child.kill().ok();
-                child.wait().ok();
-                panic!(
-                    "wrapper_bounded timed out after {timeout:?}: \
-                     git {args:?} in {cwd:?} — likely a recursion or hang regression"
-                );
-            }
-            None => std::thread::sleep(std::time::Duration::from_millis(50)),
-        }
+        .env_remove("BUZZ_AUTH_TAG");
+    run_tree_bounded(&mut cmd, timeout)
+}
+
+/// Run `cmd` via `run_bounded`, which drains pipes and tears down the full
+/// process group, so a descendant holding stdout cannot outlive the deadline.
+#[cfg(unix)]
+fn run_tree_bounded(cmd: &mut Command, timeout: std::time::Duration) -> std::process::Output {
+    buzz_git_identity::git_wrapper::run_bounded(cmd, timeout).unwrap_or_else(|| {
+        panic!(
+            "bounded run of {cmd:?} timed out after {timeout:?} or failed to spawn \
+             — likely a recursion or hang regression"
+        )
+    })
+}
+
+/// The bounded helper must not wait on, or leave alive, a backgrounded
+/// descendant that keeps the child's stdout open after the child exits.
+#[cfg(unix)]
+#[test]
+fn bounded_helper_kills_descendant_holding_stdout() {
+    let timeout = std::time::Duration::from_secs(2);
+    let start = std::time::Instant::now();
+    let out = run_tree_bounded(
+        Command::new("sh").args(["-c", "sleep 30 & echo $!"]),
+        timeout,
+    );
+    assert!(
+        start.elapsed() < timeout,
+        "helper waited {:?} for a pipe-holding descendant",
+        start.elapsed()
+    );
+    assert!(out.status.success());
+    let pid = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    assert!(!pid.is_empty(), "descendant pid missing from stdout");
+    // The orphaned sleeper is reaped asynchronously by init; allow a moment.
+    let alive = || {
+        Command::new("kill")
+            .args(["-0", &pid])
+            .status()
+            .unwrap()
+            .success()
+    };
+    let reap_deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while alive() && std::time::Instant::now() < reap_deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    child
-        .wait_with_output()
-        .expect("wait_with_output after bounded git")
+    assert!(
+        !alive(),
+        "descendant sleeper {pid} survived the bounded run"
+    );
 }
 
 /// The current `HEAD` commit SHA of `repo`, via real git (empty if unborn).
