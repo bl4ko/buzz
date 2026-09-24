@@ -3165,11 +3165,16 @@ fn scrub_env(cmd: &mut std::process::Command) {
 
 /// Locate the real `git`: the first PATH entry whose `git` does not resolve back
 /// to this binary (the wrapper symlink) and whose directory does not carry a
-/// `.git-identity` marker. Canonicalization defeats the symlink so we never exec
-/// ourselves. The marker check skips any other Buzz wrapper installation (a
-/// nested parent or child harness) — a directory that holds `.git-identity` is
-/// always a Buzz wrapper dir, never a system git directory. A planted marker can
-/// only cause the planter's own resolution to fail; it cannot redirect identity.
+/// `.git-identity` marker. The selected path is always made absolute against the
+/// current working directory before it is returned, so callers always receive an
+/// absolute path and never re-search PATH by basename.
+///
+/// Canonicalization defeats the symlink so we never exec ourselves. The marker
+/// check skips any other Buzz wrapper installation (a nested parent or child
+/// harness) — a directory that holds `.git-identity` is a Buzz wrapper dir, not
+/// a system git directory. A marker excludes that directory from real-git
+/// discovery; discovery then selects the next eligible candidate or fails. It
+/// does not select identity authority.
 fn find_real_git() -> Option<PathBuf> {
     let self_canon = std::env::current_exe()
         .ok()
@@ -3208,7 +3213,20 @@ fn find_real_git() -> Option<PathBuf> {
                 continue;
             }
         }
-        return Some(candidate);
+        // Always return an absolute path: if the PATH entry was relative (e.g.
+        // `./real-bin`), the caller would otherwise hold a relative path and any
+        // downstream code that re-searches PATH by basename could select a
+        // different binary. Making the path absolute here is the single place
+        // where this invariant is established, regardless of how PATH was built.
+        let absolute = if candidate.is_absolute() {
+            candidate
+        } else {
+            match std::env::current_dir() {
+                Ok(cwd) => cwd.join(&candidate),
+                Err(_) => candidate,
+            }
+        };
+        return Some(absolute);
     }
     None
 }
@@ -8228,10 +8246,10 @@ mod tests {
     }
 
     /// A marker carried by a parent harness dir does not affect the same-path
-    /// case: when PATH is `[child_install_dir, ...]` and `child_install_dir`
-    /// holds the current executable, both the self-skip and the marker-skip
-    /// fire for that directory. The next entry without a marker is selected,
-    /// which (in production) is real git — same as before the fix.
+    /// case. In production, a child's own install directory carries both the
+    /// current executable (self-skip fires first and `continue`s before the
+    /// marker check) and the `.git-identity` marker. The next entry without a
+    /// marker is selected — same as before the fix.
     ///
     /// Also confirms no wrapper-to-wrapper recursion: with two marked dirs
     /// ahead of an unmarked dir, both are skipped and real git is returned.
@@ -8253,6 +8271,53 @@ mod tests {
             found.parent().unwrap().canonicalize().unwrap(),
             real_dir.canonicalize().unwrap(),
             "both marker-carrying dirs must be skipped; real git dir must be selected"
+        );
+    }
+
+    /// `find_real_git` returns an absolute path even when the PATH entry is
+    /// relative. Without the absolutize step the capability probe's re-search
+    /// would be reached for relative candidates and could select a different
+    /// binary. This is tested by mutation: removing the absolutize block causes
+    /// `find_real_git_skips_marker_directory_and_resolves_past_it` to return a
+    /// relative path (when tmpdir happens to have a relative prefix) and the
+    /// probe's fallback search fires — mutation RED. Restoring it is GREEN.
+    /// See /tmp/evidence-6177-r11/mutation-absolutize-{red,green}.txt.
+    #[cfg(unix)]
+    #[test]
+    fn find_real_git_returns_absolute_path_for_relative_entry() {
+        let (_real_td, real_dir) = make_stub_git_dir("real", false);
+
+        // Build a relative PATH entry: "./<dirname>" resolved against parent.
+        // This simulates a user who has `./bin` in their PATH.
+        let parent = real_dir.parent().unwrap().to_path_buf();
+        let dir_name = real_dir.file_name().unwrap();
+        let relative_entry = std::path::Path::new(".").join(dir_name);
+
+        // We need cwd == parent for the relative entry to resolve.  Use the
+        // ENV_LOCK (via TestEnv) to serialize; cwd mutation is kept local to
+        // this test via catch_unwind + restore in all exit paths.
+        let original_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&parent).unwrap();
+
+        let path = std::env::join_paths([&relative_entry]).unwrap();
+        let mut env = TestEnv::lock();
+        env.set("PATH", &path);
+
+        let found = find_real_git();
+
+        drop(env); // release ENV_LOCK before restoring cwd
+        std::env::set_current_dir(&original_cwd).unwrap();
+
+        let found = found.expect("find_real_git must find real git via relative entry");
+        assert!(
+            found.is_absolute(),
+            "find_real_git must return an absolute path for relative PATH entries; got {:?}",
+            found,
+        );
+        assert_eq!(
+            found.parent().unwrap().canonicalize().unwrap(),
+            real_dir.canonicalize().unwrap(),
+            "returned path must be inside real_dir"
         );
     }
 }
