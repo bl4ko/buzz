@@ -129,3 +129,19 @@ test("canonical: key order independent and stable", () => {
   );
   assert.equal(canonical({ a: undefined, b: 1 }), '{"b":1}');
 });
+
+test("inherited names are ordinary keys in either arrival order", () => {
+  const A = "a".repeat(16);
+  const one = { g: { constructor: [2, A, "recent"] } };
+  const two = { g: { toString: [3, A, "alpha"] } };
+  const ab = mergeTrees(mergeTrees({}, one), two);
+  const ba = mergeTrees(mergeTrees({}, two), one);
+  assert.equal(canonical(ab), canonical(ba));
+  assert.deepEqual(Object.keys(ab.g).sort(), ["constructor", "toString"]);
+  const set = setRegs({ g: {} }, [[["g", "constructor"], "alpha"]]);
+  assert.equal(set.g.constructor[2], "alpha");
+  const valid = validTree(JSON.parse(canonical(ab)), {
+    g: { "*": () => true },
+  });
+  assert.equal(canonical(valid), canonical(ab));
+});

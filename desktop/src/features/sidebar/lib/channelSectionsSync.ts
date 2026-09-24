@@ -19,8 +19,8 @@ export type SectionsView = {
 
 const val = (reg: unknown) => (isReg(reg) ? reg[2] : undefined);
 
-/** Live sections by `(order, id)`, densely renumbered. */
-function liveSections(tree: Tree): ChannelSection[] {
+/** Live sections by `(order, id)`, with their canonical `order`. */
+function rankedSections(tree: Tree) {
   const nodes = (tree.s ?? {}) as Record<string, SectionNode>;
   return Object.entries(nodes)
     .filter(([, n]) => val(n.live) === true && isString(val(n.name)))
@@ -32,12 +32,20 @@ function liveSections(tree: Tree): ChannelSection[] {
     }))
     .sort(
       (a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    )
-    .map(({ icon, ...s }, order) => ({
-      ...s,
-      ...(isString(icon) && icon ? { icon: icon as string } : {}),
-      order,
-    }));
+    );
+}
+
+/** Highest canonical `order` among live sections, or -1 when there are none. */
+export const maxLiveOrder = (tree: Tree) =>
+  Math.max(-1, ...rankedSections(tree).map((s) => s.order));
+
+/** Live sections, densely renumbered. */
+function liveSections(tree: Tree): ChannelSection[] {
+  return rankedSections(tree).map(({ icon, ...s }, order) => ({
+    ...s,
+    ...(isString(icon) && icon ? { icon: icon as string } : {}),
+    order,
+  }));
 }
 
 /** The sections and assignments older clients (and this UI) read. */
@@ -72,18 +80,23 @@ export const SECTIONS_LANE: Lane = {
   fromLegacy(json, stamp) {
     const store = parseChannelSectionPayload(json);
     if (!store) return null;
-    const s: Tree = {};
-    for (const { id, name, icon, order } of store.sections) {
-      s[id] = {
-        name: stamp(name),
-        icon: stamp(icon ?? null),
-        order: stamp(Math.round(order)),
-        live: stamp(true),
-      };
-    }
-    const a: Tree = {};
-    for (const [channelId, sectionId] of Object.entries(store.assignments))
-      a[channelId] = stamp(sectionId);
+    const s: Tree = Object.fromEntries(
+      store.sections.map(({ id, name, icon, order }) => [
+        id,
+        {
+          name: stamp(name),
+          icon: stamp(icon ?? null),
+          order: stamp(Math.round(order)),
+          live: stamp(true),
+        },
+      ]),
+    );
+    const a: Tree = Object.fromEntries(
+      Object.entries(store.assignments).map(([id, target]) => [
+        id,
+        stamp(target),
+      ]),
+    );
     return { s, a };
   },
   project: projectSections,

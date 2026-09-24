@@ -39,6 +39,16 @@ export function compareRegs(a: Reg, b: Reg): number {
 
 export const isReg = (node: unknown): node is Reg => Array.isArray(node);
 
+/** Own-property read: dynamic keys such as `constructor` never hit the prototype. */
+export const own = (node: Tree, key: string): Tree | Reg | undefined =>
+  Object.hasOwn(node, key) ? node[key] : undefined;
+
+/** True when no register (tombstones included) exists anywhere in `node`. */
+export const isEmptyTree = (node: Tree): boolean =>
+  Object.values(node).every(
+    (child) => child === undefined || (!isReg(child) && isEmptyTree(child)),
+  );
+
 /**
  * Merges `b` into `a`. With `onlyMissing`, `b` only fills leaves `a` lacks
  * (legacy import: omission never means deletion, and existing registers win).
@@ -47,7 +57,7 @@ export const isReg = (node: unknown): node is Reg => Array.isArray(node);
 export function mergeTrees<T extends Tree>(a: T, b: T, onlyMissing = false): T {
   let out: Tree | null = null;
   for (const [key, bv] of Object.entries(b)) {
-    const av = a[key];
+    const av = own(a, key);
     let next = av;
     if (av === undefined) next = bv;
     else if (bv === undefined) continue;
@@ -104,13 +114,13 @@ function getAt(tree: Tree, path: string[]): Tree | Reg | undefined {
   let node: Tree | Reg | undefined = tree;
   for (const key of path) {
     if (node === undefined || isReg(node)) return undefined;
-    node = node[key];
+    node = own(node, key);
   }
   return node;
 }
 
 function setAt(tree: Tree, [key, ...rest]: string[], reg: Reg): Tree {
-  const child = tree[key as string];
+  const child = own(tree, key as string);
   const next =
     rest.length === 0
       ? reg

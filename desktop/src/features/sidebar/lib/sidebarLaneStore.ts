@@ -1,5 +1,6 @@
 import {
   canonical,
+  isReg,
   LEGACY_DEV,
   mergeTrees,
   validTree,
@@ -37,17 +38,17 @@ export function decodeDoc(
   const { version, meta } = json as { version?: unknown; meta?: unknown };
   if (version !== 1) return null;
   if (meta === undefined) {
-    const tree = codec.fromLegacy(json, (value) => [
-      legacyV,
-      LEGACY_DEV,
-      value,
-    ]);
-    return tree ? { tree, legacy: true } : null;
+    // Validated like `meta`, so legacy keys obey the same own-key rules.
+    const tree = validTree(
+      codec.fromLegacy(json, (value) => [legacyV, LEGACY_DEV, value]),
+      codec.shape,
+    );
+    return tree && !isReg(tree) ? { tree, legacy: true } : null;
   }
   if ((meta as { v?: unknown } | null)?.v !== 1) return null;
   const { v: _v, ...fields } = meta as Record<string, unknown>;
   const tree = validTree(fields, codec.shape);
-  return tree && !Array.isArray(tree) ? { tree, legacy: false } : null;
+  return tree && !isReg(tree) ? { tree, legacy: false } : null;
 }
 
 export function encodeDoc(codec: LaneCodec, tree: Tree) {
@@ -103,12 +104,12 @@ export class LaneStore {
   };
 
   /**
-   * Applies `fn`. An unchanged tree (same reference) has no side effects
+   * Applies `fn`. A tree with unchanged canonical bytes has no side effects
    * beyond retrying an earlier failed write.
    */
   transact(fn: (tree: Tree) => Tree): void {
     const next = fn(this.tree);
-    if (next === this.tree) {
+    if (next === this.tree || canonical(next) === canonical(this.tree)) {
       this.persist();
       return;
     }

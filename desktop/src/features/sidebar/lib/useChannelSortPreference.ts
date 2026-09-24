@@ -7,7 +7,7 @@ import {
 } from "./channelSortPreference";
 import { SORT_LANE } from "./channelSortSync";
 import { useLaneSync } from "./sidebarLaneReconciler";
-import { isReg, setRegs } from "./sidebarLwwMap";
+import { isReg, own, setRegs } from "./sidebarLwwMap";
 
 /**
  * Persistent per-group sidebar sort preferences, scoped by pubkey + relay.
@@ -27,7 +27,7 @@ export function useChannelSortPreference(
 
   const sortModeFor = React.useCallback(
     (group: ChannelSortGroupKey) => {
-      const reg = (tree.g as Record<string, unknown> | undefined)?.[group];
+      const reg = tree.g && !isReg(tree.g) ? own(tree.g, group) : undefined;
       return isReg(reg) && reg[2] !== null
         ? (reg[2] as ChannelSortMode)
         : DEFAULT_SORT_MODE;

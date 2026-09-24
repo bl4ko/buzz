@@ -13,18 +13,26 @@ type PublishSession = {
   recoverSocketFailure: (error: unknown, fallback: string) => Error;
 };
 
-/** Publish once, with one reconnect retry, without crossing session ownership. */
+export const PUBLISH_CANCELED = "Relay publish canceled by its caller.";
+
+/**
+ * Publish once, with one reconnect retry, without crossing session ownership.
+ * `isCurrent`, when given, is checked immediately before every socket send; a
+ * false result rejects with `PUBLISH_CANCELED` and sends nothing.
+ */
 export async function publishSessionEvent(
   session: PublishSession,
   event: RelayEvent,
   timeoutMessage: string,
   sendErrorMessage: string,
+  isCurrent?: () => boolean,
 ): Promise<RelayEvent> {
   const publishOwnership = session.ownership();
   await waitForRateLimit();
   if (publishOwnership !== session.ownership()) {
     throw new Error("Relay disconnected for community switch.");
   }
+  if (isCurrent?.() === false) throw new Error(PUBLISH_CANCELED);
   const publishGeneration = session.generation();
 
   return new Promise<RelayEvent>((resolve, reject) => {
@@ -64,6 +72,12 @@ export async function publishSessionEvent(
             throw new Error(
               "Relay publish was superseded by a session change.",
             );
+          }
+          if (isCurrent?.() === false) {
+            window.clearTimeout(timeout);
+            session.pendingEvents.delete(event.id);
+            reject(new Error(PUBLISH_CANCELED));
+            return;
           }
           await session.send(["EVENT", event], retryGeneration);
         } catch (retryError) {

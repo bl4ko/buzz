@@ -26,9 +26,9 @@ export const SORT_LANE: Lane = {
   fromLegacy(json, stamp) {
     const store = parseChannelSortPayload(json);
     if (!store) return null;
-    const g: Tree = {};
-    for (const [key, mode] of Object.entries(store.groups))
-      g[key] = stamp(mode);
+    const g: Tree = Object.fromEntries(
+      Object.entries(store.groups).map(([key, mode]) => [key, stamp(mode)]),
+    );
     return { g };
   },
   project: projectSort,

@@ -14,7 +14,7 @@ import {
   LaneStore,
   type LaneCodec,
 } from "./sidebarLaneStore";
-import { canonical, type Tree } from "./sidebarLwwMap";
+import { canonical, isEmptyTree, type Tree } from "./sidebarLwwMap";
 import { advanceWatermark, readWatermark } from "./sidebarSyncWatermark";
 import { useStaleReaderRecovery } from "./useStaleReaderRecovery";
 
@@ -45,7 +45,8 @@ const beats = (a: RelayEvent, b: Head) =>
  * Converges one lane's local tree with its relay head. Publishes only when the
  * decoded head's canonical bytes differ from the local tree's, never over an
  * undecoded or unreadable head, and never over an absence after a head has
- * been seen in this scope (the watermark).
+ * been seen in this scope (the watermark). Every publish attempt waits for
+ * `notBefore` (edit debounce or failure backoff); reads and merges do not.
  */
 export class LaneReconciler {
   head: Head = { id: "", createdAt: 0, status: "unknown", digest: null };
@@ -53,6 +54,8 @@ export class LaneReconciler {
   private attempt: object | null = null;
   private recheck = false;
   private failures = 0;
+  private notBefore = 0;
+  private observations = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
@@ -80,6 +83,7 @@ export class LaneReconciler {
 
   /** Records a raw head; one that beats the current head holds publishing until decoded. */
   private observe(event: RelayEvent): void {
+    this.observations++;
     this.lastHead = Math.max(this.lastHead, event.created_at);
     advanceWatermark(
       this.pubkey,
@@ -119,18 +123,27 @@ export class LaneReconciler {
 
   /** One relay read. Throws on transport failure. */
   async read(): Promise<void> {
+    const seen = this.observations;
     const [event] = await relayClient.fetchEvents(this.filter(1));
     if (this.destroyed) return;
     if (event && event.pubkey === this.pubkey) return this.ingest(event);
-    // Absence: first copy for a genuinely new scope only.
-    if (this.head.status === "unknown" && this.lastHead === 0) {
-      this.head = { ...this.head, status: "empty" };
+    // Absence counts only if nothing was observed while it was in flight. It
+    // permits a first copy for a genuinely new scope; after a head has been
+    // seen it demotes the head and holds until a readable head returns.
+    if (seen === this.observations) {
+      const status = this.lastHead === 0 ? "empty" : "unknown";
+      this.head = { ...this.head, status, digest: null };
     }
     this.reconcile();
   }
 
   reconcile(): void {
     if (this.destroyed) return;
+    const wait = this.notBefore - Date.now();
+    if (wait > 0) {
+      this.wake(wait); // hold; re-read at the deadline
+      return;
+    }
     if (this.attempt) {
       this.recheck = true;
       return;
@@ -140,7 +153,7 @@ export class LaneReconciler {
     const tree = this.store.get();
     const settled =
       status === "empty"
-        ? Object.keys(tree).length === 0
+        ? isEmptyTree(tree)
         : digest === canonical(encodeDoc(this.lane, tree));
     if (settled) {
       this.failures = 0;
@@ -149,8 +162,8 @@ export class LaneReconciler {
     void this.runAttempt();
   }
 
-  /** Reconciles after the edit debounce (local edits coalesce). */
-  schedule(delay = DEBOUNCE_MS): void {
+  /** Re-reads after `delay`. Never shortens a publish hold (`defer`). */
+  wake(delay = 0): void {
     if (this.destroyed) return;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -159,12 +172,18 @@ export class LaneReconciler {
     }, delay);
   }
 
+  /** Holds publishing for at least `delay`; local edits coalesce behind it. */
+  defer(delay = DEBOUNCE_MS): void {
+    this.notBefore = Math.max(this.notBefore, Date.now() + delay);
+    this.wake(delay);
+  }
+
   private backoff(): void {
     const delay = BACKOFF_MS[
       Math.min(this.failures, BACKOFF_MS.length - 1)
     ] as number;
     this.failures++;
-    this.schedule(delay);
+    this.defer(delay);
   }
 
   private async runAttempt(): Promise<void> {
@@ -178,7 +197,7 @@ export class LaneReconciler {
       head = this.head;
       tree = this.store.get();
       const doc = encodeDoc(this.lane, tree);
-      const empty = head.status === "empty" && Object.keys(tree).length === 0;
+      const empty = head.status === "empty" && isEmptyTree(tree);
       if (head.status !== "empty" && head.status !== "decoded") {
         outcome = "settled"; // hold: the recovery cadence re-reads
         return;
@@ -192,7 +211,10 @@ export class LaneReconciler {
         return;
       }
       const dropped = () =>
-        this.destroyed || this.store.get() !== tree || this.head.id !== head.id;
+        this.destroyed ||
+        this.store.get() !== tree ||
+        this.head.id !== head.id ||
+        this.head.status !== head.status;
       const content = await nip44EncryptToSelf(JSON.stringify(doc));
       if (new TextEncoder().encode(content).length > MAX_CIPHERTEXT_BYTES) {
         outcome = "settled";
@@ -214,6 +236,7 @@ export class LaneReconciler {
           event,
           `Timed out publishing ${this.lane.dTag}.`,
           `Failed to publish ${this.lane.dTag}.`,
+          () => !dropped(), // checked again right before each socket send
         );
       } catch (error) {
         if (!String((error as Error)?.message).startsWith("duplicate:"))
@@ -235,7 +258,7 @@ export class LaneReconciler {
       this.recheck = false;
       // An ACK proves nothing about the head; verify with a read. Failures
       // (including stale drops) retry behind the backoff, never immediately.
-      if (outcome === "acked") this.schedule(0);
+      if (outcome === "acked") this.wake();
       else if (outcome === "failed") this.backoff();
       else if (recheck && (this.head !== head || this.store.get() !== tree)) {
         this.reconcile();
@@ -283,9 +306,7 @@ export function useLaneSync(
     let disposed = false;
     let unsubLive: (() => Promise<void>) | null = null;
     const detachTabs = store.attachCrossTab();
-    const unsubReconnect = relayClient.subscribeToReconnects(() =>
-      rec.schedule(0),
-    );
+    const unsubReconnect = relayClient.subscribeToReconnects(() => rec.wake());
     void relayClient
       .subscribeLive(rec.filter(0), (event) => {
         if (!disposed) void rec.ingest(event);
@@ -328,7 +349,7 @@ export function useLaneSync(
       if (!store) return;
       const before = store.get();
       store.transact(fn);
-      if (store.get() !== before) reconcilerRef.current?.schedule();
+      if (store.get() !== before) reconcilerRef.current?.defer();
     },
     [store],
   );

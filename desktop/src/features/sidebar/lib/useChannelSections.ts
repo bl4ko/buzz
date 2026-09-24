@@ -1,20 +1,32 @@
 import * as React from "react";
 
-import { projectSections, SECTIONS_LANE } from "./channelSectionsSync";
+import {
+  maxLiveOrder,
+  projectSections,
+  SECTIONS_LANE,
+} from "./channelSectionsSync";
 import { useLaneSync } from "./sidebarLaneReconciler";
-import { setRegs, type Tree } from "./sidebarLwwMap";
+import { own, setRegs, type Tree } from "./sidebarLwwMap";
 
 export type { ChannelSection } from "./channelSectionsStorage";
 
 import type { ChannelSection } from "./channelSectionsStorage";
 
-/** One whole-list order operation: every listed live section gets a new `order` register. */
-const writeOrder = (tree: Tree, orderedIds: string[]) =>
-  setRegs(
+/**
+ * One whole-list order operation against the current live list: dead IDs are
+ * dropped, live IDs missing from `requested` keep their relative order at the
+ * end, and every live section gets a new `order` register.
+ */
+function writeOrder(tree: Tree, requested: string[]) {
+  const live = projectSections(tree).sections.map((s) => s.id);
+  const wanted = new Set(requested.filter((id) => live.includes(id)));
+  const ids = [...wanted, ...live.filter((id) => !wanted.has(id))];
+  return setRegs(
     tree,
-    orderedIds.map((id, index) => [["s", id, "order"], index]),
+    ids.map((id, index) => [["s", id, "order"], index]),
     true,
   );
+}
 
 /**
  * Channel sections for one pubkey + relay scope, merged per field across
@@ -52,7 +64,7 @@ export function useChannelSections(
         return setRegs(prev, [
           [["s", id, "name"], name],
           [["s", id, "icon"], icon || null],
-          [["s", id, "order"], order],
+          [["s", id, "order"], maxLiveOrder(prev) + 1],
           [["s", id, "live"], true],
         ]);
       });
@@ -113,7 +125,7 @@ export function useChannelSections(
   const unassignChannel = React.useCallback(
     (channelId: string) =>
       edit((prev) =>
-        prev.a && (prev.a as Tree)[channelId]
+        prev.a && own(prev.a as Tree, channelId)
           ? setRegs(prev, [[["a", channelId], null]])
           : prev,
       ),

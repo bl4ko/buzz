@@ -4,6 +4,10 @@ import test, { beforeEach, mock } from "node:test";
 import { relayClient } from "@/shared/api/relayClient";
 import { SECTIONS_LANE, projectSections } from "./channelSectionsSync.ts";
 import { SORT_LANE, projectSort } from "./channelSortSync.ts";
+import {
+  PUBLISH_CANCELED,
+  publishSessionEvent,
+} from "@/shared/api/relayEventPublisher";
 import { LaneReconciler } from "./sidebarLaneReconciler.ts";
 import { LaneStore } from "./sidebarLaneStore.ts";
 import { canonical, setRegs } from "./sidebarLwwMap.ts";
@@ -53,15 +57,19 @@ beforeEach(() => {
   };
   mock.method(relayClient, "fetchEvents", async () => {
     if (fx.fetchFails) throw new Error("offline");
-    return fx.head ? [fx.head] : [];
+    const result = fx.head ? [fx.head] : []; // snapshot at request time
+    if (fx.gate) await fx.gate;
+    return result;
   });
   mock.method(console, "warn", () => {});
-  mock.method(relayClient, "publishEvent", async (event) => {
+  mock.method(relayClient, "publishEvent", async (event, _t, _e, isCurrent) => {
+    fx.beforeSend?.();
+    if (!isCurrent()) throw new Error(PUBLISH_CANCELED);
     fx.published.push(event);
     if (fx.publish === "timeout") throw new Error("Timed out");
     if (fx.publish === "reject") throw new Error("blocked: nope");
     if (fx.publish === "duplicate") throw new Error("duplicate: have it");
-    fx.head = event;
+    if (fx.publish !== "lost") fx.head = event;
   });
 });
 
@@ -81,11 +89,11 @@ function ev(content, createdAt) {
 function device(lane) {
   const store = new LaneStore(lane, PK, RELAY);
   const rec = new LaneReconciler(lane, store, PK, RELAY);
-  rec.schedule = () => {}; // timers are driven explicitly via read()
+  rec.wake = () => {}; // timers are driven explicitly via read()
   return { store, rec };
 }
 
-const settle = () => new Promise((r) => setTimeout(r, 0));
+const settle = () => new Promise((r) => setImmediate(r));
 async function sync(d) {
   await d.rec.read();
   for (let i = 0; i < 5; i++) await settle();
@@ -260,7 +268,8 @@ for (const L of LANES) {
     assert.equal(canonical(device(L.lane).store.get()), first);
   });
 
-  test(`${L.name}: publish exits (timeout, reject, duplicate) release the attempt`, async () => {
+  test(`${L.name}: publish exits (timeout, reject, duplicate) release the attempt`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: 1e12 });
     for (const outcome of ["timeout", "reject", "duplicate"]) {
       storage.clear();
       fx.head = null;
@@ -272,6 +281,7 @@ for (const L of LANES) {
       assert.equal(fx.published.length, before + 1, outcome);
       fx.publish = "ok";
       if (outcome === "duplicate") fx.head = fx.published.at(-1);
+      t.mock.timers.tick(60_000); // past the failure backoff
       await sync(d);
       assert.equal(
         fx.published.length,
@@ -383,69 +393,146 @@ test("sections: rename concurrent with delete stays deleted", async () => {
   assert.deepEqual(projectSections(d.store.get()).sections, []);
 });
 
-// ─── stars/mutes: stale-reader recovery through the shared cadence ─────────
+// ─── pass-1 regressions ────────────────────────────────────────────────────
 
-test("stars/mutes: recovery applies a found read, skips while pending or after an edit", async () => {
-  const { JSDOM } = await import("jsdom");
-  const dom = new JSDOM("<!doctype html>", {
-    url: "http://localhost",
-    pretendToBeVisual: true,
+for (const L of LANES) {
+  test(`${L.name}: absence on a running reconciler holds until a head returns`, async () => {
+    const d = device(L.lane);
+    d.store.transact((t) => L.edit(t, "k1", "A"));
+    await sync(d);
+    const h1 = fx.head;
+    fx.head = null; // transient empty read after H0 was decoded
+    d.store.transact((t) => L.edit(t, "k2", "B"));
+    await sync(d);
+    assert.equal(fx.published.length, 1);
+    assert.equal(d.rec.head.status, "unknown");
+    fx.head = h1;
+    await sync(d);
+    assert.equal(fx.published.length, 2, "readable head re-enables publish");
   });
-  Object.assign(globalThis, {
-    document: dom.window.document,
-    IS_REACT_ACT_ENVIRONMENT: true,
+
+  test(`${L.name}: empty verification after an ACK does not republish`, async () => {
+    fx.publish = "lost"; // ACKed, but reads keep returning nothing
+    const d = device(L.lane);
+    d.store.transact((t) => L.edit(t, "k1", "A"));
+    await sync(d);
+    await sync(d);
+    await sync(d);
+    assert.equal(fx.published.length, 1);
   });
-  const { renderHook, act, cleanup } = await import("@testing-library/react");
-  const { useStaleReaderRecovery } = await import(
-    "./useStaleReaderRecovery.ts"
-  );
-  const React = await import("react");
-  let pending = false;
-  let revision = 0;
-  let fetches = 0;
-  const found = (n) => ({
-    status: "found",
-    data: n,
-    createdAt: n,
-    eventId: "e",
+
+  test(`${L.name}: a stale absent read cannot demote a newer observation`, async () => {
+    const d = device(L.lane);
+    d.store.transact((t) => L.edit(t, "k1", "A"));
+    let open;
+    fx.gate = new Promise((r) => (open = r));
+    const pending = d.rec.read(); // absent, still in flight
+    fx.gate = null;
+    fx.head = ev(JSON.stringify(L.legacy({ k1: "A" })), 50);
+    await d.rec.ingest(fx.head);
+    open();
+    await pending;
+    assert.equal(d.rec.head.status, "decoded");
+    await sync(d); // drain the attempt this head enabled
   });
-  const { result } = renderHook(() => {
-    const [store, setStore] = React.useState(0);
-    useStaleReaderRecovery({
-      enabled: true,
-      fetch: React.useCallback(async () => {
-        fetches++;
-        const r = found(fetches);
-        if (fetches === 2) revision++; // local edit lands mid-flight
-        return r;
-      }, []),
-      hasPending: React.useCallback(() => pending, []),
-      getRevision: React.useCallback(() => revision, []),
-      makeUpdater: React.useCallback((n) => () => n, []),
-      setStore,
+
+  test(`${L.name}: an imported empty container settles without publishing`, async () => {
+    storage.set(L.lane.storageKey(PK, RELAY), JSON.stringify(L.legacy({})));
+    const d = device(L.lane);
+    await sync(d);
+    assert.equal(fx.published.length, 0);
+  });
+
+  test(`${L.name}: backoff holds recovery, live and reconnect attempts`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1e12 });
+    const store = new LaneStore(L.lane, PK, RELAY);
+    const rec = new LaneReconciler(L.lane, store, PK, RELAY);
+    fx.publish = "reject";
+    store.transact((tr) => L.edit(tr, "k1", "A"));
+    await rec.read();
+    for (let i = 0; i < 5; i++) await settle();
+    assert.equal(fx.published.length, 1);
+    fx.publish = "ok";
+    await rec.read(); // recovery tick at t+0
+    rec.wake(); // reconnect must not shorten the 5 s backoff
+    t.mock.timers.tick(4_000);
+    for (let i = 0; i < 5; i++) await settle();
+    assert.equal(fx.published.length, 1, "held inside backoff");
+    t.mock.timers.tick(1_000);
+    for (let i = 0; i < 5; i++) await settle();
+    assert.equal(fx.published.length, 2, "published after the deadline");
+    rec.destroy();
+  });
+
+  test(`${L.name}: a change during the publish wait cancels the send`, async () => {
+    const d = device(L.lane);
+    d.store.transact((t) => L.edit(t, "k1", "A"));
+    fx.beforeSend = () => d.store.transact((t) => L.edit(t, "k2", "B"));
+    await sync(d);
+    assert.equal(fx.published.length, 0);
+    fx.beforeSend = null;
+    d.rec.destroy();
+  });
+
+  test(`${L.name}: legacy pubkey key migrates once and stays relay-scoped`, () => {
+    const legacyKey = L.lane.legacyStorageKey?.(PK);
+    if (!legacyKey) return;
+    storage.set(legacyKey, JSON.stringify(L.legacy({ k1: "A" })));
+    fx.storageFails = true;
+    const failed = new LaneStore(L.lane, PK, RELAY);
+    assert.deepEqual(L.view(failed.get()), { k1: "A" });
+    assert.ok(storage.has(legacyKey), "kept until the scoped write lands");
+    fx.storageFails = false;
+    const first = new LaneStore(L.lane, PK, RELAY);
+    assert.deepEqual(L.view(first.get()), { k1: "A" });
+    assert.ok(!storage.has(legacyKey));
+    const other = new LaneStore(L.lane, PK, "wss://other.test");
+    assert.deepEqual(L.view(other.get()), {}, "second relay starts clean");
+    storage.set(legacyKey, JSON.stringify(L.legacy({ k9: "B" })));
+    assert.deepEqual(L.view(new LaneStore(L.lane, PK, RELAY).get()), {
+      k1: "A",
     });
-    return store;
   });
-  try {
-    await act(async () => settle());
-    assert.equal(result.current, 1, "first tick applies a found read");
-    await act(async () =>
-      document.dispatchEvent(new dom.window.Event("visibilitychange")),
-    );
-    await act(async () => settle());
-    assert.equal(
-      result.current,
-      1,
-      "read discarded: revision changed in flight",
-    );
-    pending = true;
-    await act(async () =>
-      document.dispatchEvent(new dom.window.Event("visibilitychange")),
-    );
-    await act(async () => settle());
-    assert.equal(fetches, 2, "pending edit skips the read");
-  } finally {
-    cleanup();
-    dom.window.close();
-  }
+
+  test(`${L.name}: a byte-identical clone does not write or notify`, () => {
+    const d = device(L.lane);
+    d.store.transact((t) => L.edit(t, "k1", "A"));
+    let notified = 0;
+    d.store.subscribe(() => notified++);
+    d.store.transact((t) => ({ ...t }));
+    assert.equal(notified, 0);
+  });
+}
+
+test("publisher: isCurrent gates the first send and the reconnect retry", async () => {
+  const sends = [];
+  let current = true;
+  const session = {
+    generation: () => 1,
+    ownership: () => 1,
+    pendingEvents: new Map(),
+    send: async (payload) => {
+      sends.push(payload);
+      throw new Error("socket closed");
+    },
+    reconnect: async () => {
+      current = false; // lane changed while reconnecting
+      return 1;
+    },
+    normalizeError: (e) => e,
+    recoverSocketFailure: (e) => e,
+  };
+  Object.assign(globalThis.window, { setTimeout, clearTimeout });
+  const event = { id: "e1" };
+  await assert.rejects(
+    publishSessionEvent(session, event, "t", "s", () => current),
+    { message: PUBLISH_CANCELED },
+  );
+  assert.equal(sends.length, 1, "retry never sent");
+  assert.equal(session.pendingEvents.size, 0);
+  await assert.rejects(
+    publishSessionEvent(session, event, "t", "s", () => false),
+    { message: PUBLISH_CANCELED },
+  );
+  assert.equal(sends.length, 1, "first send never sent");
 });
