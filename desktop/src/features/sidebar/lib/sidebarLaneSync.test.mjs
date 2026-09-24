@@ -48,6 +48,7 @@ beforeEach(() => {
       if (cmd === "nip44_encrypt_to_self") return args.plaintext;
       if (cmd === "nip44_decrypt_from_self") {
         if (fx.badDecrypt.has(args.ciphertext)) throw new Error("bad");
+        if (fx.holdDecrypt && --fx.holdAfter < 0) await fx.holdDecrypt;
         return args.ciphertext;
       }
       if (cmd === "sign_event")
@@ -233,16 +234,6 @@ for (const L of LANES) {
     });
   });
 
-  test(`${L.name}: missed live event recovered by the cadence read`, async () => {
-    const a = device(L.lane);
-    const b = device(L.lane);
-    await sync(b);
-    a.store.transact((t) => L.edit(t, "k1", "Y"));
-    await sync(a); // b never receives the live event
-    await sync(b); // 60 s recovery read
-    assert.deepEqual(L.view(b.store.get()), L.view(a.store.get()));
-  });
-
   test(`${L.name}: old writer without meta adds items but cannot delete`, async () => {
     const a = device(L.lane);
     a.store.transact((t) => L.edit(t, "k1", "A"));
@@ -291,13 +282,62 @@ for (const L of LANES) {
     }
   });
 
-  test(`${L.name}: preflight failure publishes nothing and recovers`, async () => {
+  test(`${L.name}: preflight failure inside an attempt backs off, then recovers`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: 1e12 });
     const d = device(L.lane);
-    d.store.transact((t) => L.edit(t, "k1", "A"));
-    fx.fetchFails = true;
-    await assert.rejects(d.rec.read());
+    d.store.transact((tr) => L.edit(tr, "k2", "B"));
+    fx.fetchFails = true; // the attempt's own preflight read fails
+    await d.rec.ingest(ev(JSON.stringify(L.legacy({ k1: "A" })), 100));
+    for (let i = 0; i < 5; i++) await settle();
     assert.equal(fx.published.length, 0);
     fx.fetchFails = false;
+    fx.head = ev(JSON.stringify(L.legacy({ k1: "A" })), 100);
+    await sync(d);
+    assert.equal(fx.published.length, 0, "held by the backoff");
+    t.mock.timers.tick(5_000);
+    await sync(d);
+    assert.equal(fx.published.length, 1);
+  });
+
+  test(`${L.name}: a stale preflight decode cannot undo a newer absence`, async () => {
+    const h0 = ev(JSON.stringify(L.legacy({ k1: "A" })), 100);
+    const d = device(L.lane);
+    d.store.transact((t) => L.edit(t, "k2", "B"));
+    let release;
+    fx.holdDecrypt = new Promise((r) => (release = r));
+    fx.holdAfter = 1; // the attempt's preflight decode of H0 waits
+    fx.head = h0;
+    void d.rec.ingest(h0);
+    for (let i = 0; i < 5; i++) await settle();
+    fx.head = null;
+    await d.rec.read(); // recovery read during the acquired attempt
+    release();
+    for (let i = 0; i < 5; i++) await settle();
+    assert.equal(fx.published.length, 0);
+    assert.equal(d.rec.head.status, "unknown");
+    fx.holdDecrypt = null;
+    fx.head = h0;
+    await sync(d);
+    assert.equal(fx.published.length, 1, "a later readable head re-enables");
+  });
+
+  test(`${L.name}: an edit during preflight holds the send to its deadline`, async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: 1e12 });
+    const h0 = ev(JSON.stringify(L.legacy({ k1: "A" })), 100);
+    const d = device(L.lane);
+    d.store.transact((tr) => L.edit(tr, "k2", "B"));
+    let open;
+    fx.gate = new Promise((r) => (open = r));
+    fx.head = h0;
+    void d.rec.ingest(h0); // attempt acquired; preflight fetch waits
+    for (let i = 0; i < 5; i++) await settle();
+    d.store.transact((tr) => L.edit(tr, "k3", "A"));
+    d.rec.defer();
+    fx.gate = null;
+    open();
+    for (let i = 0; i < 5; i++) await settle();
+    assert.equal(fx.published.length, 0);
+    t.mock.timers.tick(2_000);
     await sync(d);
     assert.equal(fx.published.length, 1);
   });
@@ -333,25 +373,6 @@ for (const L of LANES) {
       storage.get(L.lane.storageKey(PK, RELAY)).length > 1000,
       "kept durable locally",
     );
-  });
-
-  test(`${L.name}: failed persistence stays dirty and retries`, async () => {
-    const d = device(L.lane);
-    fx.storageFails = true;
-    d.store.transact((t) => L.edit(t, "k1", "A"));
-    assert.equal(storage.size, 0);
-    fx.storageFails = false;
-    d.store.persist();
-    assert.ok(storage.has(L.lane.storageKey(PK, RELAY)));
-  });
-
-  test(`${L.name}: identical transaction has no side effects`, () => {
-    const d = device(L.lane);
-    d.store.transact((t) => L.edit(t, "k1", "A"));
-    let notified = 0;
-    d.store.subscribe(() => notified++);
-    d.store.transact((t) => L.edit(t, "k1", "A"));
-    assert.equal(notified, 0);
   });
 
   test(`${L.name}: destroyed reconciler never publishes`, async () => {
@@ -483,8 +504,7 @@ for (const L of LANES) {
     assert.deepEqual(L.view(failed.get()), { k1: "A" });
     assert.ok(storage.has(legacyKey), "kept until the scoped write lands");
     fx.storageFails = false;
-    const first = new LaneStore(L.lane, PK, RELAY);
-    assert.deepEqual(L.view(first.get()), { k1: "A" });
+    failed.persist(); // same store, e.g. the next recovery tick
     assert.ok(!storage.has(legacyKey));
     const other = new LaneStore(L.lane, PK, "wss://other.test");
     assert.deepEqual(L.view(other.get()), {}, "second relay starts clean");
@@ -492,6 +512,28 @@ for (const L of LANES) {
     assert.deepEqual(L.view(new LaneStore(L.lane, PK, RELAY).get()), {
       k1: "A",
     });
+  });
+
+  test(`${L.name}: two tabs converge and go quiet`, () => {
+    const handlers = [];
+    window.addEventListener = (_type, h) => handlers.push(h);
+    const tabs = [0, 1].map(() => new LaneStore(L.lane, PK, RELAY));
+    for (const tab of tabs) tab.attachCrossTab();
+    window.addEventListener = () => {};
+    const key = L.lane.storageKey(PK, RELAY);
+    const deliver = (to) =>
+      handlers[to]({ key, newValue: storage.get(key) ?? null });
+    tabs[0].transact((t) => L.edit(t, "k1", "A"));
+    const lost = storage.get(key);
+    tabs[1].transact((t) => L.edit(t, "k2", "B")); // overwrites tab 0's write
+    handlers[1]({ key, newValue: lost });
+    deliver(0);
+    const settled = storage.get(key);
+    deliver(0);
+    deliver(1);
+    assert.equal(storage.get(key), settled, "no further writes");
+    assert.deepEqual(L.view(tabs[0].get()), { k1: "A", k2: "B" });
+    assert.equal(canonical(tabs[0].get()), canonical(tabs[1].get()));
   });
 
   test(`${L.name}: a byte-identical clone does not write or notify`, () => {
@@ -503,6 +545,36 @@ for (const L of LANES) {
     assert.equal(notified, 0);
   });
 }
+
+test("publisher: validity lost during a rate-limit wait sends nothing", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  Object.assign(globalThis.window, { setTimeout, clearTimeout });
+  const { activateRateLimit, resetRateLimitGate } = await import(
+    "@/shared/api/relayRateLimitGate"
+  );
+  const sends = [];
+  const session = {
+    generation: () => 1,
+    ownership: () => 1,
+    pendingEvents: new Map(),
+    send: async (payload) => sends.push(payload),
+  };
+  let current = true;
+  activateRateLimit(1);
+  const sent = publishSessionEvent(
+    session,
+    { id: "e" },
+    "t",
+    "s",
+    () => current,
+  );
+  current = false;
+  t.mock.timers.tick(1_000);
+  await assert.rejects(sent, { message: PUBLISH_CANCELED });
+  assert.equal(sends.length, 0);
+  assert.equal(session.pendingEvents.size, 0, "no pending entry or timer");
+  resetRateLimitGate();
+});
 
 test("publisher: isCurrent gates the first send and the reconnect retry", async () => {
   const sends = [];

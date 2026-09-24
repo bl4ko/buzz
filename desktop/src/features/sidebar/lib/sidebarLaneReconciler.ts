@@ -104,6 +104,7 @@ export class LaneReconciler {
   async ingest(event: RelayEvent): Promise<void> {
     if (event.pubkey !== this.pubkey) return;
     this.observe(event);
+    const mine = this.observations;
     let json: unknown = null;
     try {
       json = JSON.parse(await nip44DecryptFromSelf(event.content));
@@ -113,7 +114,9 @@ export class LaneReconciler {
     if (this.destroyed) return;
     const doc = decodeDoc(this.lane, json, event.created_at * 1_000);
     if (doc) this.store.merge(doc.tree, doc.legacy);
-    if (this.head.id === event.id) {
+    // Only the newest observation (event or absence) may set eligibility; a
+    // stale decode still merges its content above.
+    if (this.head.id === event.id && this.observations === mine) {
       this.head = doc
         ? { ...this.head, status: "decoded", digest: canonical(json) }
         : { ...this.head, status: "unreadable", digest: null };
@@ -131,6 +134,7 @@ export class LaneReconciler {
     // permits a first copy for a genuinely new scope; after a head has been
     // seen it demotes the head and holds until a readable head returns.
     if (seen === this.observations) {
+      this.observations++;
       const status = this.lastHead === 0 ? "empty" : "unknown";
       this.head = { ...this.head, status, digest: null };
     }
@@ -190,12 +194,14 @@ export class LaneReconciler {
     const token = {};
     this.attempt = token;
     let outcome: "settled" | "acked" | "failed" = "failed";
+    const held = () => Date.now() < this.notBefore;
     let head = this.head;
     let tree: Tree = this.store.get();
     try {
       await this.read(); // preflight: merge the current head first
       head = this.head;
       tree = this.store.get();
+      if (held()) return; // a deadline arrived during preflight
       const doc = encodeDoc(this.lane, tree);
       const empty = head.status === "empty" && isEmptyTree(tree);
       if (head.status !== "empty" && head.status !== "decoded") {
@@ -212,6 +218,7 @@ export class LaneReconciler {
       }
       const dropped = () =>
         this.destroyed ||
+        held() ||
         this.store.get() !== tree ||
         this.head.id !== head.id ||
         this.head.status !== head.status;
@@ -259,6 +266,8 @@ export class LaneReconciler {
       // An ACK proves nothing about the head; verify with a read. Failures
       // (including stale drops) retry behind the backoff, never immediately.
       if (outcome === "acked") this.wake();
+      else if (outcome === "failed" && held())
+        this.wake(this.notBefore - Date.now()); // deadline kept; no retry now
       else if (outcome === "failed") this.backoff();
       else if (recheck && (this.head !== head || this.store.get() !== tree)) {
         this.reconcile();

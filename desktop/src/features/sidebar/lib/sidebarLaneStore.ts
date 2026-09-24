@@ -63,6 +63,8 @@ export function encodeDoc(codec: LaneCodec, tree: Tree) {
 export class LaneStore {
   private tree: Tree = {};
   private dirty = false;
+  /** Pre-relay-scoping key to remove once the scoped copy is durable. */
+  private legacyKey: string | undefined;
   private listeners = new Set<() => void>();
   private readonly key: string;
 
@@ -78,13 +80,8 @@ export class LaneStore {
     if (!doc) return;
     this.tree = doc.tree;
     this.dirty = doc.legacy;
-    if (this.persist() && legacyKey && this.readRaw(this.key) !== undefined) {
-      try {
-        window.localStorage.removeItem(legacyKey);
-      } catch {
-        // The scoped copy exists; a stale legacy key is harmless.
-      }
-    }
+    this.legacyKey = legacyKey;
+    this.persist();
   }
 
   private readRaw(key: string | undefined): unknown {
@@ -123,17 +120,23 @@ export class LaneStore {
     this.transact((tree) => mergeTrees(tree, remote, onlyMissing));
   }
 
-  /** Writes the tree if an earlier write failed or is outstanding. */
+  /**
+   * Writes the tree if an earlier write failed or is outstanding, then retires
+   * the legacy key once the scoped copy is durable. Both retry on later calls.
+   */
   persist(): boolean {
-    if (!this.dirty) return true;
     try {
-      window.localStorage.setItem(
-        this.key,
-        canonical(encodeDoc(this.codec, this.tree)),
-      );
-      this.dirty = false;
+      if (this.dirty) {
+        const raw = canonical(encodeDoc(this.codec, this.tree));
+        window.localStorage.setItem(this.key, raw);
+        this.dirty = false;
+      }
+      if (this.legacyKey && this.readRaw(this.key) !== undefined) {
+        window.localStorage.removeItem(this.legacyKey);
+        this.legacyKey = undefined;
+      }
     } catch {
-      // Stays dirty; retried on the next transaction or recovery tick.
+      // Stays pending; retried on the next transaction or recovery tick.
     }
     return !this.dirty;
   }

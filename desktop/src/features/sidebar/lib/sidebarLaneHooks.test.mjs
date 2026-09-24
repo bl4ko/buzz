@@ -138,13 +138,17 @@ test("sections hook: 60 s tick, reconnect, cross-tab, pending edit and in-flight
   const names = () => result.current.sections.map((s) => s.name);
   assert.deepEqual(names(), ["a"]);
 
-  // Missed live event: the steady cadence (5+10+30+60) picks it up.
+  // Missed live event after the back-off reached 60 s (ticks at 5/15/45 s):
+  // only the steady tick at 105 s picks it up.
+  await advance(45_000);
   fx.heads["channel-sections"] = ev(
     "channel-sections",
     legacy(["a", "b"]),
     200,
   );
-  await advance(105_000);
+  await advance(58_000);
+  assert.deepEqual(names(), ["a"], "not yet: no tick before 105 s");
+  await advance(2_000);
   assert.deepEqual(names(), ["a", "b"]);
 
   // Reconnect re-reads.
