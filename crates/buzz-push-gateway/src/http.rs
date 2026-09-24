@@ -618,8 +618,8 @@ async fn revoke_installation(State(s): State<AppState>, body: Bytes) -> Response
     }
 }
 
-// The listener is HTTP. TLS-terminating ingress must overwrite X-Forwarded-Proto
-// and preserve the request authority. Direct mesh callers use HTTP without it.
+// A forwarding proxy must overwrite X-Forwarded-Proto with the original scheme
+// and preserve the request authority.
 // Forwarded and X-Forwarded-Host are deliberately not alternate URL sources.
 fn delivery_request_url(uri: &Uri, headers: &HeaderMap) -> Option<url::Url> {
     let mut forwarded_proto = headers.get_all("x-forwarded-proto").iter();

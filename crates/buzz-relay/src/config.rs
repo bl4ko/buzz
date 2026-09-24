@@ -346,8 +346,7 @@ pub struct Config {
     pub push_enabled: bool,
     /// Descriptor key identifier accepted in kind:30350 `exec` tags.
     pub push_executor_key_id: String,
-    /// Exact gateway endpoint used to sign and submit APNs delivery capabilities.
-    /// Use HTTPS externally, or HTTP only over an authenticated service mesh.
+    /// Exact HTTP(S) gateway endpoint used to sign and submit APNs delivery capabilities.
     /// Required while push is enabled. An explicitly empty setting is allowed
     /// only while push is disabled.
     pub push_gateway_delivery_url: Option<url::Url>,
@@ -464,7 +463,7 @@ fn parse_push_gateway_delivery_url(raw: &str) -> Result<url::Url, ConfigError> {
         || url.fragment().is_some()
     {
         return Err(ConfigError::InvalidValue(
-            "BUZZ_PUSH_GATEWAY_DELIVERY_URL must be an exact HTTPS or internal HTTP /v1/deliveries/apns URL without credentials, query, or fragment; explicit ports are supported only for HTTP"
+            "BUZZ_PUSH_GATEWAY_DELIVERY_URL must be an exact HTTP(S) /v1/deliveries/apns URL without credentials, query, or fragment; explicit ports are supported only for HTTP"
                 .to_string(),
         ));
     }
@@ -2260,10 +2259,12 @@ mod tests {
     #[test]
     fn push_gateway_url_is_exact_and_fail_closed() {
         assert!(parse_push_gateway_delivery_url("https://push.example/v1/deliveries/apns").is_ok());
-        let internal = "http://push-gateway.gateway.svc.cluster.local:8080/v1/deliveries/apns";
+        let delivery_url = "http://push.example:8080/v1/deliveries/apns";
         assert_eq!(
-            parse_push_gateway_delivery_url(internal).unwrap().as_str(),
-            internal
+            parse_push_gateway_delivery_url(delivery_url)
+                .unwrap()
+                .as_str(),
+            delivery_url
         );
         assert!(parse_push_gateway_delivery_url("http://push-gateway/v1/deliveries/apns").is_ok());
         for invalid in [

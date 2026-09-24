@@ -27,8 +27,8 @@ use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const INTERNAL: &str = "http://push-gateway.gateway.svc.cluster.local:8080/v1/deliveries/apns";
-const EXTERNAL: &str = "https://push.example/v1/deliveries/apns";
+const DIRECT_URL: &str = "http://push.example:8080/v1/deliveries/apns";
+const FORWARDED_URL: &str = "https://push.example/v1/deliveries/apns";
 
 struct TestTransport(Arc<AtomicUsize>);
 #[async_trait::async_trait]
@@ -156,8 +156,8 @@ fn request(url: &str, proto: Option<&str>, auth: String, body: Vec<u8>) -> Reque
 }
 
 #[tokio::test]
-async fn internal_http_and_external_https_deliver_using_request_url() {
-    for (url, proto) in [(INTERNAL, None), (EXTERNAL, Some("https"))] {
+async fn direct_and_forwarded_requests_deliver_using_request_url() {
+    for (url, proto) in [(DIRECT_URL, None), (FORWARDED_URL, Some("https"))] {
         let (app, keys, body, sends) = fixture().await;
         let auth = signed_header(&keys, url, "POST", &body);
         let response = app.oneshot(request(url, proto, auth, body)).await.unwrap();
@@ -169,8 +169,8 @@ async fn internal_http_and_external_https_deliver_using_request_url() {
 #[tokio::test]
 async fn absolute_request_authority_is_supported() {
     let (app, keys, body, sends) = fixture().await;
-    let auth = signed_header(&keys, INTERNAL, "POST", &body);
-    let request = Request::post(INTERNAL)
+    let auth = signed_header(&keys, DIRECT_URL, "POST", &body);
+    let request = Request::post(DIRECT_URL)
         .header("authorization", auth)
         .body(Body::from(body))
         .unwrap();
@@ -181,29 +181,21 @@ async fn absolute_request_authority_is_supported() {
 #[tokio::test]
 async fn signature_is_bound_to_received_url_method_and_body() {
     for (signed_url, method, changed_body) in [
-        (EXTERNAL, "POST", false),
+        (FORWARDED_URL, "POST", false),
         (
-            "http://other.gateway.svc.cluster.local:8080/v1/deliveries/apns",
+            "http://other.example:8080/v1/deliveries/apns",
             "POST",
             false,
         ),
+        ("http://push.example:8081/v1/deliveries/apns", "POST", false),
         (
-            "http://push-gateway.gateway.svc.cluster.local:8081/v1/deliveries/apns",
+            "https://push.example:8080/v1/deliveries/apns",
             "POST",
             false,
         ),
-        (
-            "https://push-gateway.gateway.svc.cluster.local:8080/v1/deliveries/apns",
-            "POST",
-            false,
-        ),
-        (
-            "http://push-gateway.gateway.svc.cluster.local:8080/v1/other",
-            "POST",
-            false,
-        ),
-        (INTERNAL, "GET", false),
-        (INTERNAL, "POST", true),
+        ("http://push.example:8080/v1/other", "POST", false),
+        (DIRECT_URL, "GET", false),
+        (DIRECT_URL, "POST", true),
     ] {
         let (app, keys, mut body, sends) = fixture().await;
         let auth = signed_header(&keys, signed_url, method, &body);
@@ -211,7 +203,7 @@ async fn signature_is_bound_to_received_url_method_and_body() {
             body.push(b' ');
         }
         let response = app
-            .oneshot(request(INTERNAL, None, auth, body))
+            .oneshot(request(DIRECT_URL, None, auth, body))
             .await
             .unwrap();
         assert_eq!(
@@ -225,8 +217,8 @@ async fn signature_is_bound_to_received_url_method_and_body() {
 
 #[tokio::test]
 async fn query_is_part_of_received_url() {
-    let with_query = format!("{INTERNAL}?mode=one");
-    for signed_url in [INTERNAL, with_query.as_str()] {
+    let with_query = format!("{DIRECT_URL}?mode=one");
+    for signed_url in [DIRECT_URL, with_query.as_str()] {
         let (app, keys, body, sends) = fixture().await;
         let auth = signed_header(&keys, signed_url, "POST", &body);
         let response = app
@@ -250,9 +242,9 @@ async fn query_is_part_of_received_url() {
 async fn invalid_forwarded_scheme_is_rejected() {
     for proto in ["ftp", "https,http", ""] {
         let (app, keys, body, sends) = fixture().await;
-        let auth = signed_header(&keys, EXTERNAL, "POST", &body);
+        let auth = signed_header(&keys, FORWARDED_URL, "POST", &body);
         let response = app
-            .oneshot(request(EXTERNAL, Some(proto), auth, body))
+            .oneshot(request(FORWARDED_URL, Some(proto), auth, body))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -263,8 +255,8 @@ async fn invalid_forwarded_scheme_is_rejected() {
 #[tokio::test]
 async fn repeated_forwarded_scheme_is_rejected() {
     let (app, keys, body, sends) = fixture().await;
-    let auth = signed_header(&keys, EXTERNAL, "POST", &body);
-    let mut request = request(EXTERNAL, Some("https"), auth, body);
+    let auth = signed_header(&keys, FORWARDED_URL, "POST", &body);
+    let mut request = request(FORWARDED_URL, Some("https"), auth, body);
     request
         .headers_mut()
         .append("x-forwarded-proto", "https".parse().unwrap());
@@ -278,8 +270,8 @@ async fn repeated_forwarded_scheme_is_rejected() {
 #[tokio::test]
 async fn alternate_forwarded_headers_do_not_replace_request_authority() {
     let (app, keys, body, sends) = fixture().await;
-    let auth = signed_header(&keys, INTERNAL, "POST", &body);
-    let mut request = request(INTERNAL, None, auth, body);
+    let auth = signed_header(&keys, DIRECT_URL, "POST", &body);
+    let mut request = request(DIRECT_URL, None, auth, body);
     request
         .headers_mut()
         .insert("x-forwarded-host", "other.example".parse().unwrap());
