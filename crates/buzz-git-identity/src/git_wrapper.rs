@@ -3164,8 +3164,12 @@ fn scrub_env(cmd: &mut std::process::Command) {
 }
 
 /// Locate the real `git`: the first PATH entry whose `git` does not resolve back
-/// to this binary (the wrapper symlink). Canonicalization defeats the symlink so
-/// we never exec ourselves.
+/// to this binary (the wrapper symlink) and whose directory does not carry a
+/// `.git-identity` marker. Canonicalization defeats the symlink so we never exec
+/// ourselves. The marker check skips any other Buzz wrapper installation (a
+/// nested parent or child harness) — a directory that holds `.git-identity` is
+/// always a Buzz wrapper dir, never a system git directory. A planted marker can
+/// only cause the planter's own resolution to fail; it cannot redirect identity.
 fn find_real_git() -> Option<PathBuf> {
     let self_canon = std::env::current_exe()
         .ok()
@@ -3180,6 +3184,19 @@ fn find_real_git() -> Option<PathBuf> {
         let cand_canon = candidate.canonicalize().ok();
         if cand_canon.is_some() && cand_canon == self_canon {
             continue; // this is our own wrapper symlink
+        }
+        // Skip any other Buzz wrapper installation (parent or child harness).
+        // The `.git-identity` marker is present in every Buzz wrapper dir and
+        // is absent from system git directories, so this is safe to use as a
+        // discriminator. `symlink_metadata` succeeds for regular files,
+        // directories, and dangling symlinks alike — any inspectable object
+        // with that name is a marker.
+        if dir
+            .join(crate::IDENTITY_MANIFEST_NAME)
+            .symlink_metadata()
+            .is_ok()
+        {
+            continue;
         }
         #[cfg(unix)]
         {
@@ -8140,6 +8157,102 @@ mod tests {
         assert!(
             !windows_pid_alive(descendant_pid),
             "descendant {descendant_pid} must be job-killed on timeout, but it is still alive"
+        );
+    }
+
+    // ── find_real_git: marker-based wrapper skip ──────────────────────────────
+    //
+    // `find_real_git` must skip every directory that carries a `.git-identity`
+    // marker, not just its own install dir. This closes the nested-agent case:
+    // when a child harness has a parent harness's wrapper dir ahead of real git
+    // on PATH, the parent dir carries the marker and is skipped, so real git is
+    // resolved correctly.
+
+    /// Build a directory containing an executable `git` stub that prints a
+    /// one-line identifier on stdout, plus optionally a `.git-identity` marker
+    /// file. Returns the tempdir (kept alive) and the dir path.
+    #[cfg(unix)]
+    fn make_stub_git_dir(id: &str, with_marker: bool) -> (tempfile::TempDir, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let td = tempfile::tempdir().unwrap();
+        let dir = td.path().to_path_buf();
+        let git = dir.join("git");
+        std::fs::write(&git, format!("#!/bin/sh\necho {id}\n")).unwrap();
+        std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if with_marker {
+            std::fs::write(dir.join(crate::IDENTITY_MANIFEST_NAME), b"stub\n").unwrap();
+        }
+        (td, dir)
+    }
+
+    /// `find_real_git` skips a directory carrying `.git-identity` and resolves
+    /// to the next directory on PATH that does not carry the marker.
+    ///
+    /// This is the distinct-executable-path nested-agent case: the parent
+    /// harness's wrapper dir (with marker) is on PATH ahead of the real git
+    /// dir (no marker). `find_real_git` must skip the former and return a
+    /// path inside the latter.
+    #[cfg(unix)]
+    #[test]
+    fn find_real_git_skips_marker_directory_and_resolves_past_it() {
+        let (_wrapper_td, wrapper_dir) = make_stub_git_dir("wrapper", true);
+        let (_real_td, real_dir) = make_stub_git_dir("real", false);
+
+        // PATH: [wrapper_dir (has marker), real_dir (no marker)]
+        let path = std::env::join_paths([&wrapper_dir, &real_dir]).unwrap();
+        let mut env = TestEnv::lock();
+        env.set("PATH", &path);
+
+        let found = find_real_git().expect("find_real_git must find real git past the marked dir");
+        // The resolved path must be inside real_dir, not wrapper_dir.
+        assert_eq!(
+            found.parent().unwrap().canonicalize().unwrap(),
+            real_dir.canonicalize().unwrap(),
+            "find_real_git must skip the marker-carrying wrapper dir"
+        );
+
+        // Mutation verification: removing the marker makes the wrapper dir the
+        // first match again.
+        std::fs::remove_file(wrapper_dir.join(crate::IDENTITY_MANIFEST_NAME)).unwrap();
+        let found_after_removal =
+            find_real_git().expect("find_real_git must find git after marker removal");
+        assert_eq!(
+            found_after_removal
+                .parent()
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            wrapper_dir.canonicalize().unwrap(),
+            "without the marker the wrapper dir is selected first (mutation RED → GREEN)"
+        );
+    }
+
+    /// A marker carried by a parent harness dir does not affect the same-path
+    /// case: when PATH is `[child_install_dir, ...]` and `child_install_dir`
+    /// holds the current executable, both the self-skip and the marker-skip
+    /// fire for that directory. The next entry without a marker is selected,
+    /// which (in production) is real git — same as before the fix.
+    ///
+    /// Also confirms no wrapper-to-wrapper recursion: with two marked dirs
+    /// ahead of an unmarked dir, both are skipped and real git is returned.
+    #[cfg(unix)]
+    #[test]
+    fn find_real_git_skips_multiple_marker_directories_in_order() {
+        let (_first_td, first_dir) = make_stub_git_dir("first-wrapper", true);
+        let (_second_td, second_dir) = make_stub_git_dir("second-wrapper", true);
+        let (_real_td, real_dir) = make_stub_git_dir("real", false);
+
+        // PATH: [first (marker), second (marker), real (no marker)]
+        let path = std::env::join_paths([&first_dir, &second_dir, &real_dir]).unwrap();
+        let mut env = TestEnv::lock();
+        env.set("PATH", &path);
+
+        let found =
+            find_real_git().expect("find_real_git must skip both marked dirs and find real git");
+        assert_eq!(
+            found.parent().unwrap().canonicalize().unwrap(),
+            real_dir.canonicalize().unwrap(),
+            "both marker-carrying dirs must be skipped; real git dir must be selected"
         );
     }
 }
