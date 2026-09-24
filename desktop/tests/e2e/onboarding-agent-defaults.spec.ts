@@ -1234,7 +1234,7 @@ test("baked build config keeps Finish enabled without manual provider setup", as
   await expect(page.getByTestId("onboarding-finish")).toBeEnabled();
 });
 
-test("bundled Goose displays its own provider and model defaults", async ({
+test("bundled Goose preserves its defaults after model discovery", async ({
   page,
 }) => {
   await installMockBridge(
@@ -1263,6 +1263,10 @@ test("bundled Goose displays its own provider and model defaults", async ({
       bakedBuildEnv: [
         { key: "BUZZ_AGENT_PROVIDER", masked: false, value: "anthropic" },
       ],
+      discoverAgentModels: {
+        models: [{ id: "discovered-model", name: "Discovered Model" }],
+        supportsSwitching: true,
+      },
       globalAgentConfig: {
         env_vars: {},
         provider: null,
@@ -1279,6 +1283,13 @@ test("bundled Goose displays its own provider and model defaults", async ({
   await expect(page.getByTestId("global-agent-provider")).toContainText(
     "Databricks",
   );
+  // Wait for the competing catalog entry to render so this assertion cannot
+  // pass before the discovery effect has had a chance to replace the default.
+  await page.getByTestId("global-agent-model").click();
+  await expect(
+    page.getByTestId("global-agent-model-option-discovered-model"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("global-agent-model")).toContainText(
     "bundled-pilot-model",
   );

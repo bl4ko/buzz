@@ -425,7 +425,8 @@ export function AgentConfigFields({
       autoSelectedModelScopeRef.current = null;
       return;
     }
-    if ((config.model ?? "").trim().length > 0) return;
+    // Discovery fills an unset model; it must not replace an inherited default.
+    if ((config.model ?? "").trim() || fallbackModel?.trim()) return;
     if (modelDiscoveryLoading || discoveredModelOptions === null) return;
     const selectionScope = `${selectedRuntimeId}:${trimmedProvider}`;
     if (autoSelectedModelScopeRef.current === selectionScope) return;
@@ -441,6 +442,7 @@ export function AgentConfigFields({
   }, [
     config,
     discoveredModelOptions,
+    fallbackModel,
     isCustomProvider,
     modelDiscoveryLoading,
     onConfigChange,
