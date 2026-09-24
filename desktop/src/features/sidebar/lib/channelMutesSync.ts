@@ -210,7 +210,7 @@ export class ChannelMuteSyncManager {
         // still advances the watermark and blocks future seed-publish.
         this.recordRemoteHead(event.created_at);
         void decryptAndParse(event).then((result) => {
-          if (result) {
+          if (result && !this.destroyed) {
             onUpdate(result);
           }
         });
