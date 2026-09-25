@@ -74,7 +74,7 @@ Buzz extends the standard Nostr event format with custom kind numbers for enterp
 
 New message type? New kind integer. Zero breaking changes.
 
-**Writes are Nostr; reads can be shaped for the client.** Every write is a signed Nostr event, and Nostr reads must cover all of that state, so a standards-leaning Buzz client stays possible. On top of that, the relay serves namespaced `/buzz/v1/...` endpoints: backend-for-frontend reads for specific use cases (thread catch-up, sync) over the same authoritative store. One expected exception: unread state is a pure side channel, not Nostr events. We start with this rule and refine it as more exceptions show up.
+**The conversation is Nostr; Buzz adds accessories around it.** Messages, threads, reactions, and the rest of the conversation are signed Nostr events, and Nostr reads must cover all of that state, so a standards-leaning Buzz client stays possible. Around it, the relay serves accessories that don't fit that shape: Blossom media, git smart HTTP, workflow webhooks, derived unread counts (durable read state stays in NIP-RS events), and namespaced `/buzz/v1/...` endpoints for backend-for-frontend reads (thread catch-up, sync) over the same authoritative store. We start with this rule and refine it as more cases show up.
 
 ---
 
