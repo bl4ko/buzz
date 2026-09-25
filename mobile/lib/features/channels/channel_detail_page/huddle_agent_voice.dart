@@ -21,37 +21,45 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     final selecting = useRef(false);
     final selectedAt = useRef(0);
     final heard = useMemoized(() => <String>{});
-    final agents =
-        ref.watch(agentDirectoryProvider).asData?.value ??
-        const <AgentDirectoryEntry>[];
     final parentMembers =
         ref.watch(channelMembersProvider(parentChannelId)).asData?.value ??
         const <ChannelMember>[];
+    final agents = [
+      for (final entry
+          in ref.watch(agentDirectoryProvider).asData?.value ??
+              const <AgentDirectoryEntry>[])
+        if (parentMembers.any(
+              (member) =>
+                  member.isBot &&
+                  member.pubkey.toLowerCase() == entry.pubkey.toLowerCase(),
+            ) &&
+            (entry.channelIds.isEmpty ||
+                entry.channelIds.contains(parentChannelId)))
+          entry,
+    ];
+    final eligiblePubkeys = {
+      for (final entry in agents) entry.pubkey.toLowerCase(),
+    };
     final childMembers =
         ref.watch(channelMembersProvider(ephemeralChannelId)).asData?.value ??
         const <ChannelMember>[];
     final bots = [
       for (final member in childMembers)
-        if (member.isBot) member.pubkey.toLowerCase(),
+        if (member.isBot &&
+            eligiblePubkeys.contains(member.pubkey.toLowerCase()))
+          member.pubkey.toLowerCase(),
     ];
 
     Future<void> selectAgent(String pubkey) async {
-      if (selecting.value || (bots.isNotEmpty && !bots.contains(pubkey))) {
+      if (selecting.value ||
+          !eligiblePubkeys.contains(pubkey) ||
+          (bots.isNotEmpty && !bots.contains(pubkey))) {
         return;
       }
       selecting.value = true;
       status.value = 'Joining agent';
       try {
         final actions = ref.read(channelActionsProvider);
-        if (!parentMembers.any(
-          (member) => member.pubkey.toLowerCase() == pubkey,
-        )) {
-          await actions.addMembers(
-            channelId: parentChannelId,
-            pubkeys: [pubkey],
-            role: 'bot',
-          );
-        }
         if (!bots.contains(pubkey)) {
           await actions.addMembers(
             channelId: ephemeralChannelId,
@@ -155,7 +163,7 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       child: Column(
         children: [
           if (agent == null && bots.isEmpty && agents.isEmpty)
-            const Text('No agents available')
+            const Text('No agents in this channel')
           else if (agent == null && bots.isEmpty)
             PopupMenuButton<String>(
               tooltip: 'Add an agent to this Huddle',
