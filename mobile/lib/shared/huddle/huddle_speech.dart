@@ -10,12 +10,14 @@ final class HuddleSpeech {
       final values = call.arguments as Map?;
       if (call.method == 'transcript') {
         final text = values?['text'];
-        if (text is String && text.trim().isNotEmpty)
+        if (text is String && text.trim().isNotEmpty) {
           onTranscript?.call(text.trim());
+        }
       } else if (call.method == 'error') {
         final message = values?['message'];
-        if (message is String && message.trim().isNotEmpty)
+        if (message is String && message.trim().isNotEmpty) {
           onError?.call(message.trim());
+        }
       }
     });
   }
