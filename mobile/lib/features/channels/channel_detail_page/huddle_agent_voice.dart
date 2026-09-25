@@ -11,8 +11,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (defaultTargetPlatform != TargetPlatform.iOS)
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
       return const SizedBox.shrink();
+    }
 
     final speech = useMemoized(HuddleSpeech.new);
     final selected = useState<String?>(null);
@@ -35,8 +36,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     ];
 
     Future<void> selectAgent(String pubkey) async {
-      if (selecting.value || (bots.isNotEmpty && !bots.contains(pubkey)))
+      if (selecting.value || (bots.isNotEmpty && !bots.contains(pubkey))) {
         return;
+      }
       selecting.value = true;
       status.value = 'Joining agent';
       try {
@@ -113,8 +115,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
               if (context.mounted) status.value = 'Waiting for agent';
             })
             .catchError((Object error) {
-              if (context.mounted)
+              if (context.mounted) {
                 status.value = 'Could not send speech: $error';
+              }
             }),
       );
     };
@@ -130,8 +133,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         if (event.pubkey.toLowerCase() != agent ||
             event.kind != EventKind.streamMessage ||
             event.createdAt < selectedAt.value ||
-            !heard.add(event.id))
+            !heard.add(event.id)) {
           continue;
+        }
         status.value = 'Agent speaking';
         unawaited(
           speech.speak(event.content).catchError((Object error) {
