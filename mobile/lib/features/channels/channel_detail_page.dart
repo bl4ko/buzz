@@ -86,6 +86,7 @@ import 'timeline_message.dart';
 part 'channel_detail_page/message_list.dart';
 part 'channel_detail_page/system_rows.dart';
 part 'channel_detail_page/huddle_sheet.dart';
+part 'channel_detail_page/huddle_agent_voice.dart';
 part 'channel_detail_page/huddle_call_avatar.dart';
 part 'channel_detail_page/huddle_participant_cluster.dart';
 part 'channel_detail_page/huddle_call_participants.dart';
