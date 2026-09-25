@@ -1091,6 +1091,99 @@ pub(crate) async fn soft_delete_event_and_update_thread_in_tx(
     Ok(deleted)
 }
 
+/// Public structural position of an event: where it sat in its channel and
+/// thread. Captured when the event is deleted so a relay-signed deletion notice
+/// can stand in the original's slot. Carries no content, author, or tags.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OriginalSlot {
+    /// Original event `created_at` (unix seconds).
+    pub created_at: i64,
+    /// Direct parent event ID (hex); `None` for a top-level message.
+    pub parent_event_id: Option<String>,
+    /// Outer thread root event ID (hex); `None` for a top-level message.
+    pub root_event_id: Option<String>,
+    /// Nesting depth (top-level = 0).
+    pub depth: i32,
+    /// Whether the reply was also broadcast to the channel timeline.
+    pub broadcast: bool,
+}
+
+/// Read `event_id`'s [`OriginalSlot`] inside the caller's transaction.
+///
+/// Soft-deleted rows still have a slot. `None` means the event row is gone
+/// (purged). A row without `thread_metadata` is top-level: replies always get
+/// a metadata row at ingest.
+pub(crate) async fn capture_original_slot_in_tx(
+    tx: &mut PgConnection,
+    community_id: CommunityId,
+    event_id: &[u8],
+) -> Result<Option<OriginalSlot>> {
+    let row = sqlx::query(
+        "SELECT e.created_at, tm.parent_event_id, tm.root_event_id, \
+                COALESCE(tm.depth, 0) AS depth, COALESCE(tm.broadcast, false) AS broadcast \
+         FROM events e \
+         LEFT JOIN thread_metadata tm \
+           ON tm.community_id = e.community_id AND tm.event_id = e.id \
+         WHERE e.community_id = $1 AND e.id = $2 \
+         LIMIT 1",
+    )
+    .bind(community_id.as_uuid())
+    .bind(event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let created_at: DateTime<Utc> = row.try_get("created_at")?;
+    let parent: Option<Vec<u8>> = row.try_get("parent_event_id")?;
+    let root: Option<Vec<u8>> = row.try_get("root_event_id")?;
+    Ok(Some(OriginalSlot {
+        created_at: created_at.timestamp(),
+        parent_event_id: parent.map(hex::encode),
+        root_event_id: root.map(hex::encode),
+        depth: row.try_get("depth")?,
+        broadcast: row.try_get("broadcast")?,
+    }))
+}
+
+/// Soft-delete `event_id` (with thread counters) and persist `notice` in one
+/// transaction.
+///
+/// Returns `false` without writing anything when the event was already deleted
+/// or absent. A notice insert failure rolls the deletion back, so a retry
+/// performs the whole mutation again instead of losing the notice.
+pub async fn soft_delete_event_with_notice(
+    pool: &PgPool,
+    community_id: CommunityId,
+    event_id: &[u8],
+    parent_event_id: Option<&[u8]>,
+    root_event_id: Option<&[u8]>,
+    notice: &Event,
+    notice_channel_id: Uuid,
+) -> Result<bool> {
+    let connection = crate::observability::acquire_writer(
+        pool,
+        crate::observability::WriterOperation::EventWrite,
+    )
+    .await?;
+    let mut tx = sqlx::Transaction::begin(connection, None).await?;
+    let deleted = soft_delete_event_and_update_thread_in_tx(
+        &mut tx,
+        community_id,
+        event_id,
+        parent_event_id,
+        root_event_id,
+    )
+    .await?;
+    if !deleted {
+        tx.rollback().await?;
+        return Ok(false);
+    }
+    insert_event_in_transaction(&mut tx, community_id, notice, Some(notice_channel_id)).await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
 /// Returns the `created_at` timestamp of the most recent non-deleted event in a channel.
 pub async fn get_last_message_at(
     pool: &PgPool,
@@ -2151,6 +2244,30 @@ impl Db {
         .await
     }
 
+    /// Atomically soft-delete an event, decrement thread counters, and persist
+    /// its deletion notice. See [`soft_delete_event_with_notice`].
+    #[datastore_span(name = "soft_delete_event_with_notice", system = "postgresql")]
+    pub async fn soft_delete_event_with_notice(
+        &self,
+        community_id: CommunityId,
+        event_id: &[u8],
+        parent_event_id: Option<&[u8]>,
+        root_event_id: Option<&[u8]>,
+        notice: &nostr::Event,
+        notice_channel_id: Uuid,
+    ) -> Result<bool> {
+        crate::event::soft_delete_event_with_notice(
+            &self.pool,
+            community_id,
+            event_id,
+            parent_event_id,
+            root_event_id,
+            notice,
+            notice_channel_id,
+        )
+        .await
+    }
+
     /// Returns the most recent `created_at` for a channel.
     #[datastore_span(name = "get_last_message_at", system = "postgresql")]
     pub async fn get_last_message_at(
@@ -2811,6 +2928,71 @@ mod postgres_tests {
             events[1].event.id, older_accessible.id,
             "older accessible row must not be hidden behind newer inaccessible rows"
         );
+    }
+
+    /// A failed notice insert rolls the deletion back; the retry deletes once
+    /// and stores the notice; a later attempt is a no-op.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn soft_delete_with_notice_is_atomic_with_the_notice() {
+        let pool = setup_pool().await;
+        let community_uuid = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_uuid);
+        let channel = make_test_channel(&pool, community_uuid, None).await;
+        let target = make_text_event("to be deleted");
+        insert_event(&pool, community, &target, Some(channel))
+            .await
+            .expect("insert target");
+        let keys = Keys::generate();
+        let deleted_at = |pool: PgPool, id: Vec<u8>| async move {
+            sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+                "SELECT deleted_at FROM events WHERE community_id = $1 AND id = $2",
+            )
+            .bind(community_uuid)
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .expect("target row")
+        };
+
+        // KIND_AUTH is rejected by the insert path: a deterministic notice failure.
+        let rejected = EventBuilder::new(Kind::Custom(KIND_AUTH as u16), "")
+            .sign_with_keys(&keys)
+            .expect("sign");
+        let target_id = target.id.as_bytes().to_vec();
+        assert!(soft_delete_event_with_notice(
+            &pool, community, &target_id, None, None, &rejected, channel
+        )
+        .await
+        .is_err());
+        assert!(
+            deleted_at(pool.clone(), target_id.clone()).await.is_none(),
+            "failed notice must roll back the deletion"
+        );
+
+        let notice = EventBuilder::new(Kind::Custom(40099), "{}")
+            .tags(vec![Tag::parse(["h", &channel.to_string()]).expect("h")])
+            .sign_with_keys(&keys)
+            .expect("sign");
+        for expected in [true, false] {
+            assert_eq!(
+                soft_delete_event_with_notice(
+                    &pool, community, &target_id, None, None, &notice, channel
+                )
+                .await
+                .expect("delete with notice"),
+                expected
+            );
+        }
+        assert!(deleted_at(pool.clone(), target_id).await.is_some());
+        let notices: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE community_id = $1 AND id = $2")
+                .bind(community_uuid)
+                .bind(notice.id.as_bytes().as_slice())
+                .fetch_one(&pool)
+                .await
+                .expect("notice count");
+        assert_eq!(notices, 1);
     }
 
     fn make_text_event(content: &str) -> nostr::Event {

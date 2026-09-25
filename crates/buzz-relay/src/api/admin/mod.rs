@@ -6463,6 +6463,26 @@ mod postgres_tests {
             Some("e2e test"),
             "tombstone public_reason mirrors the operator reason"
         );
+        // The shared builder carries the top-level target's frozen slot.
+        let target_created_at: chrono::DateTime<chrono::Utc> =
+            sqlx::query_scalar("SELECT created_at FROM events WHERE community_id = $1 AND id = $2")
+                .bind(community_id)
+                .bind(target_event_id.as_slice())
+                .fetch_one(&pool)
+                .await
+                .expect("target created_at");
+        assert_eq!(
+            parsed["original"],
+            serde_json::json!({
+                "version": 1,
+                "created_at": target_created_at.timestamp(),
+                "parent_event_id": null,
+                "root_event_id": null,
+                "depth": 0,
+                "broadcast": false,
+            }),
+            "admin tombstone must carry the original slot"
+        );
 
         // Assert: tombstone outbox row is now delivered.
         let tombstone_state: String =

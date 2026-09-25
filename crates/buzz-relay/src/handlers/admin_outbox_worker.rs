@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use buzz_db::relay_admin_actions::OutboxRecord;
 
+use crate::handlers::deletion_tombstone::{build_delete_tombstone, DeleteTombstone};
 use crate::state::AppState;
 
 /// Lease duration: if the worker pod dies mid-delivery, another pod picks up
@@ -154,13 +155,15 @@ async fn resolve_tenant(
 
 /// Deliver a tombstone: publish an admin-deletion system message in the channel.
 ///
-/// The emitted system message matches the channel-moderation tombstone schema
-/// (`side_effects.rs` NIP-29 DELETE_EVENT: `type: "message_deleted"` with
-/// `actor`, `target_event_id`, and an optional public reason) so the room
-/// renders it identically. Without `target_event_id` the room cannot tell which
-/// message was removed, and without a reason it renders as a bare self-delete
-/// rather than a moderator removal — `SystemMessageRow` keys "Removed by
-/// community moderators" on `public_reason`.
+/// Built by the shared `deletion_tombstone` builder — the same contract as the
+/// NIP-29 DELETE_EVENT notice (`type: "message_deleted"` with `actor`,
+/// `target_event_id`, an optional public reason, and the original slot) — so
+/// the room renders both identically. Rows enqueued before the slot existed
+/// have no `original` and deliver the legacy notice. Without `target_event_id`
+/// the room cannot tell which message was removed, and without a reason it
+/// renders as a bare self-delete rather than a moderator removal —
+/// `SystemMessageRow` keys "Removed by community moderators" on
+/// `public_reason`.
 ///
 /// The `reason_code`/`public_reason` fields are the operator's `reason` string
 /// verbatim (an operator-authored public reason, not a sanitized derivative);
@@ -187,29 +190,33 @@ async fn deliver_tombstone(state: &Arc<AppState>, row: &OutboxRecord) -> Result<
     let community_id = buzz_core::CommunityId::from_uuid(community_uuid);
     let tenant = resolve_tenant(state, community_id, "tombstone").await?;
 
-    // Match the established channel-moderation `message_deleted` schema
-    // (`side_effects.rs`): `type`, `actor` (the acting operator's pubkey hex),
-    // and `target_event_id`, plus the admin `action_id`. `reason_code` is the
-    // operator's `reason` string (see `finalize_success`) — forwarded as the
-    // room-facing public reason; the room renders the moderator-removal template
-    // only when a non-empty reason is present.
-    let mut content = serde_json::json!({
-        "type": "message_deleted",
-        "actor": actor,
-        "target_event_id": target_event_id,
-        "action_id": row.action_id.to_string(),
-    });
-    if let Some(reason_code) = payload["reason_code"].as_str().filter(|r| !r.is_empty()) {
-        content["reason_code"] = serde_json::Value::String(reason_code.to_string());
-        content["public_reason"] = serde_json::Value::String(reason_code.to_string());
-    }
-
-    crate::handlers::side_effects::emit_system_message(
-        &tenant,
-        state,
-        channel_id,
-        content,
+    // Rebuilt from the payload frozen at finalization — never a fresh target
+    // lookup — so every retry signs identical bytes (same event ID) even after
+    // the target is purged. `reason_code` is the operator's `reason` string
+    // (see `finalize_success`), forwarded as the room-facing public reason; the
+    // room renders the moderator-removal template only when it is non-empty.
+    let original: Option<buzz_db::event::OriginalSlot> =
+        serde_json::from_value(payload["original"].clone())
+            .map_err(|e| format!("tombstone: invalid original slot: {e}"))?;
+    let action_id = row.action_id.to_string();
+    let reason = payload["reason_code"].as_str().filter(|r| !r.is_empty());
+    let notice = build_delete_tombstone(
+        &DeleteTombstone {
+            channel_id,
+            target_event_id,
+            actor,
+            action_id: Some(&action_id),
+            reason_code: reason,
+            public_reason: reason,
+            original: original.as_ref(),
+        },
         row.created_at,
+        &state.relay_keypair,
+    )
+    .map_err(|e| format!("tombstone: {e}"))?;
+
+    crate::handlers::side_effects::persist_and_publish_system_event(
+        &tenant, state, channel_id, &notice,
     )
     .await
     .map_err(|e| format!("tombstone: system message failed: {e}"))

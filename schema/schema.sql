@@ -1817,6 +1817,10 @@ CREATE TABLE relay_admin_actions (
     enforcement_target_pubkey BYTEA
         CHECK (enforcement_target_pubkey IS NULL OR length(enforcement_target_pubkey) = 32),
     enforcement_channel_id  UUID,
+    -- Frozen original slot of a delete target (migration 0050): NULL = not
+    -- captured, {"slot": {...}} = captured, {"slot": null} = target was gone.
+    original_slot   JSONB
+        CHECK (original_slot IS NULL OR jsonb_typeof(original_slot) = 'object'),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- Report-scoped idempotency: one action per (report, request_id).

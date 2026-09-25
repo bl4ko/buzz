@@ -12,6 +12,8 @@ pub mod command_executor;
 pub mod community_provisioning;
 /// NIP-45 COUNT handler.
 pub mod count;
+/// Relay-signed `message_deleted` deletion notice builder (kind 40099).
+pub mod deletion_tombstone;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.
 pub mod event;
 /// NIP-IA identity archive request handler (kinds 9035–9036).

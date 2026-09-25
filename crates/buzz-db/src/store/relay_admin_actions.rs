@@ -16,6 +16,7 @@ use sqlx::{PgPool, Row as _};
 use uuid::Uuid;
 
 use crate::error::Result;
+use crate::event::OriginalSlot;
 use crate::CommunityId;
 
 /// A row in `relay_admin_actions`.
@@ -53,10 +54,23 @@ pub struct AdminActionRecord {
     /// Authoritative channel persisted at claim time (kick actions).
     /// `None` for community-wide actions.
     pub enforcement_channel_id: Option<Uuid>,
+    /// Delete target's original slot, frozen at mutation time (or at
+    /// finalization for legacy rows). `None` = not captured yet.
+    pub original_slot: Option<FrozenSlot>,
     /// Row creation time.
     pub created_at: DateTime<Utc>,
     /// Row last-updated time.
     pub updated_at: DateTime<Utc>,
+}
+
+/// A delete target's [`OriginalSlot`] as frozen on the action row.
+///
+/// `slot: None` records that capture ran but the target row was already gone,
+/// so a retry can never substitute different data.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FrozenSlot {
+    /// The captured slot, or `None` when the target no longer existed.
+    pub slot: Option<OriginalSlot>,
 }
 
 /// A row in `relay_admin_outbox`.
@@ -247,7 +261,7 @@ pub async fn claim_report(
             r#"
             SELECT id, report_id, report_community_id, request_id, actor_pubkey, actor_role,
                    action, reason, timeout_until, state, step_marker, cancelled_by, error_message,
-                   enforcement_target_pubkey, enforcement_channel_id,
+                   enforcement_target_pubkey, enforcement_channel_id, original_slot,
                    created_at, updated_at
             FROM relay_admin_actions
             WHERE report_community_id = $1 AND report_id = $2 AND request_id = $3
@@ -280,7 +294,7 @@ pub async fn claim_report(
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
         RETURNING id, report_id, report_community_id, request_id, actor_pubkey, actor_role,
                   action, reason, timeout_until, state, step_marker, cancelled_by, error_message,
-                  enforcement_target_pubkey, enforcement_channel_id,
+                  enforcement_target_pubkey, enforcement_channel_id, original_slot,
                   created_at, updated_at
         "#,
     )
@@ -726,6 +740,9 @@ pub async fn execute_kick_with_marker(
 ///
 /// The delete is idempotent: if the event is already deleted the marker is still
 /// committed (soft-delete is already-done = success).
+///
+/// The target's [`OriginalSlot`] is frozen on the action row with the marker, so
+/// the deletion notice is rebuilt from the same data on every delivery retry.
 pub async fn execute_delete_with_marker(
     pool: &PgPool,
     action_id: Uuid,
@@ -764,6 +781,11 @@ pub async fn execute_delete_with_marker(
         .fetch_optional(&mut *tx)
         .await?;
 
+    let slot = FrozenSlot {
+        slot: crate::event::capture_original_slot_in_tx(&mut tx, community_id, target_event_id)
+            .await?,
+    };
+
     // Canonical delete + thread_metadata counters, fenced by this transaction.
     // Counters move only when the row transitions to deleted, so a second
     // action against an already-deleted target leaves them unchanged.
@@ -779,7 +801,7 @@ pub async fn execute_delete_with_marker(
     let marker = sqlx::query(
         r#"
         UPDATE relay_admin_actions
-        SET step_marker = 'mutation_committed', updated_at = now()
+        SET step_marker = 'mutation_committed', original_slot = $3, updated_at = now()
         WHERE id = $1
           AND action_lease_token = $2
           AND action_lease_expires_at > clock_timestamp()
@@ -789,6 +811,7 @@ pub async fn execute_delete_with_marker(
     )
     .bind(action_id)
     .bind(lease_token)
+    .bind(sqlx::types::Json(&slot))
     .execute(&mut *tx)
     .await?;
 
@@ -851,21 +874,22 @@ pub async fn finalize_success(
     let mut tx = pool.begin().await?;
 
     // Require step_marker = 'mutation_committed' to prevent premature finalization.
-    let updated_action = sqlx::query(
+    let frozen_slot: Option<Option<sqlx::types::Json<FrozenSlot>>> = sqlx::query_scalar(
         r#"
         UPDATE relay_admin_actions
         SET state = 'succeeded', step_marker = 'artifacts_done', updated_at = now()
         WHERE id = $1 AND state = 'enforcing' AND step_marker = 'mutation_committed'
+        RETURNING original_slot
         "#,
     )
     .bind(action_id)
-    .execute(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
 
-    if updated_action.rows_affected() == 0 {
+    let Some(frozen_slot) = frozen_slot else {
         tx.rollback().await?;
         return Ok(false);
-    }
+    };
 
     // Transition report to terminal status. Requires active_action_id = this action,
     // which prevents a stale or wrong action from closing the report.
@@ -902,6 +926,27 @@ pub async fn finalize_success(
 
     if action_name == "delete" {
         if let (Some(target_eid), Some(ch)) = (target_event_id, channel_id) {
+            // Actions committed before migration 0050 have no frozen slot:
+            // freeze it once here so every delivery attempt agrees.
+            let slot = match frozen_slot {
+                Some(json) => json.0,
+                None => {
+                    let slot = FrozenSlot {
+                        slot: crate::event::capture_original_slot_in_tx(
+                            &mut tx,
+                            community_id,
+                            target_eid,
+                        )
+                        .await?,
+                    };
+                    sqlx::query("UPDATE relay_admin_actions SET original_slot = $2 WHERE id = $1")
+                        .bind(action_id)
+                        .bind(sqlx::types::Json(&slot))
+                        .execute(&mut *tx)
+                        .await?;
+                    slot
+                }
+            };
             let payload = serde_json::json!({
                 "community_id": community_str,
                 "channel_id": ch.to_string(),
@@ -909,6 +954,7 @@ pub async fn finalize_success(
                 "action_id": action_str,
                 "actor": hex::encode(actor_pubkey),
                 "reason_code": reason.unwrap_or(""),
+                "original": slot.slot,
             });
             sqlx::query(
                 r#"
@@ -1300,7 +1346,7 @@ pub async fn get_action(pool: &PgPool, action_id: Uuid) -> Result<Option<AdminAc
         r#"
         SELECT id, report_id, report_community_id, request_id, actor_pubkey, actor_role,
                action, reason, timeout_until, state, step_marker, cancelled_by, error_message,
-               enforcement_target_pubkey, enforcement_channel_id,
+               enforcement_target_pubkey, enforcement_channel_id, original_slot,
                created_at, updated_at
         FROM relay_admin_actions WHERE id = $1
         "#,
@@ -1322,7 +1368,7 @@ pub async fn get_action_by_request(
         r#"
         SELECT id, report_id, report_community_id, request_id, actor_pubkey, actor_role,
                action, reason, timeout_until, state, step_marker, cancelled_by, error_message,
-               enforcement_target_pubkey, enforcement_channel_id,
+               enforcement_target_pubkey, enforcement_channel_id, original_slot,
                created_at, updated_at
         FROM relay_admin_actions
         WHERE report_community_id = $1 AND report_id = $2 AND request_id = $3
@@ -1581,7 +1627,7 @@ pub async fn claim_stranded_action_batch(
             RETURNING id, report_id, report_community_id, request_id, actor_pubkey,
                       actor_role, action, reason, timeout_until, state, step_marker,
                       cancelled_by, error_message, enforcement_target_pubkey,
-                      enforcement_channel_id, created_at, updated_at
+                      enforcement_channel_id, original_slot, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -1681,6 +1727,9 @@ fn row_to_action(row: sqlx::postgres::PgRow) -> Result<AdminActionRecord> {
         error_message: row.try_get("error_message")?,
         enforcement_target_pubkey: row.try_get("enforcement_target_pubkey")?,
         enforcement_channel_id: row.try_get("enforcement_channel_id")?,
+        original_slot: row
+            .try_get::<Option<sqlx::types::Json<FrozenSlot>>, _>("original_slot")?
+            .map(|json| json.0),
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -3137,6 +3186,185 @@ mod postgres_tests {
         assert!(!deleted, "delete must roll back with the fence");
         assert_eq!(counts(&pool, cid, &reply).await, (1, 0));
         assert_eq!(counts(&pool, cid, &root).await, (1, 2));
+    }
+
+    /// Finalize a committed delete of `target` and return the tombstone payload.
+    async fn finalize_delete_payload(
+        pool: &PgPool,
+        community_id: Uuid,
+        action_id: Uuid,
+        target: &[u8],
+        channel: Uuid,
+    ) -> serde_json::Value {
+        let report_id: Uuid =
+            sqlx::query_scalar("SELECT report_id FROM relay_admin_actions WHERE id = $1")
+                .bind(action_id)
+                .fetch_one(pool)
+                .await
+                .expect("report id");
+        assert!(finalize_success(
+            pool,
+            action_id,
+            CommunityId::from_uuid(community_id),
+            report_id,
+            "resolved",
+            &actor(),
+            "delete",
+            None,
+            Some(target),
+            Some(channel),
+            Some("spam"),
+            None,
+        )
+        .await
+        .expect("finalize"));
+        sqlx::query_scalar(
+            "SELECT payload FROM relay_admin_outbox WHERE action_id = $1 AND task_type = 'tombstone'",
+        )
+        .bind(action_id)
+        .fetch_one(pool)
+        .await
+        .expect("tombstone payload")
+    }
+
+    async fn event_channel(pool: &PgPool, community_id: Uuid, id: &[u8]) -> Uuid {
+        sqlx::query_scalar("SELECT channel_id FROM events WHERE community_id = $1 AND id = $2")
+            .bind(community_id)
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .expect("event channel")
+    }
+
+    async fn purge_event(pool: &PgPool, community_id: Uuid, id: &[u8]) {
+        for sql in [
+            "DELETE FROM thread_metadata WHERE community_id = $1 AND event_id = $2",
+            "DELETE FROM events WHERE community_id = $1 AND id = $2",
+        ] {
+            sqlx::query(sql)
+                .bind(community_id)
+                .bind(id)
+                .execute(pool)
+                .await
+                .expect("purge");
+        }
+    }
+
+    /// The slot is frozen with the mutation marker, so a target purged before
+    /// finalization still yields the original slot in the tombstone payload.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn admin_delete_freezes_original_slot_before_purge() {
+        let pool = setup_pool().await;
+        let community_id = make_community(&pool).await;
+        let cid = CommunityId::from_uuid(community_id);
+        let [root, reply, nested] = make_thread(&pool, cid).await;
+        let channel = event_channel(&pool, community_id, &nested).await;
+        let created_at: DateTime<Utc> =
+            sqlx::query_scalar("SELECT created_at FROM events WHERE community_id = $1 AND id = $2")
+                .bind(community_id)
+                .bind(&nested)
+                .fetch_one(&pool)
+                .await
+                .expect("created_at");
+
+        let lease_until = Utc::now() + chrono::Duration::seconds(60);
+        let (action_id, token) = enforcing_action(&pool, community_id, lease_until).await;
+        assert!(execute_delete_with_marker(
+            &pool,
+            action_id,
+            token,
+            cid,
+            &nested,
+            Some(&reply),
+            Some(&root),
+        )
+        .await
+        .expect("delete"));
+
+        let expected = OriginalSlot {
+            created_at: created_at.timestamp(),
+            parent_event_id: Some(hex::encode(&reply)),
+            root_event_id: Some(hex::encode(&root)),
+            depth: 2,
+            broadcast: false,
+        };
+        let frozen = get_action(&pool, action_id)
+            .await
+            .expect("get_action")
+            .expect("action")
+            .original_slot;
+        assert_eq!(
+            frozen,
+            Some(FrozenSlot {
+                slot: Some(expected.clone())
+            })
+        );
+
+        purge_event(&pool, community_id, &nested).await;
+        let payload =
+            finalize_delete_payload(&pool, community_id, action_id, &nested, channel).await;
+        assert_eq!(
+            payload["original"],
+            serde_json::to_value(&expected).expect("slot json")
+        );
+    }
+
+    /// Actions committed before the slot column existed freeze it once at
+    /// finalization; a target already purged by then freezes "unavailable".
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn legacy_admin_delete_freezes_slot_at_finalization() {
+        let pool = setup_pool().await;
+        let community_id = make_community(&pool).await;
+        let cid = CommunityId::from_uuid(community_id);
+        let lease_until = Utc::now() + chrono::Duration::seconds(60);
+
+        for purged in [false, true] {
+            let [root, reply, _nested] = make_thread(&pool, cid).await;
+            let channel = event_channel(&pool, community_id, &reply).await;
+            let (action_id, token) = enforcing_action(&pool, community_id, lease_until).await;
+            assert!(execute_delete_with_marker(
+                &pool,
+                action_id,
+                token,
+                cid,
+                &reply,
+                Some(&root),
+                Some(&root),
+            )
+            .await
+            .expect("delete"));
+            sqlx::query("UPDATE relay_admin_actions SET original_slot = NULL WHERE id = $1")
+                .bind(action_id)
+                .execute(&pool)
+                .await
+                .expect("simulate pre-0050 row");
+            if purged {
+                purge_event(&pool, community_id, &reply).await;
+            }
+
+            let payload =
+                finalize_delete_payload(&pool, community_id, action_id, &reply, channel).await;
+            let frozen = get_action(&pool, action_id)
+                .await
+                .expect("get_action")
+                .expect("action")
+                .original_slot
+                .expect("frozen at finalization");
+            assert_eq!(
+                payload["original"],
+                serde_json::to_value(&frozen.slot).expect("slot json"),
+                "payload and row agree"
+            );
+            if purged {
+                assert_eq!(frozen.slot, None, "purged target freezes unavailable");
+            } else {
+                let slot = frozen.slot.expect("slot captured");
+                assert_eq!(slot.parent_event_id, Some(hex::encode(&root)));
+                assert_eq!(slot.depth, 1);
+            }
+        }
     }
 
     /// Regression: lease live at transaction entry, expires while the event write blocks.

@@ -17,6 +17,7 @@ use buzz_core::StoredEvent;
 use buzz_db::channel::{MemberRecord, MemberRole};
 
 use super::channel_authz::{self, ChannelAuthzError, PutUserDecision, RemoveOtherDecision};
+use super::deletion_tombstone::{build_delete_tombstone, original_slot, DeleteTombstone};
 use super::event::dispatch_persistent_event;
 use crate::protocol::RelayMessage;
 use crate::state::AppState;
@@ -840,17 +841,30 @@ pub async fn emit_system_message(
         .sign_with_keys(&state.relay_keypair)
         .map_err(|e| anyhow::anyhow!("failed to sign system message: {e}"))?;
 
+    persist_and_publish_system_event(tenant, state, channel_id, &event).await
+}
+
+/// Durably insert a signed relay event, then best-effort fan it out.
+///
+/// Returns `Err` only if the insert fails; a duplicate insert (same event ID)
+/// is success, which makes retries of a stable event idempotent.
+pub async fn persist_and_publish_system_event(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    channel_id: Uuid,
+    event: &Event,
+) -> anyhow::Result<()> {
     // Durable insert is the completion boundary — propagate failure.
     state
         .db
-        .insert_event(tenant.community(), &event, Some(channel_id))
+        .insert_event(tenant.community(), event, Some(channel_id))
         .await
         .map_err(|e| anyhow::anyhow!("system message insert failed: {e}"))?;
 
     // Fan out to subscribers: best-effort, clients can retrieve the persisted event.
     if let Err(e) = state
         .pubsub
-        .publish_event(tenant, EventTopic::Channel(channel_id), &event)
+        .publish_event(tenant, EventTopic::Channel(channel_id), event)
         .await
     {
         warn!("System message fan-out failed: {e}");
@@ -1829,12 +1843,12 @@ async fn handle_delete_event_side_effect(
     // Verify the target event belongs to the same channel as the h-tag.
     // Without this check, an admin of channel A could delete events in channel B
     // by sending h=A, e=<event-in-B>.
-    if let Some(target_event) = state
+    let target_event = state
         .db
         .get_event_by_id_including_deleted_for_event_write(tenant.community(), &target_id)
         .await
-        .map_err(|e| anyhow::anyhow!("get_event_by_id failed: {e}"))?
-    {
+        .map_err(|e| anyhow::anyhow!("get_event_by_id failed: {e}"))?;
+    if let Some(target_event) = &target_event {
         match target_event.channel_id {
             Some(target_ch) if target_ch != channel_id => {
                 return Err(anyhow::anyhow!(
@@ -1859,20 +1873,45 @@ async fn handle_delete_event_side_effect(
     let parent_id = meta.as_ref().and_then(|m| m.parent_event_id.clone());
     let root_id = meta.as_ref().and_then(|m| m.root_event_id.clone());
 
-    // Atomically soft-delete the event and decrement thread counters in one transaction.
+    let target_hex = hex::encode(&target_id);
+    let actor_hex = hex::encode(event.pubkey.to_bytes());
+    let action_id = extract_tag_value(event, "action_id");
+    let reason_code = extract_tag_value(event, "reason_code");
+    let public_reason = extract_tag_value(event, "public_reason");
+    let original = target_event
+        .as_ref()
+        .map(|t| original_slot(t.event.created_at.as_secs() as i64, meta.as_ref()));
+    let notice = build_delete_tombstone(
+        &DeleteTombstone {
+            channel_id,
+            target_event_id: &target_hex,
+            actor: &actor_hex,
+            action_id: action_id.as_deref(),
+            reason_code: reason_code.as_deref(),
+            public_reason: public_reason.as_deref(),
+            original: original.as_ref(),
+        },
+        chrono::Utc::now(),
+        &state.relay_keypair,
+    )?;
+
+    // Soft-delete, thread counters, and the notice commit together: a failed
+    // notice insert rolls the deletion back so a retry cannot lose the notice.
     let deleted = state
         .db
-        .soft_delete_event_and_update_thread(
+        .soft_delete_event_with_notice(
             tenant.community(),
             &target_id,
             parent_id.as_deref(),
             root_id.as_deref(),
+            &notice,
+            channel_id,
         )
         .await
         .map_err(|e| anyhow::anyhow!("soft_delete_event failed: {e}"))?;
 
     if !deleted {
-        warn!(target_event = %hex::encode(&target_id), "event already deleted or not found");
+        warn!(target_event = %target_hex, "event already deleted or not found");
         return Ok(()); // No-op: skip system message to avoid false audit records.
     }
 
@@ -1882,17 +1921,14 @@ async fn handle_delete_event_side_effect(
         emit_live_thread_summary(tenant, state, channel_id, root_id);
     }
 
-    let actor_hex = hex::encode(event.pubkey.to_bytes());
-    let mut tombstone = serde_json::json!({
-        "type": "message_deleted",
-        "actor": actor_hex,
-        "target_event_id": hex::encode(&target_id),
-    });
-    copy_optional_string_field(event, &mut tombstone, "action_id");
-    copy_optional_string_field(event, &mut tombstone, "reason_code");
-    copy_optional_string_field(event, &mut tombstone, "public_reason");
-
-    emit_system_message(tenant, state, channel_id, tombstone, chrono::Utc::now()).await?;
+    // Fan out to subscribers: best-effort, clients can retrieve the persisted event.
+    if let Err(e) = state
+        .pubsub
+        .publish_event(tenant, EventTopic::Channel(channel_id), &notice)
+        .await
+    {
+        warn!("Deletion notice fan-out failed: {e}");
+    }
 
     info!(target_event = %hex::encode(&target_id), "NIP-29 DELETE_EVENT processed");
     Ok(())
@@ -2588,19 +2624,6 @@ fn extract_tag_value(event: &Event, tag_name: &str) -> Option<String> {
     None
 }
 
-fn copy_optional_string_field(event: &Event, object: &mut serde_json::Value, tag_name: &str) {
-    let Some(value) = extract_tag_value(event, tag_name) else {
-        return;
-    };
-    copy_optional_string_value(object, tag_name, value);
-}
-
-fn copy_optional_string_value(object: &mut serde_json::Value, field_name: &str, value: String) {
-    if let Some(map) = object.as_object_mut() {
-        map.insert(field_name.to_string(), serde_json::Value::String(value));
-    }
-}
-
 fn has_moderation_delete_metadata(event: &Event) -> bool {
     ["action_id", "reason_code", "public_reason"]
         .iter()
@@ -2615,31 +2638,6 @@ fn actor_is_channel_owner_or_admin(members: &[MemberRecord], actor: &[u8]) -> bo
     members
         .iter()
         .any(|m| m.pubkey == actor && (m.role == "owner" || m.role == "admin"))
-}
-
-#[cfg(test)]
-fn delete_tombstone_content(
-    actor_hex: String,
-    target_event_id: String,
-    action_id: Option<String>,
-    reason_code: Option<String>,
-    public_reason: Option<String>,
-) -> serde_json::Value {
-    let mut tombstone = serde_json::json!({
-        "type": "message_deleted",
-        "actor": actor_hex,
-        "target_event_id": target_event_id,
-    });
-    if let Some(action_id) = action_id {
-        copy_optional_string_value(&mut tombstone, "action_id", action_id);
-    }
-    if let Some(reason_code) = reason_code {
-        copy_optional_string_value(&mut tombstone, "reason_code", reason_code);
-    }
-    if let Some(public_reason) = public_reason {
-        copy_optional_string_value(&mut tombstone, "public_reason", public_reason);
-    }
-    tombstone
 }
 
 /// Validate a git repo identifier (d-tag value from kind:30617).
@@ -3873,38 +3871,6 @@ mod tests {
     }
 
     #[test]
-    fn delete_tombstone_omits_absent_moderation_metadata() {
-        let content =
-            delete_tombstone_content("actor".to_string(), "target".to_string(), None, None, None);
-
-        assert_eq!(content["type"], "message_deleted");
-        assert_eq!(content["actor"], "actor");
-        assert_eq!(content["target_event_id"], "target");
-        assert!(content.get("action_id").is_none());
-        assert!(content.get("reason_code").is_none());
-        assert!(content.get("public_reason").is_none());
-    }
-
-    #[test]
-    fn delete_tombstone_carries_optional_moderation_metadata() {
-        let content = delete_tombstone_content(
-            "actor".to_string(),
-            "target".to_string(),
-            Some("550e8400-e29b-41d4-a716-446655440000".to_string()),
-            Some("spam".to_string()),
-            Some("Removed for spam.".to_string()),
-        );
-
-        assert_eq!(content["type"], "message_deleted");
-        assert_eq!(content["actor"], "actor");
-        assert_eq!(content["target_event_id"], "target");
-        assert_eq!(content["action_id"], "550e8400-e29b-41d4-a716-446655440000");
-        assert_eq!(content["reason_code"], "spam");
-        assert_eq!(content["public_reason"], "Removed for spam.");
-        assert!(!content.to_string().contains("reporter"));
-    }
-
-    #[test]
     fn author_self_delete_with_moderation_metadata_skips_self_delete_path() {
         let keys = nostr::Keys::generate();
         let actor = keys.public_key().to_bytes();
@@ -3948,5 +3914,137 @@ mod tests {
         }];
 
         assert!(actor_is_channel_owner_or_admin(&members, &actor));
+    }
+}
+
+#[cfg(test)]
+mod postgres_tests {
+    use super::*;
+    use buzz_db::channel::{ChannelType, ChannelVisibility};
+    use buzz_db::event::ThreadMetadataParams;
+    use nostr::{EventBuilder, Keys, Kind, Tag};
+
+    const TEST_DB_URL: &str = "postgres://buzz:buzz_dev@localhost:5432/buzz"; // sadscan:disable np.postgres.1
+
+    /// NIP-29 DELETE_EVENT stores exactly one relay-signed notice carrying the
+    /// deleted reply's slot, committed with the deletion itself.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn nip29_delete_notice_carries_original_slot() {
+        let url = std::env::var("BUZZ_TEST_DATABASE_URL")
+            .or_else(|_| std::env::var("DATABASE_URL"))
+            .unwrap_or_else(|_| TEST_DB_URL.to_string());
+        let pool = sqlx::PgPool::connect(&url).await.expect("connect");
+        let state = crate::state::tests::test_state_with_database_pool(pool.clone()).await;
+        let community_uuid = Uuid::new_v4();
+        let host = format!("tombstone-{}.example", community_uuid.simple());
+        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
+            .bind(community_uuid)
+            .bind(&host)
+            .execute(&pool)
+            .await
+            .expect("community");
+        let community = buzz_core::CommunityId::from_uuid(community_uuid);
+        let tenant = TenantContext::resolved(community, host);
+
+        let author = Keys::generate();
+        let channel = Uuid::new_v4();
+        state
+            .db
+            .create_channel_with_id(
+                community,
+                channel,
+                "tombstone",
+                ChannelType::Stream,
+                ChannelVisibility::Open,
+                None,
+                author.public_key().to_bytes().as_slice(),
+                None,
+            )
+            .await
+            .expect("channel");
+        let root = EventBuilder::new(Kind::Custom(9), "root")
+            .sign_with_keys(&author)
+            .expect("sign");
+        let reply = EventBuilder::new(Kind::Custom(9), "reply")
+            .custom_created_at(root.created_at + 1)
+            .sign_with_keys(&author)
+            .expect("sign");
+        let at = |e: &Event| {
+            chrono::DateTime::from_timestamp(e.created_at.as_secs() as i64, 0).expect("ts")
+        };
+        for (event, parent) in [(&root, None), (&reply, Some(&root))] {
+            state
+                .db
+                .insert_event_with_thread_metadata(
+                    community,
+                    event,
+                    Some(channel),
+                    Some(ThreadMetadataParams {
+                        event_id: event.id.as_bytes(),
+                        event_created_at: at(event),
+                        channel_id: channel,
+                        parent_event_id: parent.map(|p| p.id.as_bytes().as_slice()),
+                        parent_event_created_at: parent.map(at),
+                        root_event_id: parent.map(|p| p.id.as_bytes().as_slice()),
+                        root_event_created_at: parent.map(at),
+                        depth: i32::from(parent.is_some()),
+                        broadcast: false,
+                    }),
+                )
+                .await
+                .expect("thread event");
+        }
+
+        let delete = EventBuilder::new(Kind::Custom(9005), "")
+            .tags(vec![
+                Tag::parse(["h", &channel.to_string()]).expect("h"),
+                Tag::parse(["e", &reply.id.to_hex()]).expect("e"),
+                Tag::parse(["public_reason", "Removed for spam."]).expect("reason"),
+            ])
+            .sign_with_keys(&author)
+            .expect("sign");
+        for _ in 0..2 {
+            handle_delete_event_side_effect(&tenant, &delete, &state)
+                .await
+                .expect("delete side effect");
+        }
+
+        let rows: Vec<(Vec<u8>, serde_json::Value, String)> = sqlx::query_as(
+            "SELECT pubkey, tags, content FROM events \
+             WHERE community_id = $1 AND channel_id = $2 AND kind = 40099",
+        )
+        .bind(community_uuid)
+        .bind(channel)
+        .fetch_all(&pool)
+        .await
+        .expect("notices");
+        assert_eq!(rows.len(), 1, "a repeated delete adds no second notice");
+        let (pubkey, tags, content) = &rows[0];
+        assert_eq!(
+            pubkey,
+            &state.relay_keypair.public_key().to_bytes().to_vec()
+        );
+        assert_eq!(
+            tags,
+            &serde_json::json!([
+                ["h", channel.to_string()],
+                ["e", reply.id.to_hex()],
+                ["e", root.id.to_hex()],
+            ])
+        );
+        let content: serde_json::Value = serde_json::from_str(content).expect("json");
+        assert_eq!(content["public_reason"], "Removed for spam.");
+        assert_eq!(
+            content["original"],
+            serde_json::json!({
+                "version": 1,
+                "created_at": reply.created_at.as_secs(),
+                "parent_event_id": root.id.to_hex(),
+                "root_event_id": root.id.to_hex(),
+                "depth": 1,
+                "broadcast": false,
+            })
+        );
     }
 }
