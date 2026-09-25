@@ -511,6 +511,7 @@ fn resolution_audit_action(action: &str) -> &'static str {
 /// Insert a moderation audit row for an accepted command. `matched_principal`
 /// is left `None` here: that NIP-OA field records which principal an
 /// *enforcement* check matched at the auth seam (L4), not who issued a command.
+#[allow(clippy::too_many_arguments)]
 async fn insert_audit(
     state: &Arc<AppState>,
     tenant: &TenantContext,
