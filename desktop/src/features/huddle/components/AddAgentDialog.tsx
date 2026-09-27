@@ -6,13 +6,15 @@ import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { Dialog } from "@/shared/ui/dialog";
 import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import type { ManagedAgentBackend } from "@/shared/api/types";
+import { getChannelMembers } from "@/shared/api/tauri";
+import { channelAgentMembers } from "@/shared/lib/rosterDerivations";
 
 type ManagedAgentSummary = {
   pubkey: string;
   name: string;
   status: string;
   avatar_url: string | null;
-  backend: ManagedAgentBackend;
+  backend: ManagedAgentBackend | null;
 };
 
 type AgentAddResult = {
@@ -26,6 +28,7 @@ type AddAgentDialogProps = {
   onClose: () => void;
   onAdd: (pubkey: string) => Promise<AgentAddResult>;
   currentAgentPubkeys: string[];
+  parentChannelId: string;
 };
 
 export function AddAgentDialog({
@@ -33,6 +36,7 @@ export function AddAgentDialog({
   onClose,
   onAdd,
   currentAgentPubkeys,
+  parentChannelId,
 }: AddAgentDialogProps) {
   const [agents, setAgents] = React.useState<ManagedAgentSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -49,14 +53,36 @@ export function AddAgentDialog({
     setError(null);
     setWarning(null);
 
-    invoke<ManagedAgentSummary[]>("list_managed_agents")
-      .then((nextAgents) => {
-        if (!cancelled) setAgents(nextAgents);
-      })
-      .catch((e: unknown) => {
+    Promise.allSettled([
+      invoke<ManagedAgentSummary[]>("list_managed_agents"),
+      getChannelMembers(parentChannelId),
+    ])
+      .then(([managed, members]) => {
         if (cancelled) return;
-        console.error("Failed to load agents:", e);
-        setError("Could not load agents.");
+        const nextAgents = new Map<string, ManagedAgentSummary>();
+        if (managed.status === "fulfilled") {
+          for (const agent of managed.value) {
+            nextAgents.set(agent.pubkey.toLowerCase(), agent);
+          }
+        }
+        if (members.status === "fulfilled") {
+          for (const member of channelAgentMembers(members.value)) {
+            const pubkey = member.pubkey.toLowerCase();
+            if (!nextAgents.has(pubkey)) {
+              nextAgents.set(pubkey, {
+                pubkey,
+                name: member.displayName ?? "Agent",
+                status: "external",
+                avatar_url: null,
+                backend: null,
+              });
+            }
+          }
+        }
+        setAgents([...nextAgents.values()]);
+        if (managed.status === "rejected" || members.status === "rejected") {
+          setError("Could not load all agents. Try opening this dialog again.");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -65,7 +91,7 @@ export function AddAgentDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, parentChannelId]);
 
   const availableAgents = agents.filter(
     (agent) =>
@@ -81,10 +107,10 @@ export function AddAgentDialog({
     setWarning(null);
     let startedForAdd = false;
     try {
-      const isLocal = agent.backend.type === "local";
-      const needsStart = isLocal
-        ? agent.status !== "running"
-        : agent.status !== "deployed";
+      const isLocal = agent.backend?.type === "local";
+      const needsStart =
+        agent.backend !== null &&
+        (isLocal ? agent.status !== "running" : agent.status !== "deployed");
       if (needsStart && isLocal) {
         await invoke("start_managed_agent", { pubkey: agent.pubkey });
         startedForAdd = true;
