@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import * as React from "react";
+import { getChannelMembers } from "@/shared/api/tauri";
+import { channelAgentMembers } from "@/shared/lib/rosterDerivations";
 
 import { setupAudioWorklet, type AudioWorkletHandle } from "./lib/audioWorklet";
 import { type AudioInputDevice, useAudioDevices } from "./lib/useAudioDevices";
@@ -642,9 +644,19 @@ export function HuddleProvider({
       setIsStarting(true);
       onHuddleStartPendingChange?.(true);
       try {
+        const members = await getChannelMembers(parentChannelId);
+        if (myToken !== tokenRef.current) return;
+        const agentPubkeys = [
+          ...new Set([
+            ...memberPubkeys.map((pubkey) => pubkey.toLowerCase()),
+            ...channelAgentMembers(members).map((member) =>
+              member.pubkey.toLowerCase(),
+            ),
+          ]),
+        ];
         const joinInfo = await invoke<HuddleJoinInfo>("start_huddle", {
           parentChannelId,
-          memberPubkeys,
+          memberPubkeys: agentPubkeys,
           channelName,
         });
         rustActiveRef.current = true;

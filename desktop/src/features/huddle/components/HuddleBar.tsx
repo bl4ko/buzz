@@ -636,6 +636,7 @@ export function HuddleBar({
         )}
 
         <AddAgentDialog
+          parentChannelId={barState.parent_channel_id ?? ""}
           currentAgentPubkeys={barState.agent_pubkeys}
           onClose={() => setShowAddAgent(false)}
           onAdd={async (pubkey: string): Promise<AgentAddResult> => {
