@@ -24,19 +24,14 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     final parentMembers =
         ref.watch(channelMembersProvider(parentChannelId)).asData?.value ??
         const <ChannelMember>[];
-    final agents = [
-      for (final entry
-          in ref.watch(agentDirectoryProvider).asData?.value ??
-              const <AgentDirectoryEntry>[])
-        if (parentMembers.any(
-              (member) =>
-                  member.isBot &&
-                  member.pubkey.toLowerCase() == entry.pubkey.toLowerCase(),
-            ) &&
-            (entry.channelIds.isEmpty ||
-                entry.channelIds.contains(parentChannelId)))
-          entry,
-    ];
+    final agents = huddleAgentCandidates(
+      members: parentMembers,
+      profiles: ref.watch(userCacheProvider),
+      directory:
+          ref.watch(agentDirectoryProvider).asData?.value ??
+          const <AgentDirectoryEntry>[],
+      channelId: parentChannelId,
+    );
     final eligiblePubkeys = {
       for (final entry in agents) entry.pubkey.toLowerCase(),
     };
@@ -194,4 +189,36 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       ),
     );
   }
+}
+
+List<AgentDirectoryEntry> huddleAgentCandidates({
+  required List<ChannelMember> members,
+  required Map<String, UserProfile> profiles,
+  required List<AgentDirectoryEntry> directory,
+  required String channelId,
+}) {
+  final directoryByPubkey = {
+    for (final entry in directory) entry.pubkey.toLowerCase(): entry,
+  };
+  final agents = <AgentDirectoryEntry>[];
+  for (final member in members) {
+    final pubkey = member.pubkey.toLowerCase();
+    final entry = directoryByPubkey[pubkey];
+    if (!member.isBot && profiles[pubkey]?.isAgent != true && entry == null) {
+      continue;
+    }
+    if (entry != null &&
+        entry.channelIds.isNotEmpty &&
+        !entry.channelIds.contains(channelId)) {
+      continue;
+    }
+    agents.add(
+      entry ??
+          AgentDirectoryEntry(
+            pubkey: pubkey,
+            displayName: profiles[pubkey]?.displayName ?? member.displayName,
+          ),
+    );
+  }
+  return agents;
 }
