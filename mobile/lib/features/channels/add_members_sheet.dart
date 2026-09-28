@@ -150,33 +150,29 @@ class AddChannelMembersSheet extends HookConsumerWidget {
     Future<void> addSelectedMembers() async {
       if (selectedUsers.value.isEmpty || isSubmitting.value) return;
       final submittedUsers = List<DirectoryUser>.of(selectedUsers.value);
+      final addedPubkeys = <String>{};
       isSubmitting.value = true;
       submitError.value = null;
       try {
-        await actions.addMembers(
-          channelId: channelId,
-          pubkeys: submittedUsers.map((user) => user.pubkey).toList(),
-        );
+        for (final user in submittedUsers) {
+          await actions.addMembers(
+            channelId: channelId,
+            pubkeys: [user.pubkey],
+            role: user.isAgent ? 'bot' : 'member',
+          );
+          addedPubkeys.add(user.pubkey.toLowerCase());
+        }
         if (context.mounted) Navigator.of(context).pop(true);
-      } on AddMembersException catch (error) {
-        if (!context.mounted) return;
-        final failedPubkeys = error.failures.keys
-            .map((pubkey) => pubkey.toLowerCase())
-            .toSet();
-        successfulPubkeys.value = {
-          ...successfulPubkeys.value,
-          for (final user in submittedUsers)
-            if (!failedPubkeys.contains(user.pubkey.toLowerCase()))
-              user.pubkey.toLowerCase(),
-        };
-        selectedUsers.value = [
-          for (final user in submittedUsers)
-            if (failedPubkeys.contains(user.pubkey.toLowerCase())) user,
-        ];
-        submitError.value = error.message;
       } catch (error) {
         if (!context.mounted) return;
-        submitError.value = error.toString();
+        successfulPubkeys.value = {...successfulPubkeys.value, ...addedPubkeys};
+        selectedUsers.value = [
+          for (final user in submittedUsers)
+            if (!addedPubkeys.contains(user.pubkey.toLowerCase())) user,
+        ];
+        submitError.value = error is AddMembersException
+            ? error.message
+            : error.toString();
       } finally {
         if (context.mounted) isSubmitting.value = false;
       }

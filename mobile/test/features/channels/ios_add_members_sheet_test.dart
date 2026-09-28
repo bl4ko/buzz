@@ -28,6 +28,7 @@ class _Cache extends UserCacheNotifier {
 
 class _Actions extends Fake implements ChannelActions {
   final calls = <List<String>>[];
+  final roles = <String>[];
   bool failBob = false;
   @override
   Future<void> addMembers({
@@ -36,7 +37,10 @@ class _Actions extends Fake implements ChannelActions {
     String role = 'member',
   }) async {
     calls.add(pubkeys);
-    if (failBob) throw AddMembersException({_bob: 'Try again'});
+    roles.add(role);
+    if (failBob && pubkeys.contains(_bob)) {
+      throw AddMembersException({_bob: 'Try again'});
+    }
   }
 }
 
@@ -225,8 +229,10 @@ void main() {
         expect(states.last['selected'] as List, hasLength(2));
         await _event(tester, session, 'submit');
         expect(actions.calls, [
-          [_alice, _bob],
+          [_alice],
+          [_bob],
         ]);
+        expect(actions.roles, ['member', 'bot']);
         expect((states.last['selected'] as List).map((row) => row['pubkey']), [
           _bob,
         ]);
@@ -240,7 +246,8 @@ void main() {
         actions.failBob = false;
         await _event(tester, session, 'submit');
         expect(actions.calls, [
-          [_alice, _bob],
+          [_alice],
+          [_bob],
           [_bob],
         ]);
         expect(find.text('Open picker'), findsOneWidget);
