@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArchiveRestore,
   Bell,
   BellOff,
   Check,
@@ -19,6 +20,7 @@ import { useAppShell } from "@/app/AppShellContext";
 import {
   useArchiveChannelMutation,
   useChannelMembersQuery,
+  useUnarchiveChannelMutation,
 } from "@/features/channels/hooks";
 import { useChannelModerationCapabilities } from "@/features/channels/ui/ChannelManagementModerationActions";
 import type { ChannelSection } from "@/features/sidebar/lib/useChannelSections";
@@ -200,6 +202,7 @@ export function ChannelContextMenuItems({
   const membersQuery = useChannelMembersQuery(channel.id, canLoadOwnerActions);
   const currentPubkey = useIdentityQuery().data?.pubkey;
   const archiveChannel = useArchiveChannelMutation(channel.id);
+  const unarchiveChannel = useUnarchiveChannelMutation(channel.id);
   const {
     canDeleteChannel,
     canManageChannel,
@@ -351,14 +354,24 @@ export function ChannelContextMenuItems({
       ) : null}
       {canManageChannel ? (
         <ContextMenuItem
-          data-testid={`archive-channel-${channel.name}`}
-          disabled={archiveChannel.isPending}
-          onSelect={() => deferMenuAction(() => archiveChannel.mutate())}
+          data-testid={`${channel.archivedAt ? "unarchive" : "archive"}-channel-${channel.name}`}
+          disabled={archiveChannel.isPending || unarchiveChannel.isPending}
+          onSelect={() =>
+            deferMenuAction(() =>
+              channel.archivedAt
+                ? unarchiveChannel.mutate()
+                : archiveChannel.mutate(),
+            )
+          }
         >
           <ContextMenuIconSlot>
-            <Archive className="h-4 w-4" />
+            {channel.archivedAt ? (
+              <ArchiveRestore className="h-4 w-4" />
+            ) : (
+              <Archive className="h-4 w-4" />
+            )}
           </ContextMenuIconSlot>
-          <span>Archive channel</span>
+          <span>{channel.archivedAt ? "Unarchive channel" : "Archive channel"}</span>
         </ContextMenuItem>
       ) : null}
       {canDeleteChannel ? (
