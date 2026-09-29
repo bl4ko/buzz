@@ -45,12 +45,7 @@ on:
 permissions: {}
 
 env:
-  # Single source of truth for the OCI chart repository (helm appends the chart
-  # name `buzz`, yielding oci://ghcr.io/block/buzz/charts/buzz, which is exactly
-  # the install ref documented in deploy/charts/buzz/README.md). Set
-  # GHCR_CHART_REPO as a repo variable to override (e.g., forks pushing to their
-  # own namespace without editing this file) — mirrors docker.yml's GHCR_IMAGE.
-  CHART_REPO: ${{ vars.GHCR_CHART_REPO != '' && vars.GHCR_CHART_REPO || 'oci://ghcr.io/block/buzz/charts' }}
+  CHART_REPO: ${{ vars.GHCR_CHART_REPO != '' && vars.GHCR_CHART_REPO || format('oci://ghcr.io/{0}/charts', github.repository) }}
 
 jobs:
   lint-and-unittest:
