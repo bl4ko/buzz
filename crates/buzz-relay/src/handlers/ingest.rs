@@ -2871,14 +2871,7 @@ async fn ingest_event_inner(
     }
 
     if channel_id.is_some() {
-        // Allow kind:9002 with archived=false (unarchive operation)
-        let is_unarchive = kind_u32 == KIND_NIP29_EDIT_METADATA
-            && event.tags.iter().any(|t| {
-                let parts = t.as_slice();
-                parts.len() >= 2 && parts[0] == "archived" && parts[1] == "false"
-            });
-
-        if !is_unarchive {
+        if !crate::handlers::side_effects::allows_archived_channel_operation(kind_u32, &event) {
             if let Some(channel) = &channel_row {
                 if channel.archived_at.is_some() {
                     return Err(IngestError::Rejected("invalid: channel is archived".into()));

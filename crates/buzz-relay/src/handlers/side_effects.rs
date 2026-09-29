@@ -472,12 +472,7 @@ pub async fn validate_admin_event(
         .get_channel_for_event_write(tenant.community(), channel_id)
         .await
         .map_err(|_| anyhow::anyhow!("channel not found"))?;
-    let is_unarchive_request = kind == 9002
-        && event.tags.iter().any(|t| {
-            let parts = t.as_slice();
-            parts.len() >= 2 && parts[0] == "archived" && parts[1] == "false"
-        });
-    if channel.archived_at.is_some() && !is_unarchive_request {
+    if channel.archived_at.is_some() && !allows_archived_channel_operation(kind, event) {
         return Err(anyhow::anyhow!("channel is archived"));
     }
 
@@ -824,6 +819,15 @@ pub async fn validate_admin_event(
         }
         _ => Ok(()),
     }
+}
+
+pub(crate) fn allows_archived_channel_operation(kind: u32, event: &Event) -> bool {
+    kind == 9008
+        || (kind == 9002
+            && event.tags.iter().any(|tag| {
+                let parts = tag.as_slice();
+                parts.len() >= 2 && parts[0] == "archived" && parts[1] == "false"
+            }))
 }
 
 /// Emit a system message (kind 40099) signed by the relay keypair.
@@ -3867,6 +3871,27 @@ mod tests {
             );
         }
         assert!(!(0..total).any(|done| nip43_progress_due(Maintenance, done, total)));
+    }
+
+    #[test]
+    fn archived_channels_allow_only_unarchive_and_delete() {
+        let keys = nostr::Keys::generate();
+        for (kind, archived, expected) in [
+            (9008, None, true),
+            (9002, Some("false"), true),
+            (9002, Some("true"), false),
+            (9000, None, false),
+        ] {
+            let mut tags = vec![Tag::parse(["h", &Uuid::new_v4().to_string()]).expect("h tag")];
+            if let Some(value) = archived {
+                tags.push(Tag::parse(["archived", value]).expect("archived tag"));
+            }
+            let event = EventBuilder::new(Kind::Custom(kind as u16), "")
+                .tags(tags)
+                .sign_with_keys(&keys)
+                .expect("sign");
+            assert_eq!(allows_archived_channel_operation(kind, &event), expected);
+        }
     }
 
     #[test]
