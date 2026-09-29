@@ -1350,7 +1350,7 @@ test("keeps a starting huddle in the drawer after its companion closes", async (
   await expect(page.getByTestId("profile-huddle-control")).toHaveCount(0);
   await expect(
     page.locator(`[data-channel-id="${ephemeralChannelId}"]`),
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
 
 test("starts muted with Push to Talk while preserving manual microphone control", async ({
@@ -1644,7 +1644,7 @@ test("starts an agent DM huddle and hides its backing channel after it ends", as
   await expect(page).toHaveURL(
     new RegExp(`/channels/${ephemeralChannelId.replaceAll("-", "\\-")}`),
   );
-  await expect(huddleSidebarChannel).toBeVisible();
+  await expect(huddleSidebarChannel).toHaveCount(0);
 
   await page
     .getByRole("button", { name: "Open huddle in a new window" })
@@ -1707,7 +1707,7 @@ test("starts an agent DM huddle and hides its backing channel after it ends", as
   await expect(page).toHaveURL(
     new RegExp(`/channels/${ephemeralChannelId.replaceAll("-", "\\-")}`),
   );
-  await expect(huddleSidebarChannel).toBeVisible();
+  await expect(huddleSidebarChannel).toHaveCount(0);
   await expect(page.getByTestId("message-thread-panel")).toHaveCount(0);
 });
 
