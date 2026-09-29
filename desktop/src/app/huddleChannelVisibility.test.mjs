@@ -63,3 +63,13 @@ test("one-hour channels with huddle-shaped names remain ordinary", () => {
     true,
   );
 });
+
+test("mobile huddle channels stay out of the desktop sidebar", () => {
+  const huddle = channel({
+    name: "huddle-cb879efb",
+    channelType: "stream",
+    visibility: "private",
+    ttlSeconds: 3_600,
+  });
+  assert.equal(shouldShowSidebarChannel(huddle, new Set(), new Set()), false);
+});

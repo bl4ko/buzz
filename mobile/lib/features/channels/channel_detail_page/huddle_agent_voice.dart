@@ -16,7 +16,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     }
 
     final speech = useMemoized(HuddleSpeech.new);
+    final voices = useMemoized(speech.voices, [speech]);
     final selected = useState<String?>(null);
+    final voiceId = useState<String?>(null);
     final status = useState<String>('Add an agent to speak');
     final selecting = useRef(false);
     final selectedAt = useRef(0);
@@ -65,6 +67,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         if (!context.mounted) return;
         selectedAt.value = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         selected.value = pubkey;
+        voiceId.value = ref
+            .read(savedPrefsProvider)
+            .getString('huddle.voice.$pubkey');
         await speech.start();
         if (context.mounted) status.value = 'Listening on this device';
       } catch (error) {
@@ -141,7 +146,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         }
         status.value = 'Agent speaking';
         unawaited(
-          speech.speak(event.content).catchError((Object error) {
+          speech.speak(event.content, voiceId: voiceId.value).catchError((
+            Object error,
+          ) {
             if (context.mounted) status.value = 'Could not speak reply: $error';
           }),
         );
@@ -181,6 +188,45 @@ class _HuddleAgentVoice extends HookConsumerWidget {
             )
           else
             Text(selectedName ?? 'Agent', style: context.textTheme.titleSmall),
+          if (agent != null)
+            FutureBuilder<List<HuddleVoice>>(
+              future: voices,
+              builder: (context, snapshot) => PopupMenuButton<String>(
+                tooltip: 'Choose agent voice',
+                enabled: snapshot.hasData && snapshot.data!.isNotEmpty,
+                onSelected: (id) {
+                  voiceId.value = id;
+                  ref
+                      .read(savedPrefsProvider)
+                      .setString('huddle.voice.$agent', id);
+                },
+                itemBuilder: (_) => [
+                  for (final voice in snapshot.data ?? const <HuddleVoice>[])
+                    PopupMenuItem(value: voice.id, child: Text(voice.name)),
+                ],
+                child: Text(
+                  snapshot.data
+                          ?.where((voice) => voice.id == voiceId.value)
+                          .firstOrNull
+                          ?.name ??
+                      'Choose voice',
+                ),
+              ),
+            ),
+          if (agent != null)
+            TextButton(
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                useSafeArea: true,
+                builder: (_) => _HuddleAgentChat(
+                  channelId: ephemeralChannelId,
+                  agentPubkey: agent,
+                  agentName: selectedName ?? 'Agent',
+                ),
+              ),
+              child: const Text('Huddle chat'),
+            ),
           Semantics(
             liveRegion: true,
             child: Text(status.value, style: context.textTheme.bodySmall),
@@ -221,4 +267,112 @@ List<AgentDirectoryEntry> huddleAgentCandidates({
     );
   }
   return agents;
+}
+
+class _HuddleAgentChat extends HookConsumerWidget {
+  const _HuddleAgentChat({
+    required this.channelId,
+    required this.agentPubkey,
+    required this.agentName,
+  });
+
+  final String channelId;
+  final String agentPubkey;
+  final String agentName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final input = useTextEditingController();
+    final sending = useState(false);
+    final error = useState<String?>(null);
+    final currentPubkey = ref.watch(
+      huddleSessionProvider.select((session) => session.currentPubkey),
+    );
+    final messages = [
+      for (final event
+          in ref.watch(channelMessagesProvider(channelId)).asData?.value ??
+              const <NostrEvent>[])
+        if (event.kind == EventKind.streamMessage) event,
+    ];
+
+    Future<void> send() async {
+      final text = input.text.trim();
+      if (text.isEmpty || sending.value) return;
+      sending.value = true;
+      error.value = null;
+      try {
+        await ref
+            .read(sendMessageProvider)
+            .call(
+              channelId: channelId,
+              content: text,
+              mentionPubkeys: [agentPubkey],
+            );
+        input.clear();
+      } catch (failure) {
+        error.value = 'Could not send message: $failure';
+      } finally {
+        sending.value = false;
+      }
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.65,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Huddle chat', style: context.textTheme.titleLarge),
+            ),
+            Expanded(
+              child: ListView.builder(
+                reverse: true,
+                itemCount: messages.length,
+                itemBuilder: (context, index) {
+                  final event = messages[messages.length - 1 - index];
+                  final name = event.pubkey.toLowerCase() == agentPubkey
+                      ? agentName
+                      : event.pubkey.toLowerCase() ==
+                            currentPubkey?.toLowerCase()
+                      ? 'You'
+                      : event.pubkey.substring(0, 8);
+                  return ListTile(
+                    title: Text(name),
+                    subtitle: Text(event.content),
+                  );
+                },
+              ),
+            ),
+            if (error.value != null) Text(error.value!),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: input,
+                        decoration: InputDecoration(
+                          hintText: 'Message $agentName',
+                        ),
+                        onSubmitted: (_) => unawaited(send()),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Send message',
+                      onPressed: sending.value ? null : () => unawaited(send()),
+                      icon: const Icon(Icons.send),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

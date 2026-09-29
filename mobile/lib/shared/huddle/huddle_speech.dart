@@ -24,12 +24,27 @@ final class HuddleSpeech {
 
   Future<void> start() => _channel.invokeMethod<void>('start');
   Future<void> stop() => _channel.invokeMethod<void>('stop');
-  Future<void> speak(String text) =>
-      _channel.invokeMethod<void>('speak', {'text': text});
+  Future<List<HuddleVoice>> voices() async {
+    final values = await _channel.invokeMethod<List<dynamic>>('voices') ?? [];
+    return [
+      for (final value in values)
+        if (value is Map && value['id'] is String && value['name'] is String)
+          HuddleVoice(value['id'] as String, value['name'] as String),
+    ];
+  }
+
+  Future<void> speak(String text, {String? voiceId}) =>
+      _channel.invokeMethod<void>('speak', {'text': text, 'voiceId': voiceId});
 
   void dispose() {
     onTranscript = null;
     onError = null;
     _channel.setMethodCallHandler(null);
   }
+}
+
+final class HuddleVoice {
+  final String id;
+  final String name;
+  const HuddleVoice(this.id, this.name);
 }
