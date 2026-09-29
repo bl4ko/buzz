@@ -672,7 +672,7 @@ pub async fn validate_admin_event(
         .get_channel_for_event_write(tenant.community(), channel_id)
         .await
         .map_err(|_| anyhow::anyhow!("channel not found"))?;
-    if kind != 9002 && channel.archived_at.is_some() && !is_self_departure(event) {
+    if channel.archived_at.is_some() && !allows_archived_channel_operation(kind, event) {
         return Err(anyhow::anyhow!("channel is archived"));
     }
 
@@ -1018,6 +1018,10 @@ pub async fn validate_admin_event(
         }
         _ => Ok(()),
     }
+}
+
+pub(crate) fn allows_archived_channel_operation(kind: u32, event: &Event) -> bool {
+    kind == 9002 || kind == 9008 || is_self_departure(event)
 }
 
 /// Emit a system message (kind 40099) signed by the relay keypair.
@@ -4913,6 +4917,28 @@ mod tests {
         let member = nostr::Keys::generate().public_key().to_hex();
         let headless = create_with(&creator, vec![tag("p", &member)]);
         assert!(initial_members(&headless).is_err());
+    }
+
+    #[test]
+    fn archived_channels_allow_metadata_delete_and_departure() {
+        let keys = nostr::Keys::generate();
+        for (kind, archived, expected) in [
+            (9008, None, true),
+            (9002, Some("false"), true),
+            (9002, Some("true"), true),
+            (9022, None, true),
+            (9000, None, false),
+        ] {
+            let mut tags = vec![Tag::parse(["h", &Uuid::new_v4().to_string()]).expect("h tag")];
+            if let Some(value) = archived {
+                tags.push(Tag::parse(["archived", value]).expect("archived tag"));
+            }
+            let event = EventBuilder::new(Kind::Custom(kind as u16), "")
+                .tags(tags)
+                .sign_with_keys(&keys)
+                .expect("sign");
+            assert_eq!(allows_archived_channel_operation(kind, &event), expected);
+        }
     }
 
     #[test]

@@ -3084,12 +3084,8 @@ async fn ingest_event_inner(
         // kind:9002 is not checked here: its atomic write decides the
         // archive state under the channel row lock, after its duplicate
         // check, so a resend that races the first commit is a duplicate.
-        let is_edit_metadata = kind_u32 == KIND_NIP29_EDIT_METADATA;
-
         // A member may still leave an archived channel by themselves.
-        let is_self_departure = crate::handlers::side_effects::is_self_departure(&event);
-
-        if !is_edit_metadata && !is_self_departure {
+        if !crate::handlers::side_effects::allows_archived_channel_operation(kind_u32, &event) {
             if let Some(channel) = &channel_row {
                 if channel.archived_at.is_some() {
                     return Err(match target_denial {
