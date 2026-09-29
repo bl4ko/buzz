@@ -922,6 +922,11 @@ async fn put_members_on(
     .map(|row| Ok((row.try_get("pubkey")?, row.try_get("role")?)))
     .collect::<Result<_>>()?;
 
+    let actor_is_community_owner = match invited_by {
+        Some(actor) => is_community_owner_tx(tx.conn(), community_id, actor).await?,
+        None => false,
+    };
+
     // Owners gained (+) or lost (-) by the decisions so far, against the count
     // before this call, which is read only if a demotion needs it.
     let mut owner_delta: i64 = 0;
@@ -951,6 +956,12 @@ async fn put_members_on(
                     .map_err(|_| DbError::InvalidData(format!("invalid role in database: {r}")))
             })
             .transpose()?;
+        let actor_role = if actor_is_community_owner && !actor_role.is_some_and(|r| r.is_elevated())
+        {
+            Some(MemberRole::Owner)
+        } else {
+            actor_role
+        };
 
         let effective_role =
             match buzz_core::channel::decide_member_put(buzz_core::channel::MemberPut {
@@ -1120,7 +1131,7 @@ pub async fn remove_member(
     acquire_channel_membership_lock(tx.conn(), community_id, channel_id).await?;
 
     if !is_self_remove {
-        let actor_role_str = get_active_role_tx(tx.conn(), community_id, channel_id, actor_pubkey)
+        let actor_role_str = get_actor_role_tx(tx.conn(), community_id, channel_id, actor_pubkey)
             .await?
             .ok_or_else(|| DbError::AccessDenied("actor is not an active member".to_string()))?;
         let actor_role: MemberRole = actor_role_str.parse().map_err(|_| {
@@ -1826,6 +1837,39 @@ async fn get_active_role_tx(
     .fetch_optional(&mut *tx)
     .await?;
     Ok(row.map(|r| r.try_get("role")).transpose()?)
+}
+
+/// The actor's channel role, or `owner` for a community owner without a
+/// channel owner or admin role.
+async fn get_actor_role_tx(
+    tx: &mut PgConnection,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    pubkey: &[u8],
+) -> Result<Option<String>> {
+    let channel_role = get_active_role_tx(tx, community_id, channel_id, pubkey).await?;
+    if matches!(channel_role.as_deref(), Some("owner" | "admin")) {
+        return Ok(channel_role);
+    }
+    Ok(if is_community_owner_tx(tx, community_id, pubkey).await? {
+        Some("owner".to_string())
+    } else {
+        channel_role
+    })
+}
+
+async fn is_community_owner_tx(
+    tx: &mut PgConnection,
+    community_id: CommunityId,
+    pubkey: &[u8],
+) -> Result<bool> {
+    Ok(sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM relay_members WHERE community_id = $1 AND pubkey = $2 AND role = 'owner')",
+    )
+    .bind(community_id.as_uuid())
+    .bind(hex::encode(pubkey))
+    .fetch_one(&mut *tx)
+    .await?)
 }
 
 /// Transaction-aware variant of [`get_channel`].
@@ -2568,6 +2612,7 @@ mod postgres_tests {
     use crate::channel::{ChannelType, ChannelVisibility};
     use crate::migration;
     use crate::test_support::ScratchDb;
+    use crate::store::relay_members::bootstrap_owner;
     use crate::user::{ensure_user, set_agent_owner};
     use nostr::Keys;
     use sqlx::postgres::PgPoolOptions;
@@ -2592,6 +2637,61 @@ mod postgres_tests {
             .await
             .expect("insert test community");
         id
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn community_owner_manages_private_channel_without_membership() {
+        let pool = setup_pool().await;
+        let community = CommunityId::from_uuid(make_test_community(&pool).await);
+        let community_owner = random_pubkey();
+        let channel_owner = random_pubkey();
+        let target = random_pubkey();
+        for pubkey in [&community_owner, &channel_owner, &target] {
+            ensure_user(&pool, community, pubkey)
+                .await
+                .expect("ensure user");
+        }
+        bootstrap_owner(
+            &pool,
+            community,
+            &hex::encode(&community_owner),
+            &Keys::generate(),
+        )
+        .await
+        .expect("bootstrap owner");
+        let channel = create_test_channel(
+            &pool,
+            *community.as_uuid(),
+            "community-owner-private-channel",
+            ChannelType::Stream,
+            ChannelVisibility::Private,
+            None,
+            &channel_owner,
+            None,
+        )
+        .await
+        .expect("create channel");
+
+        add_member(
+            &pool,
+            community,
+            channel.id,
+            &target,
+            MemberRole::Admin,
+            Some(&community_owner),
+        )
+        .await
+        .expect("community owner adds admin");
+        remove_member(&pool, community, channel.id, &target, &community_owner)
+            .await
+            .expect("community owner removes admin");
+        assert!(
+            get_member_role(&pool, community, channel.id, &community_owner)
+                .await
+                .expect("get role")
+                .is_none()
+        );
     }
 
     #[allow(clippy::too_many_arguments)]

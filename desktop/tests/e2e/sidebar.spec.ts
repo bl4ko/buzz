@@ -348,6 +348,7 @@ test("leaving a channel from the context menu never freezes the app", async ({
 test("channel context menu only shows owner actions to the owner", async ({
   page,
 }) => {
+  await installMockBridge(page, { relayRole: "member" });
   await page.goto("/");
 
   await page.getByTestId("channel-general").click({ button: "right" });
@@ -382,6 +383,16 @@ test("channel context menu only shows owner actions to the owner", async ({
   await expect(
     page.getByRole("menuitem", { name: "Delete channel" }),
   ).toHaveCount(0);
+});
+
+test("community owner can delete a channel they do not own", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByTestId("channel-random").click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "Delete channel" }),
+  ).toBeVisible();
 });
 
 test("channel context menu explains when owner actions are loading", async ({

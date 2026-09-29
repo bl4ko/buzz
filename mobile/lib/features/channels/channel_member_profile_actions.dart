@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:buzz/shared/theme/buzz_icons.dart';
 
+import '../../shared/community/community_membership_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/app_list.dart';
 import '../../shared/widgets/app_list_card.dart';
@@ -29,6 +30,7 @@ class ChannelMemberProfileActions extends HookConsumerWidget {
     final error = useState<String?>(null);
     final actor = ref.watch(currentPubkeyProvider)?.toLowerCase();
     final roster = ref.watch(channelMembersProvider(channel.id));
+    final communityRole = ref.watch(currentCommunityRoleProvider).value;
     final channels = ref.watch(channelsProvider).asData?.value;
     final currentChannel =
         channels
@@ -41,6 +43,7 @@ class ChannelMemberProfileActions extends HookConsumerWidget {
       AsyncValue<List<ChannelMember>> snapshot,
       String? currentActor,
       Channel current,
+      CommunityMemberRole? role,
     ) {
       if (current.isDm ||
           current.isArchived ||
@@ -57,13 +60,20 @@ class ChannelMemberProfileActions extends HookConsumerWidget {
       final member = members
           .where((m) => m.pubkey.toLowerCase() == target)
           .firstOrNull;
-      if (viewer?.isElevated != true || member == null || member.isOwner) {
+      final canManage =
+          viewer?.isElevated == true || role == CommunityMemberRole.owner;
+      if (!canManage || member == null || member.isOwner) {
         return null;
       }
       return member;
     }
 
-    final member = manageableMember(roster, actor, currentChannel);
+    final member = manageableMember(
+      roster,
+      actor,
+      currentChannel,
+      communityRole,
+    );
     if (member == null) return const SizedBox.shrink();
 
     bool stillAllowed() {
@@ -80,6 +90,7 @@ class ChannelMemberProfileActions extends HookConsumerWidget {
                 ref.read(channelMembersProvider(channel.id)),
                 actor,
                 latest,
+                ref.read(currentCommunityRoleProvider).value,
               )?.role ==
               member.role;
     }

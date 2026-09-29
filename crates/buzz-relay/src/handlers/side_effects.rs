@@ -481,7 +481,8 @@ async fn may_delete_channel_event(
     Ok(actor_is_channel_owner_or_admin(
         &state.db.get_members(tenant.community(), channel_id).await?,
         actor,
-    ) || state
+    ) || actor_is_community_owner(state, tenant.community(), actor).await?
+        || state
         .db
         .is_agent_owner(tenant.community(), author, actor)
         .await?)
@@ -591,10 +592,23 @@ async fn actor_has_channel_authority(
     if members
         .iter()
         .any(|m| m.pubkey == actor_bytes && (m.role == "owner" || m.role == "admin"))
+        || actor_is_community_owner(state, community_id, actor_bytes).await?
     {
         return Ok(true);
     }
     actor_owns_any_owner_agent(state, community_id, &members, actor_bytes).await
+}
+
+async fn actor_is_community_owner(
+    state: &Arc<AppState>,
+    community_id: buzz_core::CommunityId,
+    actor_bytes: &[u8],
+) -> anyhow::Result<bool> {
+    Ok(state
+        .db
+        .get_relay_member(community_id, &hex::encode(actor_bytes))
+        .await?
+        .is_some_and(|member| member.role == "owner"))
 }
 
 /// Returns `true` if `actor_bytes` is the NIP-OA owner of **any** active owner-role
@@ -661,6 +675,7 @@ pub async fn validate_admin_event(
         extract_h_tag_channel(event).ok_or_else(|| anyhow::anyhow!("missing or invalid h tag"))?;
 
     let actor_bytes = event.pubkey.to_bytes().to_vec();
+    let is_community_owner = actor_is_community_owner(state, tenant.community(), &actor_bytes).await?;
 
     // Reject mutations on archived channels, except a member leaving by
     // themselves (still subject to the last-owner rule). kind:9002 is not
@@ -688,6 +703,8 @@ pub async fn validate_admin_event(
             if target_pubkey == actor_bytes {
                 // Self-removal: must be an active member, and cannot be the last owner.
                 channel_authz::decide_self_departure(&members, &actor_bytes)?;
+                Ok(())
+            } else if is_community_owner {
                 Ok(())
             } else {
                 match channel_authz::classify_remove_other(&members, &actor_bytes) {
@@ -901,6 +918,9 @@ pub async fn validate_admin_event(
                 let is_member = state
                     .is_member_cached(tenant.community(), channel_id, &actor_bytes)
                     .await?;
+                if is_community_owner {
+                    return Ok(());
+                }
                 if !is_member {
                     return Err(anyhow::anyhow!("not a member"));
                 }
@@ -997,6 +1017,9 @@ pub async fn validate_admin_event(
             match actor_member {
                 Some(m) if m.role == "owner" => Ok(()),
                 _ => {
+                    if is_community_owner {
+                        return Ok(());
+                    }
                     // Allow the owning human of any active owner-role agent in the
                     // channel, even when the human is not a channel member —
                     // diverges from kind:9001 intentionally.
@@ -1963,12 +1986,17 @@ pub(crate) async fn validate_put_user(
     // order `put_members` writes them in: an heir named first lets the sole
     // owner step down after, and an owner who steps down can't then grant an
     // elevated role.
+    let is_community_owner = actor_is_community_owner(state, tenant.community(), &actor_bytes).await?;
     let mut checked = Vec::with_capacity(targets.len());
     for target in targets {
-        let actor_role: Option<MemberRole> = members
-            .iter()
-            .find(|m| m.pubkey == actor_bytes)
-            .and_then(|m| m.role.parse().ok());
+        let actor_role: Option<MemberRole> = if is_community_owner {
+            Some(MemberRole::Owner)
+        } else {
+            members
+                .iter()
+                .find(|m| m.pubkey == actor_bytes)
+                .and_then(|m| m.role.parse().ok())
+        };
         let decision = channel_authz::decide_put_user(
             &channel.visibility,
             join_role,

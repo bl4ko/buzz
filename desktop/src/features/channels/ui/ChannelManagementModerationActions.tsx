@@ -1,6 +1,7 @@
 import { Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { ownsAuthorAgent } from "@/features/profile/lib/identity";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { ChannelMember } from "@/shared/api/types";
@@ -54,6 +55,7 @@ export function useChannelModerationCapabilities(
   currentPubkey: string | undefined,
   enabled: boolean,
 ) {
+  const isCommunityOwner = useMyRelayMembershipQuery().data?.role === "owner";
   const normalizedCurrentPubkey = currentPubkey
     ? normalizePubkey(currentPubkey)
     : undefined;
@@ -84,11 +86,16 @@ export function useChannelModerationCapabilities(
   );
 
   return {
-    canDeleteChannel: selfRole === "owner" || canManageOwnedAgentChannel,
+    isCommunityOwner,
+    canDeleteChannel:
+      enabled &&
+      (isCommunityOwner || selfRole === "owner" || canManageOwnedAgentChannel),
     canManageChannel:
-      selfRole === "owner" ||
-      selfRole === "admin" ||
-      canManageOwnedAgentChannel,
+      enabled &&
+      (isCommunityOwner ||
+        selfRole === "owner" ||
+        selfRole === "admin" ||
+        canManageOwnedAgentChannel),
     error: shouldResolveAgentOwnership ? ownerProfilesQuery.error : null,
     isLoading: shouldResolveAgentOwnership && ownerProfilesQuery.isLoading,
   };
