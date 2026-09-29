@@ -388,6 +388,7 @@ test("channel context menu only shows owner actions to the owner", async ({
 test("community owner can delete a channel they do not own", async ({
   page,
 }) => {
+  await installMockBridge(page, { relayRequiresMembership: true });
   await page.goto("/");
   await page.getByTestId("channel-random").click({ button: "right" });
   await expect(
