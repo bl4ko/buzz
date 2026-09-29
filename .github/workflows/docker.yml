@@ -87,10 +87,7 @@ concurrency:
 permissions: {}
 
 env:
-  # Single source of truth for the image name. Set GHCR_IMAGE as a repo
-  # variable to override (e.g., for forks that want to push to their own
-  # namespace without forking this file).
-  IMAGE_NAME: ${{ vars.GHCR_IMAGE != '' && vars.GHCR_IMAGE || 'ghcr.io/block/buzz' }}
+  IMAGE_NAME: ${{ vars.GHCR_IMAGE != '' && vars.GHCR_IMAGE || format('ghcr.io/{0}', github.repository) }}
 
 jobs:
   build:
@@ -506,6 +503,7 @@ jobs:
 
   push-gateway-build:
     name: Build public push gateway (${{ matrix.platform }})
+    if: github.repository == 'block/buzz'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -616,7 +614,7 @@ jobs:
 
   push-gateway-merge:
     name: Publish public push gateway image
-    if: github.event_name != 'pull_request'
+    if: github.repository == 'block/buzz' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     # Staging promotes every published main gateway image automatically, so the
     # gateway publishes only from a source the relay's same-SHA CI qualified.

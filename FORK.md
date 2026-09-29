@@ -2,7 +2,7 @@
 
 Build and publish from the Apple silicon Mac mini. Install build tools with Homebrew and JavaScript packages with `pnpm install --frozen-lockfile` in `desktop/`.
 
-Keep `main` equal to upstream. Keep mobile and desktop huddle changes on `feat/ios-agent-huddles`. Rebase this branch onto an upstream release, run the checks, and test a huddle with Hermes before publishing. Do not change the upstream version files for a custom release.
+Keep custom changes on fork `main`. Rebase it onto `origin/main` after upstream updates, run the checks, and test a huddle with Hermes before publishing. Push the rebased `main` to `bl4ko/buzz` with `--force-with-lease`. Do not change the upstream version files for a custom release.
 
 The desktop changes use the channel member list to include external agents. External agents keep their existing runtime and relay hook. The release script inherits `BUZZ_BUILD_RELAY_RECONNECT_CMD` when it is set.
 
