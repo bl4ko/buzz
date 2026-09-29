@@ -3082,19 +3082,19 @@ async fn ingest_event_inner(
             .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
     }
 
-    if channel_id.is_some() {
-        // kind:9002 is not checked here: its atomic write decides the
-        // archive state under the channel row lock, after its duplicate
-        // check, so a resend that races the first commit is a duplicate.
-        // A member may still leave an archived channel by themselves.
-        if !crate::handlers::side_effects::allows_archived_channel_operation(kind_u32, &event) {
-            if let Some(channel) = &channel_row {
-                if channel.archived_at.is_some() {
-                    return Err(match target_denial {
-                        Some(reason) => target_denied(reason),
-                        None => IngestError::Rejected("invalid: channel is archived".into()),
-                    });
-                }
+    // kind:9002 is not checked here: its atomic write decides the
+    // archive state under the channel row lock, after its duplicate
+    // check, so a resend that races the first commit is a duplicate.
+    // A member may still leave an archived channel by themselves.
+    if channel_id.is_some()
+        && !crate::handlers::side_effects::allows_archived_channel_operation(kind_u32, &event)
+    {
+        if let Some(channel) = &channel_row {
+            if channel.archived_at.is_some() {
+                return Err(match target_denial {
+                    Some(reason) => target_denied(reason),
+                    None => IngestError::Rejected("invalid: channel is archived".into()),
+                });
             }
         }
     }
