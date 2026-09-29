@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserRoundPlus, X } from "lucide-react";
 import {
@@ -176,6 +177,8 @@ export function MembersSidebar({
   const rawMembers = membersQuery.data ?? [];
   const selfMember =
     rawMembers.find((member) => member.pubkey === currentPubkey) ?? null;
+  const isCommunityOwner = useMyRelayMembershipQuery().data?.role === "owner";
+  const selfRole = isCommunityOwner ? "owner" : selfMember?.role;
   const {
     people,
     bots,
@@ -241,7 +244,7 @@ export function MembersSidebar({
   const canAddMembers = canAddChannelMembers({
     channelType: channel?.channelType,
     visibility: channel?.visibility,
-    selfRole: selfMember?.role,
+    selfRole,
   });
   // Distinguish "you can't add here" from "nothing to add" so a non-member
   // viewing a private channel gets the reason instead of a silently missing affordance.
@@ -438,8 +441,7 @@ export function MembersSidebar({
     normalizedSearchQuery,
   ]);
 
-  const canManageMembers =
-    selfMember?.role === "owner" || selfMember?.role === "admin";
+  const canManageMembers = selfRole === "owner" || selfRole === "admin";
 
   const {
     canModerate,
@@ -486,13 +488,13 @@ export function MembersSidebar({
   const canRemoveMember = React.useCallback(
     (member: ChannelMember) => {
       return (
-        (selfMember?.role === "admin" && member.pubkey !== currentPubkey) ||
-        (selfMember?.role === "owner" && member.role !== "owner") ||
+        (selfRole === "admin" && member.pubkey !== currentPubkey) ||
+        (selfRole === "owner" && member.role !== "owner") ||
         Boolean(selfMember && isMyBot(member)) ||
         member.pubkey === currentPubkey
       );
     },
-    [currentPubkey, isMyBot, selfMember],
+    [currentPubkey, isMyBot, selfMember, selfRole],
   );
   const removableManagedBots = React.useMemo(
     () =>

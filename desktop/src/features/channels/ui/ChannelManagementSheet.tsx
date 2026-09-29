@@ -144,11 +144,13 @@ export function ChannelManagementSheet({
     members.find((member) => member.pubkey === currentPubkey) ?? null;
   const hasResolvedMembership = membersQuery.data !== undefined;
 
-  const { canDeleteChannel, canManageChannel } =
+  const { canDeleteChannel, canManageChannel, isCommunityOwner } =
     useChannelModerationCapabilities(membersQuery.data, currentPubkey, open);
   const canEditChannel = canManageChannel && detail?.channelType !== "dm";
   const canEditNarrative =
-    canManageChannel && selfMember !== null && detail?.channelType !== "dm";
+    canManageChannel &&
+    (selfMember !== null || isCommunityOwner) &&
+    detail?.channelType !== "dm";
   const isArchived =
     detail?.archivedAt !== null && detail?.archivedAt !== undefined;
   const canJoin =

@@ -464,6 +464,11 @@ pub async fn validate_admin_event(
         extract_h_tag_channel(event).ok_or_else(|| anyhow::anyhow!("missing or invalid h tag"))?;
 
     let actor_bytes = event.pubkey.to_bytes().to_vec();
+    let is_community_owner = state
+        .db
+        .get_relay_member(tenant.community(), &hex::encode(&actor_bytes))
+        .await?
+        .is_some_and(|member| member.role == "owner");
 
     // Reject mutations on archived channels — except kind:9002 with archived=false
     // (unarchive), which must be allowed through so the channel can be restored.
@@ -492,10 +497,14 @@ pub async fn validate_admin_event(
             };
 
             let members = state.db.get_members(tenant.community(), channel_id).await?;
-            let actor_role: Option<buzz_db::channel::MemberRole> = members
-                .iter()
-                .find(|m| m.pubkey == actor_bytes)
-                .and_then(|m| m.role.parse().ok());
+            let actor_role: Option<buzz_db::channel::MemberRole> = if is_community_owner {
+                Some(buzz_db::channel::MemberRole::Owner)
+            } else {
+                members
+                    .iter()
+                    .find(|m| m.pubkey == actor_bytes)
+                    .and_then(|m| m.role.parse().ok())
+            };
             let target_pubkey =
                 extract_p_tag(event).ok_or_else(|| anyhow::anyhow!("missing p tag"))?;
 
@@ -539,6 +548,8 @@ pub async fn validate_admin_event(
             if target_pubkey == actor_bytes {
                 // Self-removal: must be an active member, and cannot be the last owner.
                 channel_authz::decide_self_departure(&members, &actor_bytes)?;
+                Ok(())
+            } else if is_community_owner {
                 Ok(())
             } else {
                 match channel_authz::classify_remove_other(&members, &actor_bytes) {
@@ -669,6 +680,9 @@ pub async fn validate_admin_event(
                 match actor_member {
                     Some(m) if m.role == "owner" || m.role == "admin" => Ok(()),
                     _ => {
+                        if is_community_owner {
+                            return Ok(());
+                        }
                         // Allow the owning human of any active owner-role agent in the
                         // channel, even when the human is not a channel member —
                         // diverges from kind:9001 intentionally.
@@ -692,7 +706,7 @@ pub async fn validate_admin_event(
                 let is_member = state
                     .is_member_cached(tenant.community(), channel_id, &actor_bytes)
                     .await?;
-                if is_member {
+                if is_member || is_community_owner {
                     Ok(())
                 } else {
                     Err(anyhow::anyhow!("not a member"))
@@ -773,7 +787,7 @@ pub async fn validate_admin_event(
             // Not the author, or author who is no longer a member of a private channel —
             // must be owner/admin or the owning human of the message's agent-author.
             let members = state.db.get_members(tenant.community(), channel_id).await?;
-            if actor_is_channel_owner_or_admin(&members, &actor_bytes) {
+            if is_community_owner || actor_is_channel_owner_or_admin(&members, &actor_bytes) {
                 Ok(())
             } else {
                 // Allow the owning human of the agent that authored the target message,
@@ -798,6 +812,9 @@ pub async fn validate_admin_event(
             match actor_member {
                 Some(m) if m.role == "owner" => Ok(()),
                 _ => {
+                    if is_community_owner {
+                        return Ok(());
+                    }
                     // Allow the owning human of any active owner-role agent in the
                     // channel, even when the human is not a channel member —
                     // diverges from kind:9001 intentionally.

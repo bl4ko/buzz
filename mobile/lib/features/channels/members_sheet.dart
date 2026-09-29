@@ -3,6 +3,8 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/community/community_membership_provider.dart';
+
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
@@ -44,9 +46,10 @@ class MembersSheet extends HookConsumerWidget {
       orElse: () => null,
     );
     final canManage =
-        currentMember != null &&
-        currentMember.isElevated &&
-        !channel.isArchived;
+        !channel.isArchived &&
+        (currentMember?.isElevated == true ||
+            ref.watch(currentCommunityRoleProvider).value ==
+                CommunityMemberRole.owner);
 
     void openActivity(ChannelMember bot) {
       final navigator = Navigator.of(context);

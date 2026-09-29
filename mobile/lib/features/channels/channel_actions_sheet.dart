@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/clipboard_utils.dart';
+import '../../shared/community/community_membership_provider.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/app_list.dart';
@@ -94,6 +95,9 @@ class ChannelActionsSheet extends HookConsumerWidget {
         ? const AsyncValue<Map<String, String>>.data({})
         : ref.watch(agentOwnersProvider);
     final currentPubkey = ref.watch(currentPubkeyProvider)?.toLowerCase();
+    final isCommunityOwner =
+        ref.watch(currentCommunityRoleProvider).value ==
+        CommunityMemberRole.owner;
     final currentMember = membersAsync.value?.cast<ChannelMember?>().firstWhere(
       (member) => member?.pubkey.toLowerCase() == currentPubkey,
       orElse: () => null,
@@ -109,12 +113,12 @@ class ChannelActionsSheet extends HookConsumerWidget {
             ) ==
             true;
     final canManageLifecycle =
-        currentMember?.isElevated == true || ownsOwnerAgent;
+        isCommunityOwner || currentMember?.isElevated == true || ownsOwnerAgent;
     final canArchive = !channel.isArchived && canManageLifecycle;
     final canUnarchive = channel.isArchived && canManageLifecycle;
     final canDelete =
         !channel.isArchived &&
-        (currentMember?.isOwner == true || ownsOwnerAgent);
+        (isCommunityOwner || currentMember?.isOwner == true || ownsOwnerAgent);
     final lifecycleCapabilitiesLoading =
         membersAsync.isLoading || agentOwnersAsync.isLoading;
     final lifecycleCapabilitiesUnavailable =
