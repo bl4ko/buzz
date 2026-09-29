@@ -118,12 +118,21 @@ final class HuddleMediaPlugin {
     case "stop":
       speech?.stop()
       result(nil)
+    case "voices":
+      result(AVSpeechSynthesisVoice.speechVoices()
+        .filter { $0.language.hasPrefix("en-") }
+        .sorted {
+          if $0.quality != $1.quality { return $0.quality.rawValue > $1.quality.rawValue }
+          return $0.name < $1.name
+        }
+        .map { ["id": $0.identifier, "name": $0.name] })
     case "speak":
-      guard let text = (call.arguments as? [String: Any])?["text"] as? String else {
+      let arguments = call.arguments as? [String: Any]
+      guard let text = arguments?["text"] as? String else {
         result(FlutterError(code: "invalid_arguments", message: "Missing speech text.", details: nil))
         return
       }
-      speech?.speak(text)
+      speech?.speak(text, voiceId: arguments?["voiceId"] as? String)
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
@@ -673,13 +682,14 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
     }
   }
 
-  func speak(_ text: String) {
+  func speak(_ text: String, voiceId: String?) {
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
     speaking = true
     clearSegment()
     synthesizer.stopSpeaking(at: .immediate)
     let utterance = AVSpeechUtterance(string: String(text.prefix(500)))
-    utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+    utterance.voice = voiceId.flatMap { AVSpeechSynthesisVoice(identifier: $0) }
+      ?? AVSpeechSynthesisVoice(language: "en-US")
     synthesizer.speak(utterance)
   }
 
