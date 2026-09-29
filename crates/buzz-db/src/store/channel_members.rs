@@ -1893,9 +1893,6 @@ mod postgres_tests {
     #[ignore = "requires Postgres"]
     async fn community_owner_manages_private_channel_without_membership() {
         let pool = setup_pool().await;
-        migration::run_migrations(&pool)
-            .await
-            .expect("run migrations");
         let community = CommunityId::from_uuid(make_test_community(&pool).await);
         let community_owner = random_pubkey();
         let channel_owner = random_pubkey();
