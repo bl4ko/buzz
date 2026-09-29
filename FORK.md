@@ -2,7 +2,7 @@
 
 Build and publish from the Apple silicon Mac mini. Install build tools with Homebrew and JavaScript packages with `pnpm install --frozen-lockfile` in `desktop/`.
 
-Keep `main` equal to upstream. Keep custom changes on `feat/desktop-external-agent-huddles`. Rebase the custom branch onto an upstream release, run the checks, and test a huddle with Hermes before publishing. Do not change the upstream version files for a custom release.
+Keep `main` equal to upstream. Keep mobile and desktop huddle changes on `feat/ios-agent-huddles`. Rebase this branch onto an upstream release, run the checks, and test a huddle with Hermes before publishing. Do not change the upstream version files for a custom release.
 
 The desktop changes use the channel member list to include external agents. External agents keep their existing runtime and relay hook. The release script inherits `BUZZ_BUILD_RELAY_RECONNECT_CMD` when it is set.
 
@@ -40,4 +40,4 @@ Apple requires the Account Holder to create a Developer ID certificate. Open [Ap
 
 Install the ZIP, open Buzz Custom, connect to `buzz.bl4ko.com`, and sign in as the channel owner. Open a channel that includes Hermes and start a huddle. Confirm that Hermes joins. Speak, then confirm that Hermes receives the transcript and that you hear the reply. Automated checks cover agent discovery and joining; a live call is still required to check audio.
 
-iPhone packaging and TestFlight are separate work after the desktop voice test.
+The mobile app and the desktop app use this same source branch. The mobile app keeps its own app ID and TestFlight build. The desktop app needs its own Developer ID signing and download.
