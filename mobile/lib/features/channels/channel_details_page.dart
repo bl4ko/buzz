@@ -82,8 +82,11 @@ class ChannelDetailsPage extends HookConsumerWidget {
                       ?.toLowerCase() ==
                   resolvedCurrentPubkey,
         );
+    final isCommunityOwner =
+        ref.watch(currentCommunityRoleProvider).value ==
+        CommunityMemberRole.owner;
     final canManageLifecycle =
-        currentMember?.isElevated == true || ownsOwnerAgent;
+        isCommunityOwner || currentMember?.isElevated == true || ownsOwnerAgent;
     final canEdit =
         !resolvedChannel.isDm &&
         canManageLifecycle &&
@@ -97,12 +100,14 @@ class ChannelDetailsPage extends HookConsumerWidget {
         !membersAsync.isLoading &&
         !membersAsync.hasError &&
         !resolvedChannel.isArchived &&
-        resolvedChannel.canAddMembers(currentMember?.role);
+        resolvedChannel.canAddMembers(
+          isCommunityOwner ? 'owner' : currentMember?.role,
+        );
     final canArchive = !resolvedChannel.isArchived && canManageLifecycle;
     final canUnarchive = resolvedChannel.isArchived && canManageLifecycle;
     final canDelete =
         !resolvedChannel.isArchived &&
-        (currentMember?.isOwner == true || ownsOwnerAgent);
+        (isCommunityOwner || currentMember?.isOwner == true || ownsOwnerAgent);
     final lifecycleCapabilitiesLoading =
         membersAsync.isLoading || agentOwnersAsync.isLoading;
     final lifecycleCapabilitiesUnavailable =
