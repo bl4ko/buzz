@@ -16,10 +16,6 @@ export function isHuddleBackingChannel(
 export function shouldShowSidebarChannel(
   channel: Channel,
   huddleBackingChannelIds: ReadonlySet<string>,
-  revealedHuddleChannelIds: ReadonlySet<string>,
 ): boolean {
-  return (
-    !isHuddleBackingChannel(channel, huddleBackingChannelIds) ||
-    revealedHuddleChannelIds.has(channel.id)
-  );
+  return !isHuddleBackingChannel(channel, huddleBackingChannelIds);
 }
