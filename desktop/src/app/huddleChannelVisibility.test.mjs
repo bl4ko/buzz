@@ -15,8 +15,8 @@ function channel(overrides = {}) {
   };
 }
 
-test("ordinary channels stay visible without an explicit reveal", () => {
-  assert.equal(shouldShowSidebarChannel(channel(), new Set(), new Set()), true);
+test("ordinary channels stay visible", () => {
+  assert.equal(shouldShowSidebarChannel(channel(), new Set()), true);
 });
 
 test("tracked huddle backing channels stay hidden by default", () => {
@@ -29,26 +29,19 @@ test("tracked huddle backing channels stay hidden by default", () => {
 
   assert.equal(isHuddleBackingChannel(huddle, huddleBackingChannelIds), true);
   assert.equal(
-    shouldShowSidebarChannel(huddle, huddleBackingChannelIds, new Set()),
+    shouldShowSidebarChannel(huddle, huddleBackingChannelIds),
     false,
   );
 });
 
-test("an explicitly revealed huddle channel appears in the sidebar", () => {
+test("an active huddle backing channel stays out of the sidebar", () => {
   const huddle = channel({
     id: "active-huddle",
     name: "huddle",
     ttlSeconds: 3_600,
   });
 
-  assert.equal(
-    shouldShowSidebarChannel(
-      huddle,
-      new Set([huddle.id]),
-      new Set([huddle.id]),
-    ),
-    true,
-  );
+  assert.equal(shouldShowSidebarChannel(huddle, new Set([huddle.id])), false);
 });
 
 test("one-hour channels with huddle-shaped names remain ordinary", () => {
@@ -58,10 +51,7 @@ test("one-hour channels with huddle-shaped names remain ordinary", () => {
   });
 
   assert.equal(isHuddleBackingChannel(ordinaryChannel, new Set()), false);
-  assert.equal(
-    shouldShowSidebarChannel(ordinaryChannel, new Set(), new Set()),
-    true,
-  );
+  assert.equal(shouldShowSidebarChannel(ordinaryChannel, new Set()), true);
 });
 
 test("mobile huddle channels stay out of the desktop sidebar", () => {
@@ -71,5 +61,5 @@ test("mobile huddle channels stay out of the desktop sidebar", () => {
     visibility: "private",
     ttlSeconds: 3_600,
   });
-  assert.equal(shouldShowSidebarChannel(huddle, new Set(), new Set()), false);
+  assert.equal(shouldShowSidebarChannel(huddle, new Set()), false);
 });
