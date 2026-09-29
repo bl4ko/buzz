@@ -77,6 +77,11 @@ class Channel {
   );
 
   bool get isEphemeral => ttlSeconds != null || ttlDeadline != null;
+  bool get isHuddleBackingChannel =>
+      RegExp(r'^huddle-[0-9a-f]{8}$').hasMatch(name) &&
+      channelType == 'stream' &&
+      visibility == 'private' &&
+      ttlSeconds == 3600;
 
   bool get isStream => channelType == 'stream';
   bool get isForum => channelType == 'forum';

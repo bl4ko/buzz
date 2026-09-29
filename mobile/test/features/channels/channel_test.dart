@@ -242,4 +242,29 @@ void main() {
       expect(channel.canAddMembers('owner'), isFalse);
     });
   });
+
+  test('only private one-hour huddle streams stay out of channel lists', () {
+    Channel make({
+      String name = 'huddle-cb879efb',
+      String channelType = 'stream',
+      String visibility = 'private',
+      int? ttlSeconds = 3600,
+    }) => Channel(
+      id: '1',
+      name: name,
+      channelType: channelType,
+      visibility: visibility,
+      description: '',
+      createdBy: 'x',
+      createdAt: DateTime(2025),
+      memberCount: 2,
+      ttlSeconds: ttlSeconds,
+    );
+
+    expect(make().isHuddleBackingChannel, isTrue);
+    expect(make(name: 'general-huddle').isHuddleBackingChannel, isFalse);
+    expect(make(channelType: 'forum').isHuddleBackingChannel, isFalse);
+    expect(make(visibility: 'open').isHuddleBackingChannel, isFalse);
+    expect(make(ttlSeconds: null).isHuddleBackingChannel, isFalse);
+  });
 }
