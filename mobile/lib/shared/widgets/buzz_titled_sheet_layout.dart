@@ -57,7 +57,7 @@ class BuzzTitledSheetLayout extends HookWidget {
 
     final sheet = SizedBox(
       width: double.infinity,
-      child: ColoredBox(
+      child: Material(
         key: const ValueKey('buzz-sheet-surface'),
         color: paintsSurface ? color : Colors.transparent,
         child: Column(

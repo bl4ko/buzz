@@ -2866,7 +2866,7 @@ void main() {
               onAddMembers: (_, pubkeys) async {
                 submittedPubkeys.add(pubkeys);
                 attempts += 1;
-                if (attempts == 1) {
+                if (pubkeys.single == 'bob' && attempts == 2) {
                   throw const AddMembersException({'bob': 'rejected'});
                 }
               },
@@ -2903,7 +2903,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(attempts, 1);
+        expect(attempts, 2);
         expect(
           find.byKey(const ValueKey('add-channel-member-selected-alice')),
           findsNothing,
@@ -2928,9 +2928,10 @@ void main() {
           find.byKey(const ValueKey('add-channel-members-submit')),
         );
         await tester.pumpAndSettle();
-        expect(attempts, 2);
+        expect(attempts, 3);
         expect(submittedPubkeys, [
-          ['alice', 'bob'],
+          ['alice'],
+          ['bob'],
           ['bob'],
         ]);
       },

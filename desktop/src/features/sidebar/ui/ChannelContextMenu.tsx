@@ -371,7 +371,9 @@ export function ChannelContextMenuItems({
               <Archive className="h-4 w-4" />
             )}
           </ContextMenuIconSlot>
-          <span>{channel.archivedAt ? "Unarchive channel" : "Archive channel"}</span>
+          <span>
+            {channel.archivedAt ? "Unarchive channel" : "Archive channel"}
+          </span>
         </ContextMenuItem>
       ) : null}
       {canDeleteChannel ? (

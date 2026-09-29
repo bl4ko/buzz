@@ -2872,12 +2872,12 @@ async fn ingest_event_inner(
             .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
     }
 
-    if channel_id.is_some() {
-        if !crate::handlers::side_effects::allows_archived_channel_operation(kind_u32, &event) {
-            if let Some(channel) = &channel_row {
-                if channel.archived_at.is_some() {
-                    return Err(IngestError::Rejected("invalid: channel is archived".into()));
-                }
+    if channel_id.is_some()
+        && !crate::handlers::side_effects::allows_archived_channel_operation(kind_u32, &event)
+    {
+        if let Some(channel) = &channel_row {
+            if channel.archived_at.is_some() {
+                return Err(IngestError::Rejected("invalid: channel is archived".into()));
             }
         }
     }
