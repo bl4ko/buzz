@@ -250,29 +250,6 @@ Future<Set<String>> _fetchHiddenDmIds(
   }
 }
 
-Future<List<NostrEvent>> _fetchHuddleStarts(
-  RelaySessionNotifier session,
-  List<String> parentChannelIds,
-) async {
-  if (parentChannelIds.isEmpty) return const [];
-  try {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return await session.fetchHistory(
-      NostrFilter(
-        kinds: const [EventKind.huddleStarted],
-        tags: {'#h': parentChannelIds},
-        since: now - const Duration(hours: 2).inSeconds,
-        limit: 500,
-      ),
-    );
-  } catch (error) {
-    debugPrint(
-      '[ChannelsNotifier] Huddle backing-channel query failed: $error',
-    );
-    return const [];
-  }
-}
-
 /// Counts distinct `p`-tagged members per channel from kind:39002 events.
 ///
 /// Lives in this part file to keep `channels_provider.dart` under the
