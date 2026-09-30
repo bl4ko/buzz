@@ -273,13 +273,8 @@ export function AppShell() {
     [channels],
   );
   const sidebarChannels = React.useMemo(
-    () =>
-      memberChannels.filter(
-        (channel) =>
-          channel.archivedAt === null &&
-          shouldShowSidebarChannel(channel, huddleBackingChannelIds),
-      ),
-    [huddleBackingChannelIds, memberChannels],
+    () => memberChannels.filter(shouldShowSidebarChannel),
+    [memberChannels],
   );
   const hasRestoredCommunityDestinationRef = React.useRef(false);
   React.useEffect(() => {
