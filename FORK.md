@@ -32,7 +32,7 @@ All paths below use the Vault `kv` mount:
 | `envs/external/apple/restricted/api-keys/appstoreconnect` | `key-id`, `issuer-id`, `private-key` |
 | `envs/external/github/bl4ko/restricted/apps/bl4ko-release-bot` | `github_app_id`, `github_app_private_key` |
 
-Keep the updater key and bundle ID unchanged across releases. The script imports the Developer ID identity into the Mac mini's login Keychain. Temporary private-key files are deleted when the script exits.
+Keep the updater key and bundle ID unchanged across releases. The script uses a temporary signing Keychain with a random password and Apple's G2 intermediate certificate. The Keychain and temporary private-key files are deleted when the script exits.
 
 Apple requires the Account Holder to create a Developer ID certificate. Open [Apple Certificates](https://developer.apple.com/account/resources/certificates/add), choose **Developer ID Application**, select **G2** if asked, and upload the prepared [buzz-developer-id.csr](https://gist.github.com/bl4ko/ad419801532684664001b34026f55a56). The private key is already in Vault. Retrieve the issued certificate through the Apple API, check that its public key matches the stored private key, and add its base64 DER content to the same Vault secret.
 
