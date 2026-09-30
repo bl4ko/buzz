@@ -16,7 +16,6 @@ import 'channel.dart';
 import 'channel_management_provider.dart'
     show ChannelMember, channelDetailsProvider;
 import 'channel_mutes/channel_mutes_provider.dart';
-import 'huddle_channel_filter.dart';
 import '../../shared/read_state/read_state_provider.dart';
 import 'thread_follows/thread_follows_provider.dart';
 import 'unread_badge/is_high_priority_event.dart';
@@ -251,10 +250,6 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
 
     final hiddenDmIds = await _fenced(fence, _fetchHiddenDmIds(session, myPk));
     _hiddenDmIds = Set.unmodifiable(hiddenDmIds);
-    // Fetch the authoritative membership snapshots before filtering Huddle
-    // backing channels. The relay-signed kind:39000 metadata identifies the
-    // relay, not the channel creator; the owner role in kind:39002 is the
-    // canonical creator identity used to reject forged Huddle links.
     final memberCountChannelIds = memberChannelIds.toList();
     final memberEvents = memberCountChannelIds.isEmpty
         ? const <NostrEvent>[]
@@ -268,17 +263,6 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
               ),
             ),
           );
-    final huddleStarts = memberCountChannelIds.isEmpty
-        ? const <NostrEvent>[]
-        : await _fenced(
-            fence,
-            _fetchHuddleStarts(session, memberCountChannelIds),
-          );
-    final huddleBackingIds = huddleBackingChannelIds(
-      huddleStarts,
-      memberEvents,
-    );
-
     final channels = <Channel>[];
     for (final event in dedupedMetas) {
       final id = event.getTagValue('d');
@@ -291,20 +275,9 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       );
       if (!isMember && (channel.isPrivate || channel.isDm)) continue;
       if (channel.isDm && hiddenDmIds.contains(channel.id)) continue;
-      if (huddleBackingIds.contains(channel.id) &&
-          channel.isStream &&
-          channel.isPrivate) {
-        continue;
-      }
-      // Ephemeral (TTL) channels are surfaced in the list with an
-      // `_EphemeralBadge` rendered in `channels_page.dart` — they shouldn't be
-      // hidden. Desktop shows them too. Previously dropped here unconditionally,
-      // which made TTL channels invisible on iOS even when the user was a member.
       channels.add(channel);
     }
 
-    // Use the membership snapshots already fetched above for both Huddle
-    // linkage validation and member-count hydration.
     if (memberEvents.isNotEmpty) _cacheMemberSnapshots(memberEvents);
     unawaited(
       _exportPushCache(communityID, dedupedMetas, [
