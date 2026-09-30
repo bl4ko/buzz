@@ -14,18 +14,18 @@ Use a clean, committed checkout and a valid `mac-mini-temp` Vault AppRole token.
 
 ```sh
 node --test scripts/release-bl4ko-desktop.test.mjs
-node scripts/release-bl4ko-desktop.mjs 0.5.25-bl4ko.2
+node scripts/release-bl4ko-desktop.mjs 0.5.25-bl4ko.3
 ```
 
-The script runs the desktop checks, builds the app and its sidecars, signs all executables, submits the app to Apple for notarization, and attaches Apple's ticket. It stores the app, installation ZIP, and source commit in `../buzz-builds/desktop/<version>/`. It rejects an existing version folder.
+The script runs the desktop checks, builds the app and its sidecars, signs all executables, and checks the signatures. It stores the app, installation ZIP, and source commit in `../buzz-builds/desktop/<version>/`. It rejects an existing version folder. Install the app after the script prints `Ready for local use`.
 
-If Apple is still processing, the script saves the submission ID in `notarization.json`. Check the same build again without rebuilding:
+For distribution to other Macs, add `--notarize` to the build command. The script submits the app to Apple and attaches Apple's ticket when processing is complete. If processing is pending, it saves the submission ID in `notarization.json`. Check that build again without rebuilding:
 
 ```sh
 node scripts/release-bl4ko-desktop.mjs 0.5.25-bl4ko.2 --resume
 ```
 
-Install the app after the script prints `Ready` and the Apple ticket and Gatekeeper checks pass.
+Local use does not require Apple notarization. For a notarized distribution build, wait until the script prints `Ready` and the Apple ticket and Gatekeeper checks pass.
 
 The app is `Buzz Custom`, with bundle ID `xyz.bl4ko.buzz.custom`. It has no automatic updater. Install each new local build manually. The script has no GitHub publication option and needs no release bot or updater key.
 

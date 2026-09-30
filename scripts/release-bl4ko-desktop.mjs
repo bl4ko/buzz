@@ -208,7 +208,8 @@ function notarize(directory, version) {
   }
 }
 
-async function release(version, resume) {
+async function release(version, mode) {
+  const resume = mode === "--resume";
   if (process.platform !== "darwin" || process.arch !== "arm64")
     throw new Error("Build on the Apple silicon Mac mini");
   const upstreamVersion = JSON.parse(
@@ -427,7 +428,8 @@ async function release(version, resume) {
       path.join(releaseDirectory, "source-commit.txt"),
       `${output("git", ["rev-parse", "HEAD"])}\n`,
     );
-    notarize(releaseDirectory, version);
+    if (mode === "--notarize") notarize(releaseDirectory, version);
+    else console.log(`Ready for local use: ${localZip}`);
   } finally {
     try {
       run("security", ["delete-keychain", keychain], { stdio: "ignore" });
@@ -442,13 +444,16 @@ if (
 ) {
   process.umask(0o077);
   const [version, ...extra] = process.argv.slice(2);
-  if (extra.length > 1 || (extra.length === 1 && extra[0] !== "--resume")) {
+  if (
+    extra.length > 1 ||
+    (extra.length === 1 && !["--resume", "--notarize"].includes(extra[0]))
+  ) {
     throw new Error(
-      "Use: release-bl4ko-desktop.mjs <upstream-version>-bl4ko.N [--resume]",
+      "Use: release-bl4ko-desktop.mjs <upstream-version>-bl4ko.N [--notarize|--resume]",
     );
   }
   try {
-    await release(version, extra[0] === "--resume");
+    await release(version, extra[0]);
   } catch (error) {
     console.error(error instanceof Error ? error.message : "Release failed");
     process.exitCode = 1;
