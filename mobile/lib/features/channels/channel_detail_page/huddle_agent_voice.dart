@@ -70,7 +70,12 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         voiceId.value = ref
             .read(savedPrefsProvider)
             .getString('huddle.voice.$pubkey');
-        await speech.start();
+        await speech.start(
+          agentName: agents
+              .where((entry) => entry.pubkey.toLowerCase() == pubkey)
+              .map((entry) => entry.displayName)
+              .firstOrNull,
+        );
         if (context.mounted) status.value = 'Listening on this device';
       } catch (error) {
         if (context.mounted) {
