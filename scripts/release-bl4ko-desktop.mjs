@@ -1,5 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { createPrivateKey, randomBytes, sign } from "node:crypto";
+import {
+  createPrivateKey,
+  randomBytes,
+  sign,
+  X509Certificate,
+} from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -62,31 +67,34 @@ function output(command, args, options = {}) {
     .trim();
 }
 
-export function importSigningIdentity(certificate, key, bundle, keychain) {
+export function createSigningKeychain(certificate, key, bundle, keychain) {
   const password = randomBytes(24).toString("hex");
-  run(
-    "openssl",
-    [
-      "pkcs12",
-      "-export",
-      "-in",
-      certificate,
-      "-inkey",
-      key,
-      "-out",
-      bundle,
-      "-keypbe",
-      "PBE-SHA1-3DES",
-      "-certpbe",
-      "PBE-SHA1-3DES",
-      "-macalg",
-      "sha1",
-      "-passout",
-      "env:BUZZ_P12_PASSWORD",
-    ],
-    { env: { ...process.env, BUZZ_P12_PASSWORD: password } },
-  );
   try {
+    run("security", ["create-keychain", "-p", password, keychain]);
+    run("security", ["set-keychain-settings", "-lut", "21600", keychain]);
+    run("security", ["unlock-keychain", "-p", password, keychain]);
+    run(
+      "openssl",
+      [
+        "pkcs12",
+        "-export",
+        "-in",
+        certificate,
+        "-inkey",
+        key,
+        "-out",
+        bundle,
+        "-keypbe",
+        "PBE-SHA1-3DES",
+        "-certpbe",
+        "PBE-SHA1-3DES",
+        "-macalg",
+        "sha1",
+        "-passout",
+        "env:BUZZ_P12_PASSWORD",
+      ],
+      { env: { ...process.env, BUZZ_P12_PASSWORD: password } },
+    );
     run("security", [
       "import",
       bundle,
@@ -97,8 +105,33 @@ export function importSigningIdentity(certificate, key, bundle, keychain) {
       "-T",
       "/usr/bin/codesign",
     ]);
+    run(
+      "security",
+      [
+        "set-key-partition-list",
+        "-S",
+        "apple-tool:,apple:,codesign:",
+        "-s",
+        "-k",
+        password,
+        keychain,
+      ],
+      { stdio: "ignore" },
+    );
+    const keychains = output("security", ["list-keychains", "-d", "user"])
+      .split("\n")
+      .map((item) => item.trim().replace(/^"|"$/g, ""))
+      .filter(Boolean);
+    run("security", [
+      "list-keychains",
+      "-d",
+      "user",
+      "-s",
+      ...keychains,
+      keychain,
+    ]);
   } catch {
-    throw new Error("Developer ID signing identity import failed");
+    throw new Error("Temporary signing Keychain setup failed");
   }
 }
 
@@ -200,6 +233,7 @@ async function release(version, publish) {
     "envs/external/apple/restricted/api-keys/appstoreconnect",
   );
   const temporary = mkdtempSync(path.join(tmpdir(), "buzz-custom-release-"));
+  const keychain = path.join(temporary, "signing.keychain-db");
   try {
     const certificate = path.join(temporary, "developer-id.cer");
     const certificatePem = path.join(temporary, "developer-id.pem");
@@ -222,40 +256,46 @@ async function release(version, publish) {
       .split("=")
       .at(-1)
       .replaceAll(":", "");
-    if (
-      !output("security", [
-        "find-identity",
-        "-v",
-        "-p",
-        "codesigning",
-      ]).includes(certificateHash)
-    ) {
-      run("openssl", [
-        "x509",
-        "-inform",
-        "DER",
-        "-in",
-        certificate,
-        "-out",
-        certificatePem,
-      ]);
-      importSigningIdentity(
-        certificatePem,
-        key,
-        keyBundle,
-        path.join(process.env.HOME, "Library/Keychains/login.keychain-db"),
+    run("openssl", [
+      "x509",
+      "-inform",
+      "DER",
+      "-in",
+      certificate,
+      "-out",
+      certificatePem,
+    ]);
+    createSigningKeychain(certificatePem, key, keyBundle, keychain);
+    const intermediateResponse = await fetch(
+      "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer",
+    );
+    if (!intermediateResponse.ok)
+      throw new Error(
+        `Apple certificate authority download failed: HTTP ${intermediateResponse.status}`,
       );
-    }
+    const intermediate = Buffer.from(await intermediateResponse.arrayBuffer());
+    if (
+      !new X509Certificate(readFileSync(certificate)).verify(
+        new X509Certificate(intermediate).publicKey,
+      )
+    )
+      throw new Error(
+        "Developer ID certificate authority does not match the signing certificate",
+      );
+    const intermediatePath = path.join(temporary, "developer-id-g2.cer");
+    writeFileSync(intermediatePath, intermediate);
+    run("security", ["import", intermediatePath, "-k", keychain]);
     if (
       !output("security", [
         "find-identity",
         "-v",
         "-p",
         "codesigning",
+        keychain,
       ]).includes(certificateHash)
     )
       throw new Error(
-        "Developer ID signing identity is not available in the login Keychain",
+        "Developer ID signing identity is not available in the temporary Keychain",
       );
     const appleKey = path.join(temporary, "AuthKey.p8");
     writeFileSync(appleKey, apple["private-key"], { mode: 0o600 });
@@ -340,6 +380,8 @@ async function release(version, publish) {
     for (const binary of readdirSync(macOS))
       run("codesign", [
         "--force",
+        "--keychain",
+        keychain,
         "--sign",
         certificateHash,
         "--options",
@@ -349,6 +391,8 @@ async function release(version, publish) {
       ]);
     run("codesign", [
       "--force",
+      "--keychain",
+      keychain,
       "--sign",
       certificateHash,
       "--options",
@@ -532,6 +576,9 @@ async function release(version, publish) {
       `Published: https://github.com/${repository}/releases/tag/${info.tag}`,
     );
   } finally {
+    try {
+      run("security", ["delete-keychain", keychain], { stdio: "ignore" });
+    } catch {}
     rmSync(temporary, { recursive: true, force: true });
   }
 }

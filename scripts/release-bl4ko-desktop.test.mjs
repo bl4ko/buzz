@@ -1,16 +1,23 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { X509Certificate } from "node:crypto";
+import {
+  copyFileSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import {
   advancesVersion,
-  importSigningIdentity,
+  createSigningKeychain,
   releaseInfo,
 } from "./release-bl4ko-desktop.mjs";
 
-test("macOS imports the generated signing bundle", {
+test("macOS signs without access to the login Keychain", {
   skip: process.platform !== "darwin",
 }, () => {
   const temporary = mkdtempSync(path.join(tmpdir(), "buzz-signing-test-"));
@@ -20,7 +27,6 @@ test("macOS imports the generated signing bundle", {
   const run = (command, args) =>
     execFileSync(command, args, { stdio: ["ignore", "pipe", "pipe"] });
   try {
-    run("security", ["create-keychain", "-p", "test-only", keychain]);
     run("openssl", [
       "req",
       "-x509",
@@ -33,25 +39,41 @@ test("macOS imports the generated signing bundle", {
       certificate,
       "-subj",
       "/CN=Buzz import check",
+      "-addext",
+      "basicConstraints=critical,CA:FALSE",
+      "-addext",
+      "keyUsage=critical,digitalSignature",
+      "-addext",
+      "extendedKeyUsage=codeSigning",
       "-days",
       "1",
     ]);
-    importSigningIdentity(
+    createSigningKeychain(
       certificate,
       key,
       path.join(temporary, "signing.p12"),
       keychain,
     );
-    assert.match(
-      run("security", [
-        "find-certificate",
-        "-c",
-        "Buzz import check",
-        "-p",
-        keychain,
-      ]).toString(),
-      /BEGIN CERTIFICATE/,
+    assert.ok(
+      run("security", ["list-keychains", "-d", "user"])
+        .toString()
+        .includes(keychain),
+      "temporary signing Keychain must be searchable",
     );
+    const executable = path.join(temporary, "check");
+    copyFileSync("/usr/bin/true", executable);
+    const identity = new X509Certificate(
+      readFileSync(certificate),
+    ).fingerprint.replaceAll(":", "");
+    run("codesign", [
+      "--force",
+      "--keychain",
+      keychain,
+      "--sign",
+      identity,
+      executable,
+    ]);
+    run("codesign", ["--verify", "--strict", executable]);
   } finally {
     try {
       run("security", ["delete-keychain", keychain]);
