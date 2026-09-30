@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createPrivateKey, sign } from "node:crypto";
+import { createPrivateKey, randomBytes, sign } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -60,6 +60,46 @@ function output(command, args, options = {}) {
   return run(command, args, { stdio: ["ignore", "pipe", "pipe"], ...options })
     .toString()
     .trim();
+}
+
+export function importSigningIdentity(certificate, key, bundle, keychain) {
+  const password = randomBytes(24).toString("hex");
+  run(
+    "openssl",
+    [
+      "pkcs12",
+      "-export",
+      "-in",
+      certificate,
+      "-inkey",
+      key,
+      "-out",
+      bundle,
+      "-keypbe",
+      "PBE-SHA1-3DES",
+      "-certpbe",
+      "PBE-SHA1-3DES",
+      "-macalg",
+      "sha1",
+      "-passout",
+      "env:BUZZ_P12_PASSWORD",
+    ],
+    { env: { ...process.env, BUZZ_P12_PASSWORD: password } },
+  );
+  try {
+    run("security", [
+      "import",
+      bundle,
+      "-k",
+      keychain,
+      "-P",
+      password,
+      "-T",
+      "/usr/bin/codesign",
+    ]);
+  } catch {
+    throw new Error("Developer ID signing identity import failed");
+  }
 }
 
 function vaultEnv() {
@@ -199,34 +239,12 @@ async function release(version, publish) {
         "-out",
         certificatePem,
       ]);
-      run("openssl", [
-        "pkcs12",
-        "-export",
-        "-in",
+      importSigningIdentity(
         certificatePem,
-        "-inkey",
         key,
-        "-out",
         keyBundle,
-        "-keypbe",
-        "PBE-SHA1-3DES",
-        "-certpbe",
-        "PBE-SHA1-3DES",
-        "-macalg",
-        "sha1",
-        "-passout",
-        "pass:",
-      ]);
-      run("security", [
-        "import",
-        keyBundle,
-        "-k",
         path.join(process.env.HOME, "Library/Keychains/login.keychain-db"),
-        "-P",
-        "",
-        "-T",
-        "/usr/bin/codesign",
-      ]);
+      );
     }
     if (
       !output("security", [

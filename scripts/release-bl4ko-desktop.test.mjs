@@ -4,7 +4,62 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { advancesVersion, releaseInfo } from "./release-bl4ko-desktop.mjs";
+import {
+  advancesVersion,
+  importSigningIdentity,
+  releaseInfo,
+} from "./release-bl4ko-desktop.mjs";
+
+test("macOS imports the generated signing bundle", {
+  skip: process.platform !== "darwin",
+}, () => {
+  const temporary = mkdtempSync(path.join(tmpdir(), "buzz-signing-test-"));
+  const keychain = path.join(temporary, "test.keychain-db");
+  const key = path.join(temporary, "key.pem");
+  const certificate = path.join(temporary, "certificate.pem");
+  const run = (command, args) =>
+    execFileSync(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    run("security", ["create-keychain", "-p", "test-only", keychain]);
+    run("openssl", [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      key,
+      "-out",
+      certificate,
+      "-subj",
+      "/CN=Buzz import check",
+      "-days",
+      "1",
+    ]);
+    importSigningIdentity(
+      certificate,
+      key,
+      path.join(temporary, "signing.p12"),
+      keychain,
+    );
+    assert.match(
+      run("security", [
+        "find-certificate",
+        "-c",
+        "Buzz import check",
+        "-p",
+        keychain,
+      ]).toString(),
+      /BEGIN CERTIFICATE/,
+    );
+  } finally {
+    try {
+      run("security", ["delete-keychain", keychain]);
+    } finally {
+      rmSync(temporary, { recursive: true, force: true });
+    }
+  }
+});
 
 test("custom release uses the fork updater and prevents version rollback", () => {
   const info = releaseInfo("0.5.25-bl4ko.10", "0.5.25");
