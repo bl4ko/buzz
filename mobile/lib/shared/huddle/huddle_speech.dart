@@ -22,7 +22,8 @@ final class HuddleSpeech {
     });
   }
 
-  Future<void> start() => _channel.invokeMethod<void>('start');
+  Future<void> start({String? agentName}) =>
+      _channel.invokeMethod<void>('start', {'agentName': agentName});
   Future<void> stop() => _channel.invokeMethod<void>('stop');
   Future<List<HuddleVoice>> voices() async {
     final values = await _channel.invokeMethod<List<dynamic>>('voices') ?? [];

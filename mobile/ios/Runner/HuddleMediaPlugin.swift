@@ -114,7 +114,8 @@ final class HuddleMediaPlugin {
           }
         )
       }
-      speech?.start(result: result)
+      let arguments = call.arguments as? [String: Any]
+      speech?.start(agentName: arguments?["agentName"] as? String, result: result)
     case "stop":
       speech?.stop()
       result(nil)
@@ -633,6 +634,8 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
   private var silentSamples = 0
   private var listening = false
   private var speaking = false
+  private var finishing = false
+  private var agentName: String?
 
   init(onTranscript: @escaping (String) -> Void, onError: @escaping (String) -> Void) {
     self.onTranscript = onTranscript
@@ -641,7 +644,8 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
     synthesizer.delegate = self
   }
 
-  func start(result: @escaping FlutterResult) {
+  func start(agentName: String?, result: @escaping FlutterResult) {
+    self.agentName = agentName
     guard recognizer?.supportsOnDeviceRecognition == true, recognizer?.isAvailable == true else {
       result(FlutterError(code: "on_device_speech_unavailable", message: "On-device English speech recognition is unavailable.", details: nil))
       return
@@ -667,7 +671,7 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
   }
 
   func append(_ buffer: AVAudioPCMBuffer) {
-    guard listening, !speaking, let request else { return }
+    guard listening, !speaking, !finishing, buffer.frameLength > 0, let request else { return }
     request.append(buffer)
     guard let samples = buffer.floatChannelData?.pointee, buffer.frameLength > 0 else { return }
     let count = Int(buffer.frameLength)
@@ -677,7 +681,7 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
     } else if !latestText.isEmpty {
       silentSamples += count
       if silentSamples >= Int(buffer.format.sampleRate * 0.9) {
-        finishSegment()
+        endSegment()
       }
     }
   }
@@ -709,12 +713,17 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
     request.requiresOnDeviceRecognition = true
     request.shouldReportPartialResults = true
     request.taskHint = .dictation
+    request.contextualStrings = agentName.map { [$0] } ?? []
     self.request = request
     let currentGeneration = generation
     task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
       DispatchQueue.main.async {
         guard let self, self.listening, self.generation == currentGeneration else { return }
         if let error {
+          if self.finishing && !self.latestText.isEmpty {
+            self.finishSegment()
+            return
+          }
           self.listening = false
           self.clearSegment()
           self.onError(error.localizedDescription)
@@ -728,6 +737,18 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
     }
   }
 
+  private func endSegment() {
+    guard !finishing else { return }
+    finishing = true
+    request?.endAudio()
+    let currentGeneration = generation
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+      guard let self, self.listening, self.finishing,
+        self.generation == currentGeneration else { return }
+      self.finishSegment()
+    }
+  }
+
   private func finishSegment() {
     let text = latestText.trimmingCharacters(in: .whitespacesAndNewlines)
     clearSegment()
@@ -737,11 +758,12 @@ private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
 
   private func clearSegment() {
     generation += 1
-    request?.endAudio()
+    if !finishing { request?.endAudio() }
     task?.cancel()
     request = nil
     task = nil
     latestText = ""
     silentSamples = 0
+    finishing = false
   }
 }
