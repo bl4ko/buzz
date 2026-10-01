@@ -122,7 +122,14 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     speech.onTranscript = (text) {
       if (!context.mounted) return;
       final agent = selected.value;
-      if (agent == null || ref.read(huddleSessionProvider).isMuted) return;
+      if (agent == null) {
+        status.value = 'Add an agent to speak';
+        return;
+      }
+      if (ref.read(huddleSessionProvider).isMuted) {
+        status.value = 'Microphone muted. Unmute and repeat your sentence.';
+        return;
+      }
       status.value = 'Sending speech';
       unawaited(
         ref

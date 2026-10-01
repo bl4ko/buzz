@@ -12,6 +12,43 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('buzz/huddle_speech');
   test(
+    'completed recognition clears its status when a transcript is skipped',
+    () async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (_) async => null);
+      final statuses = <String>[];
+      final transcripts = <String>[];
+      final speech = HuddleSpeech(
+        baseUrl: 'https://buzz.example',
+        nsec: nostr.Keys.generate().nsec,
+        channelId: 'child',
+        client: MockClient(
+          (_) async => http.Response('{"text":"Hello Hermes"}', 200),
+        ),
+      );
+      speech.onStatus = statuses.add;
+      speech.onTranscript = transcripts.add;
+      await speech.start();
+      final delivered = Completer<void>();
+      messenger.handlePlatformMessage(
+        channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall('audio', {
+            'audio': Uint8List.fromList([1, 2]),
+          }),
+        ),
+        (_) => delivered.complete(),
+      );
+      await delivered.future;
+      expect(transcripts, ['Hello Hermes']);
+      expect(statuses, ['Recognizing speech', 'Listening on this device']);
+      await speech.stop();
+      speech.dispose();
+      messenger.setMockMethodCallHandler(channel, null);
+    },
+  );
+  test(
     'speech requests are signed and a stopped call cannot play a late reply',
     () async {
       final calls = <MethodCall>[];
