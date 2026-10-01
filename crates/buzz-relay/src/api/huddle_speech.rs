@@ -207,7 +207,6 @@ fn transcription_body(model: &str, audio: &[u8], boundary: &str) -> Vec<u8> {
     let mut multipart = Vec::new();
     for (name, value) in [
         ("model", model),
-        ("language", "en"),
         ("response_format", "json"),
         ("vad_filter", "true"),
     ] {
@@ -368,6 +367,7 @@ mod tests {
         let body = String::from_utf8(body).unwrap();
         assert!(body.contains("name=\"vad_filter\"\r\n\r\ntrue\r\n"));
         assert!(!body.contains("name=\"prompt\""));
+        assert!(!body.contains("name=\"language\""));
         assert!(body.contains("audio/wav\r\n\r\nWAV\r\n--boundary--\r\n"));
     }
 
