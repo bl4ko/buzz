@@ -93,10 +93,9 @@ final class HuddleSpeech {
       if (!_active || generation != _generation) return;
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final text = (data['text'] as String).trim();
+      onStatus?.call('Listening on this device');
       if (text.isNotEmpty) {
         onTranscript?.call(text);
-      } else {
-        onStatus?.call('Listening on this device');
       }
     } catch (error) {
       if (_active && generation == _generation) {
