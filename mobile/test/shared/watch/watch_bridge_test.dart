@@ -72,8 +72,23 @@ class _Profiles extends UserCacheNotifier {
   Map<String, UserProfile> build() => {};
 }
 
+class _OfflineSession extends RelaySessionNotifier {
+  @override
+  SessionState build() =>
+      const SessionState(status: SessionStatus.disconnected);
+}
+
 class _Messages extends ChannelMessagesNotifier {
   _Messages(super.channelId);
+  bool loaded = true;
+
+  @override
+  bool get hasLoadedMessages => loaded;
+
+  void clearHistory({required bool loaded}) {
+    this.loaded = loaded;
+    state = const AsyncData([]);
+  }
 
   @override
   AsyncValue<List<NostrEvent>> build() => AsyncData([
@@ -163,16 +178,18 @@ void main() {
       final auth = _Auth();
       final age = _Age();
       final send = _Send();
+      final messageSource = _Messages('channel-0');
       final container = ProviderContainer(
         overrides: [
           authProvider.overrideWith(() => auth),
           ageSignalProvider.overrideWith(() => age),
           relayConfigProvider.overrideWith(_Config.new),
+          relaySessionProvider.overrideWith(_OfflineSession.new),
           myPubkeyProvider.overrideWithValue('a' * 64),
           channelsProvider.overrideWith(_Channels.new),
           channelMessagesProvider(
             'channel-0',
-          ).overrideWith(() => _Messages('channel-0')),
+          ).overrideWith(() => messageSource),
           userCacheProvider.overrideWith(_Profiles.new),
           sendMessageProvider.overrideWithValue(send),
         ],
@@ -249,6 +266,21 @@ void main() {
       expect((messages.first as Map)['text'], '🐝' * 300);
       expect((messages.last as Map)['text'], 'Edited');
       expect(history.keys, unorderedEquals(['scope', 'messages']));
+      messageSource.clearHistory(loaded: false);
+      final unloaded = await request({
+        'action': 'messages',
+        'scope': scope,
+        'channelId': 'channel-0',
+      });
+      expect(unloaded['error'], contains('not connected'));
+      expect(unloaded.containsKey('messages'), false);
+      messageSource.clearHistory(loaded: true);
+      final emptyCache = await request({
+        'action': 'messages',
+        'scope': scope,
+        'channelId': 'channel-0',
+      });
+      expect(emptyCache['messages'], isEmpty);
       age.restrict();
       await Future<void>.delayed(Duration.zero);
       expect((await request({'action': 'channels'}))['error'], isNotNull);

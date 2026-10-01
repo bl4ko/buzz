@@ -120,15 +120,22 @@ final watchBridgeProvider = Provider<void>((ref) {
         return {'sent': true};
       }
       if (action != 'messages') return {'error': 'Unknown watch request.'};
+      final messageProvider = channelMessagesProvider(channel.id);
+      final notifier = ref.read(messageProvider.notifier);
+      if (!notifier.hasLoadedMessages &&
+          ref.read(relaySessionProvider).status != SessionStatus.connected) {
+        return {
+          'error':
+              'The iPhone is not connected to the relay. Try again when it is online.',
+        };
+      }
       final completer = Completer<List<NostrEvent>>();
-      final subscription = ref.listen(channelMessagesProvider(channel.id), (
-        _,
-        value,
-      ) {
+      final subscription = ref.listen(messageProvider, (_, value) {
         if (completer.isCompleted) return;
         if (value.hasError) {
           completer.completeError(value.error!, value.stackTrace);
-        } else if (value.asData case final data?) {
+        } else if (value.asData case final data?
+            when notifier.hasLoadedMessages) {
           completer.complete(data.value);
         }
       }, fireImmediately: true);
