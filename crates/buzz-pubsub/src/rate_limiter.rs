@@ -42,18 +42,35 @@ async fn run_rate_limit(
     window_secs: u64,
     limit: u64,
 ) -> Result<RateLimitResult, AuthError> {
-    let mut conn = pool
-        .get()
-        .await
-        .map_err(|e| AuthError::Internal(format!("Redis pool: {e}")))?;
+    let mut retried = false;
+    let (mut conn, count, ttl) = loop {
+        let mut conn = pool
+            .get()
+            .await
+            .map_err(|e| AuthError::Internal(format!("Redis pool: {e}")))?;
 
-    let script = Script::new(RATE_LIMIT_SCRIPT);
-    let (count, ttl): (u64, i64) = script
-        .key(key)
-        .arg(window_secs as i64)
-        .invoke_async(&mut *conn)
-        .await
-        .map_err(|e| AuthError::Internal(format!("Redis rate limit script: {e}")))?;
+        let script = Script::new(RATE_LIMIT_SCRIPT);
+        let result: redis::RedisResult<(u64, i64)> = script
+            .key(key)
+            .arg(window_secs as i64)
+            .invoke_async(&mut *conn)
+            .await;
+        match result {
+            Ok((count, ttl)) => break (conn, count, ttl),
+            Err(error) => {
+                if error.kind() == redis::ErrorKind::Server(redis::ServerErrorKind::ReadOnly) {
+                    drop(deadpool_redis::Connection::take(conn));
+                    if !retried {
+                        retried = true;
+                        continue;
+                    }
+                }
+                return Err(AuthError::Internal(format!(
+                    "Redis rate limit script: {error}"
+                )));
+            }
+        }
+    };
 
     // ttl == -1 means the key exists but has no expiry — broken state from a
     // prior crash between INCR and EXPIRE. Repair it now.
@@ -117,5 +134,44 @@ impl RateLimiter for RedisRateLimiter {
     ) -> Result<RateLimitResult, AuthError> {
         let key = buzz_auth::rate_limit::ip_rate_limit_key(ip);
         run_rate_limit(&self.pool, &key, window_secs, limit).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires a dedicated Redis instance in BUZZ_TEST_REDIS_URL"]
+    async fn readonly_connections_leave_the_pool_and_recover_after_promotion() {
+        let url = std::env::var("BUZZ_TEST_REDIS_URL").expect("dedicated Redis URL");
+        let mut config = deadpool_redis::Config::from_url(url);
+        config.pool = Some(deadpool_redis::PoolConfig::new(1));
+        let pool = config
+            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+            .unwrap();
+        let mut admin = pool.get().await.unwrap().clone();
+        let _: () = redis::cmd("REPLICAOF")
+            .arg("127.0.0.1")
+            .arg(9)
+            .query_async(&mut admin)
+            .await
+            .unwrap();
+        let result = run_rate_limit(&pool, "failover-check", 5, 10).await;
+        let remaining = pool.status().size;
+        let _: () = redis::cmd("REPLICAOF")
+            .arg("NO")
+            .arg("ONE")
+            .query_async(&mut admin)
+            .await
+            .unwrap();
+        assert!(result.is_err());
+        assert_eq!(remaining, 0);
+        assert!(
+            run_rate_limit(&pool, "failover-check", 5, 10)
+                .await
+                .unwrap()
+                .allowed
+        );
     }
 }
