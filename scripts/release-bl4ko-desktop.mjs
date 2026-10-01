@@ -52,7 +52,13 @@ function output(command, args, options = {}) {
     .trim();
 }
 
-export function createSigningKeychain(certificate, key, bundle, keychain) {
+export function createSigningKeychain(
+  certificate,
+  key,
+  bundle,
+  keychain,
+  trustedApplications = ["/usr/bin/codesign"],
+) {
   const password = randomBytes(24).toString("hex");
   try {
     run("security", ["create-keychain", "-p", password, keychain]);
@@ -87,8 +93,7 @@ export function createSigningKeychain(certificate, key, bundle, keychain) {
       keychain,
       "-P",
       password,
-      "-T",
-      "/usr/bin/codesign",
+      ...trustedApplications.flatMap((application) => ["-T", application]),
     ]);
     run(
       "security",
@@ -96,7 +101,6 @@ export function createSigningKeychain(certificate, key, bundle, keychain) {
         "set-key-partition-list",
         "-S",
         "apple-tool:,apple:,codesign:",
-        "-s",
         "-k",
         password,
         keychain,
