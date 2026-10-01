@@ -15,7 +15,15 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final speech = useMemoized(HuddleSpeech.new);
+    final config = ref.watch(relayConfigProvider);
+    final speech = useMemoized(
+      () => HuddleSpeech(
+        baseUrl: config.baseUrl,
+        nsec: config.nsec,
+        channelId: ephemeralChannelId,
+      ),
+      [config.baseUrl, config.nsec, ephemeralChannelId],
+    );
     final voices = useMemoized(speech.voices, [speech]);
     final selected = useState<String?>(null);
     final voiceId = useState<String?>(null);
@@ -135,6 +143,10 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       );
     };
 
+    speech.onStatus = (message) {
+      if (context.mounted) status.value = message;
+    };
+
     speech.onError = (message) {
       if (context.mounted) status.value = message;
     };
@@ -144,9 +156,15 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       if (agent == null) return;
       for (final event in next.asData?.value ?? const <NostrEvent>[]) {
         if (event.pubkey.toLowerCase() != agent ||
-            event.kind != EventKind.streamMessage ||
+            (event.kind != EventKind.streamMessage &&
+                event.kind != EventKind.streamMessageEdit) ||
+            event.getTagValue('voice') != 'final' ||
             event.createdAt < selectedAt.value ||
-            !heard.add(event.id)) {
+            !heard.add(
+              event.kind == EventKind.streamMessageEdit
+                  ? event.getTagValue('e') ?? event.id
+                  : event.id,
+            )) {
           continue;
         }
         status.value = 'Agent speaking';

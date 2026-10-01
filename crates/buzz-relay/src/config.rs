@@ -237,6 +237,8 @@ pub struct Config {
     /// `BUZZ_HUDDLE_AUDIO_AVAILABLE=false` until the out-of-relay media/SFU
     /// service lands.
     pub huddle_audio_available: bool,
+    pub(crate) speech_base_url: Option<String>,
+    pub(crate) speech_transcription_model: String,
 
     /// Inter-relay mesh configuration (`BUZZ_MESH`, `BUZZ_MESH_BIND_ADDR`).
     /// Opt-in: mesh forms only when `BUZZ_MESH=on` is explicit. The default
@@ -1300,7 +1302,7 @@ impl Config {
                     Some(other) => {
                         return Err(ConfigError::InvalidValue(format!(
                             "BUZZ_ADMIN_AUTH must be \"nip98\" or \"disabled\"; got \"{other}\""
-                        )))
+                        )));
                     }
                 };
 
@@ -1395,6 +1397,9 @@ impl Config {
             pubkey_allowlist_enabled,
             require_relay_membership,
             huddle_audio_available,
+            speech_base_url: std::env::var("BUZZ_SPEECH_BASE_URL").ok(),
+            speech_transcription_model: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_MODEL")
+                .unwrap_or_else(|_| "Systran/faster-whisper-small".to_owned()),
             mesh,
             mesh_demo_echo,
             relay_owner_pubkey,

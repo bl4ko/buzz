@@ -434,6 +434,8 @@ pub enum MessagesCmd {
         /// Pubkey to mention (hex or npub; repeatable). Supplying any explicit identity permits unresolved or ambiguous @Name text as presentation-only; uniquely resolved member names still notify.
         #[arg(long = "mention")]
         mentions: Vec<String>,
+        #[arg(long)]
+        voice_final: bool,
     },
     /// Send a code diff / patch to a channel
     SendDiff {
@@ -482,6 +484,8 @@ pub enum MessagesCmd {
         /// New message content
         #[arg(long)]
         content: String,
+        #[arg(long)]
+        voice_final: bool,
     },
     /// Delete a message by event ID
     Delete {

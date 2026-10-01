@@ -410,7 +410,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     // Merge — each sub-router carries its own body limit.
     // Metrics → Trace → CORS applied once over the combined router.
+    let speech_router = Router::new()
+        .route(
+            "/huddle/{channel_id}/transcribe",
+            post(api::huddle_speech::transcribe),
+        )
+        .route(
+            "/huddle/{channel_id}/speech",
+            post(api::huddle_speech::speech),
+        )
+        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
+        .with_state(state.clone());
     let mut merged = api_router
+        .merge(speech_router)
         .merge(media_router)
         .merge(git_router)
         .merge(git_policy_router);
