@@ -7,13 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BZZ00000000000000000001 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000006 /* NotificationService.swift */; };
-		BZZ00000000000000000002 /* NotificationService.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000009 /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		BZZ00000000000000000020 /* BuzzPushKit in Frameworks */ = {isa = PBXBuildFile; productRef = BZZ00000000000000000022 /* BuzzPushKit */; };
-		BZZ00000000000000000025 /* BuzzPushKit in Frameworks */ = {isa = PBXBuildFile; productRef = BZZ00000000000000000022 /* BuzzPushKit */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
+		1DB4B8FFB1AA6CCA2E3E27BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5911A2521C78AAF59475E6D3 /* Assets.xcassets */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		331C809B294A63AB00263BE5 /* MediaSanitizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C809A294A618700263BE5 /* MediaSanitizer.swift */; };
+		331C809D294A63AB00263BE5 /* UIKitEncoded.png in Resources */ = {isa = PBXBuildFile; fileRef = 331C809C294A618700263BE5 /* UIKitEncoded.png */; };
+		331C809F294A63AB00263BE5 /* UIKitEncoded.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 331C809E294A618700263BE5 /* UIKitEncoded.jpg */; };
+		33ADD70AB275E0EC81295559 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8906419FB4E98B4B12B7A56F /* Pods_Runner.framework */; };
+		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
+		42C129326CE4E1B8E617B9CD /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD6B899582D0416ADBD8A68F /* Pods_RunnerTests.framework */; };
 		4A71C0012F40100100A17E01 /* InlinePhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0022F40100100A17E01 /* InlinePhotoPicker.swift */; };
 		4A71C0032F40200100A17E01 /* NativeAttachmentPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0042F40200100A17E01 /* NativeAttachmentPopover.swift */; };
 		4A71C0052F40300100A17E01 /* NativeAttachmentPopoverCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0062F40300100A17E01 /* NativeAttachmentPopoverCoordinator.swift */; };
@@ -32,17 +34,11 @@
 		4A71C01F2F4100100A17E01 /* VoiceNotePackager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0202F4100100A17E01 /* VoiceNotePackager.swift */; };
 		4A71C0212F4110100A17E01 /* MP4Canonicalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0222F4110100A17E01 /* MP4Canonicalizer.swift */; };
 		4A71C0232F4120100A17E01 /* NativeAttachmentPopoverMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0242F4120100A17E01 /* NativeAttachmentPopoverMenu.swift */; };
-		331C809D294A63AB00263BE5 /* UIKitEncoded.png in Resources */ = {isa = PBXBuildFile; fileRef = 331C809C294A618700263BE5 /* UIKitEncoded.png */; };
-		331C809F294A63AB00263BE5 /* UIKitEncoded.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 331C809E294A618700263BE5 /* UIKitEncoded.jpg */; };
-		33ADD70AB275E0EC81295559 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8906419FB4E98B4B12B7A56F /* Pods_Runner.framework */; };
-		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
-		42C129326CE4E1B8E617B9CD /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CD6B899582D0416ADBD8A68F /* Pods_RunnerTests.framework */; };
+		5A29F825F921BC532DC55281 /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EA5E424035A56B0615635E /* WatchBridge.swift */; };
+		660443E470AE6523D9D877D9 /* Bl4uzz.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BE58B7F77C593EB2E2C708BD /* Bl4uzz.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
-		BZZ00000000000000000023 /* PushNativeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000024 /* PushNativeState.swift */; };
-		BZZ00000000000000000026 /* PushEndpointGrantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000027 /* PushEndpointGrantStore.swift */; };
-		BZZ00000000000000000029 /* PushSnapshotBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ0000000000000000002A /* PushSnapshotBridge.swift */; };
-		BZZ0000000000000000002B /* BuzzCommunicationNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
+		7C392911DA1EE25993DD94CD /* Bl4uzzApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5BF8F6E14FCE1CA5AB56EC /* Bl4uzzApp.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
@@ -50,6 +46,15 @@
 		AB1200012F40400100A17E01 /* NativeMessageMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200112F40400100A17E01 /* NativeMessageMenu.swift */; };
 		AB1200022F40400100A17E01 /* NativeReactionDetails.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200122F40400100A17E01 /* NativeReactionDetails.swift */; };
 		AB1200032F40400100A17E01 /* NativeMessageImageLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1200132F40400100A17E01 /* NativeMessageImageLoaderTests.swift */; };
+		BZZ00000000000000000001 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000006 /* NotificationService.swift */; };
+		BZZ00000000000000000002 /* NotificationService.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000009 /* NotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BZZ00000000000000000020 /* BuzzPushKit in Frameworks */ = {isa = PBXBuildFile; productRef = BZZ00000000000000000022 /* BuzzPushKit */; };
+		BZZ00000000000000000023 /* PushNativeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000024 /* PushNativeState.swift */; };
+		BZZ00000000000000000025 /* BuzzPushKit in Frameworks */ = {isa = PBXBuildFile; productRef = BZZ00000000000000000022 /* BuzzPushKit */; };
+		BZZ00000000000000000026 /* PushEndpointGrantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000027 /* PushEndpointGrantStore.swift */; };
+		BZZ00000000000000000029 /* PushSnapshotBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ0000000000000000002A /* PushSnapshotBridge.swift */; };
+		BZZ0000000000000000002B /* BuzzCommunicationNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */; };
+		E7C93DFC36D12A9AA3864AE5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 34C1280A39BA3E4A744C10B1 /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,9 +65,26 @@
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
 		};
+		53AF90D4D69FDFA66BB24D24 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CFE23535DD516B71781F5CB6;
+			remoteInfo = Bl4uzzWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		9705A1C41CF9048500538489 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		BZZ00000000000000000004 /* Embed App Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -74,29 +96,33 @@
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		9705A1C41CF9048500538489 /* Embed Frameworks */ = {
+		DE8D5148A1F799CED065292E /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
 			files = (
+				660443E470AE6523D9D877D9 /* Bl4uzz.app in Embed Watch Content */,
 			);
-			name = "Embed Frameworks";
+			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		BZZ00000000000000000006 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
-		BZZ00000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		BZZ00000000000000000008 /* NotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = NotificationService.entitlements; sourceTree = "<group>"; };
-		BZZ00000000000000000009 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		BZZ0000000000000000000A /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Runner.entitlements; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		26EA5E424035A56B0615635E /* WatchBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchBridge.swift; sourceTree = "<group>"; };
 		30CE81D3D1E0B195EF2A6390 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
+		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C809A294A618700263BE5 /* MediaSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSanitizer.swift; sourceTree = "<group>"; };
+		331C809C294A618700263BE5 /* UIKitEncoded.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = UIKitEncoded.png; sourceTree = "<group>"; };
+		331C809E294A618700263BE5 /* UIKitEncoded.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = UIKitEncoded.jpg; sourceTree = "<group>"; };
+		34C1280A39BA3E4A744C10B1 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
+		3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Watch.xcconfig; sourceTree = "<group>"; };
+		42F36AA401015EC51F984FEA /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		4A71C0022F40100100A17E01 /* InlinePhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlinePhotoPicker.swift; sourceTree = "<group>"; };
 		4A71C0042F40200100A17E01 /* NativeAttachmentPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAttachmentPopover.swift; sourceTree = "<group>"; };
 		4A71C0062F40300100A17E01 /* NativeAttachmentPopoverCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAttachmentPopoverCoordinator.swift; sourceTree = "<group>"; };
@@ -115,19 +141,12 @@
 		4A71C0202F4100100A17E01 /* VoiceNotePackager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNotePackager.swift; sourceTree = "<group>"; };
 		4A71C0222F4110100A17E01 /* MP4Canonicalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MP4Canonicalizer.swift; sourceTree = "<group>"; };
 		4A71C0242F4120100A17E01 /* NativeAttachmentPopoverMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAttachmentPopoverMenu.swift; sourceTree = "<group>"; };
-		331C809C294A618700263BE5 /* UIKitEncoded.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = UIKitEncoded.png; sourceTree = "<group>"; };
-		331C809E294A618700263BE5 /* UIKitEncoded.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = UIKitEncoded.jpg; sourceTree = "<group>"; };
-		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
-		42F36AA401015EC51F984FEA /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		529B9B84AD8748153EB60BCF /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		57A155722F02B92C397E5AE2 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
+		5911A2521C78AAF59475E6D3 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6C5BF8F6E14FCE1CA5AB56EC /* Bl4uzzApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Bl4uzzApp.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		BZZ00000000000000000024 /* PushNativeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNativeState.swift; sourceTree = "<group>"; };
-		BZZ00000000000000000027 /* PushEndpointGrantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEndpointGrantStore.swift; sourceTree = "<group>"; };
-		BZZ0000000000000000002A /* PushSnapshotBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushSnapshotBridge.swift; sourceTree = "<group>"; };
-		BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuzzCommunicationNotificationTests.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		7CF2415588E96D5723581BA9 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -140,22 +159,25 @@
 		97C146FD1CF9000F007C117D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BE58B7F77C593EB2E2C708BD /* Bl4uzz.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bl4uzz.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BZZ00000000000000000006 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		BZZ00000000000000000007 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BZZ00000000000000000008 /* NotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = NotificationService.entitlements; sourceTree = "<group>"; };
+		BZZ00000000000000000009 /* NotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BZZ0000000000000000000A /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Runner.entitlements; sourceTree = "<group>"; };
+		BZZ00000000000000000024 /* PushNativeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNativeState.swift; sourceTree = "<group>"; };
+		BZZ00000000000000000027 /* PushEndpointGrantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEndpointGrantStore.swift; sourceTree = "<group>"; };
+		BZZ0000000000000000002A /* PushSnapshotBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushSnapshotBridge.swift; sourceTree = "<group>"; };
+		BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuzzCommunicationNotificationTests.swift; sourceTree = "<group>"; };
 		CD6B899582D0416ADBD8A68F /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB1200102F40400100A17E01 /* NativeMessagePresentationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessagePresentationCoordinator.swift; sourceTree = "<group>"; };
 		AB1200112F40400100A17E01 /* NativeMessageMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessageMenu.swift; sourceTree = "<group>"; };
 		AB1200122F40400100A17E01 /* NativeReactionDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeReactionDetails.swift; sourceTree = "<group>"; };
 		AB1200132F40400100A17E01 /* NativeMessageImageLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessageImageLoaderTests.swift; sourceTree = "<group>"; };
+		E744B7A3ECCADF82CEA9A204 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		BZZ0000000000000000000C /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				BZZ00000000000000000020 /* BuzzPushKit in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		3C28C6B702C81085E6F96F2A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -173,9 +195,33 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BZZ0000000000000000000C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BZZ00000000000000000020 /* BuzzPushKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DCA8F0CCFBF1ABB33D7B056C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E7C93DFC36D12A9AA3864AE5 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2A3541B1C6DB7A2A65043634 /* watchOS */ = {
+			isa = PBXGroup;
+			children = (
+				34C1280A39BA3E4A744C10B1 /* Foundation.framework */,
+			);
+			name = watchOS;
+			sourceTree = "<group>";
+		};
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -231,6 +277,7 @@
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				746EA2D40EB8F35E67C48311 /* Pods */,
 				D12A84F9A6072498822784CC /* Frameworks */,
+				9A92FC325A130E19CDFA3068 /* Bl4uzzWatch */,
 			);
 			sourceTree = "<group>";
 		};
@@ -240,6 +287,7 @@
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				BZZ00000000000000000009 /* NotificationService.appex */,
+				BE58B7F77C593EB2E2C708BD /* Bl4uzz.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -282,17 +330,21 @@
 				4A71C0242F4120100A17E01 /* NativeAttachmentPopoverMenu.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
+				26EA5E424035A56B0615635E /* WatchBridge.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
 		};
-		D12A84F9A6072498822784CC /* Frameworks */ = {
+		9A92FC325A130E19CDFA3068 /* Bl4uzzWatch */ = {
 			isa = PBXGroup;
 			children = (
-				8906419FB4E98B4B12B7A56F /* Pods_Runner.framework */,
-				CD6B899582D0416ADBD8A68F /* Pods_RunnerTests.framework */,
+				6C5BF8F6E14FCE1CA5AB56EC /* Bl4uzzApp.swift */,
+				5911A2521C78AAF59475E6D3 /* Assets.xcassets */,
+				E744B7A3ECCADF82CEA9A204 /* Info.plist */,
+				3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */,
 			);
-			name = Frameworks;
+			name = Bl4uzzWatch;
+			path = Bl4uzzWatch;
 			sourceTree = "<group>";
 		};
 		BZZ0000000000000000000B /* NotificationService */ = {
@@ -303,6 +355,16 @@
 				BZZ00000000000000000008 /* NotificationService.entitlements */,
 			);
 			path = NotificationService;
+			sourceTree = "<group>";
+		};
+		D12A84F9A6072498822784CC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8906419FB4E98B4B12B7A56F /* Pods_Runner.framework */,
+				CD6B899582D0416ADBD8A68F /* Pods_RunnerTests.framework */,
+				2A3541B1C6DB7A2A65043634 /* watchOS */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -341,10 +403,12 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				E0B5862D106D142B580309AF /* [CP] Embed Pods Frameworks */,
 				ED5DDC1D42A9D342928222CC /* [CP] Copy Pods Resources */,
+				DE8D5148A1F799CED065292E /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A98C51662C61C477C0BECB71 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -374,6 +438,23 @@
 			productReference = BZZ00000000000000000009 /* NotificationService.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		CFE23535DD516B71781F5CB6 /* Bl4uzzWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 987335FC0BED79928194F13F /* Build configuration list for PBXNativeTarget "Bl4uzzWatch" */;
+			buildPhases = (
+				1D3A9FABDC8811A55694BC6B /* Sources */,
+				DCA8F0CCFBF1ABB33D7B056C /* Frameworks */,
+				CEC5B0E42CD799A0278C6F30 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Bl4uzzWatch;
+			productName = Bl4uzzWatch;
+			productReference = BE58B7F77C593EB2E2C708BD /* Bl4uzz.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -384,9 +465,6 @@
 				LastUpgradeCheck = 1510;
 				ORGANIZATIONNAME = "";
 				TargetAttributes = {
-					BZZ0000000000000000000E = {
-						CreatedOnToolsVersion = 15.0;
-					};
 					331C8080294A63A400263BE5 = {
 						CreatedOnToolsVersion = 14.0;
 						TestTargetID = 97C146ED1CF9000F007C117D;
@@ -394,6 +472,9 @@
 					97C146ED1CF9000F007C117D = {
 						CreatedOnToolsVersion = 7.3.1;
 						LastSwiftMigration = 1100;
+					};
+					BZZ0000000000000000000E = {
+						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
@@ -416,18 +497,12 @@
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				BZZ0000000000000000000E /* NotificationService */,
+				CFE23535DD516B71781F5CB6 /* Bl4uzzWatch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		BZZ00000000000000000010 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		331C807F294A63A400263BE5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -445,6 +520,21 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BZZ00000000000000000010 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CEC5B0E42CD799A0278C6F30 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1DB4B8FFB1AA6CCA2E3E27BB /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -563,11 +653,11 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		BZZ0000000000000000000D /* Sources */ = {
+		1D3A9FABDC8811A55694BC6B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BZZ00000000000000000001 /* NotificationService.swift in Sources */,
+				7C392911DA1EE25993DD94CD /* Bl4uzzApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -613,6 +703,15 @@
 				4A71C0232F4120100A17E01 /* NativeAttachmentPopoverMenu.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				5A29F825F921BC532DC55281 /* WatchBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BZZ0000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BZZ00000000000000000001 /* NotificationService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -624,22 +723,13 @@
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
 		};
+		A98C51662C61C477C0BECB71 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Bl4uzzWatch;
+			target = CFE23535DD516B71781F5CB6 /* Bl4uzzWatch */;
+			targetProxy = 53AF90D4D69FDFA66BB24D24 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		BZZ00000000000000000021 /* XCLocalSwiftPackageReference "BuzzPushKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = BuzzPushKit;
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		BZZ00000000000000000022 /* BuzzPushKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BZZ00000000000000000021 /* XCLocalSwiftPackageReference "BuzzPushKit" */;
-			productName = BuzzPushKit;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXVariantGroup section */
 		97C146FA1CF9000F007C117D /* Main.storyboard */ = {
@@ -661,6 +751,31 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		1928556A9E28E1CADF767F24 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Bl4uzzWatch/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = Bl4uzz;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
 		249021D3217E4FDB00AE95B9 /* Profile */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -719,10 +834,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
 				ENABLE_BITCODE = NO;
-				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -745,10 +860,10 @@
 				COMPRESS_PNG_FILES = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				STRIP_PNG_TEXT = NO;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).RunnerTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_PNG_TEXT = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -765,10 +880,10 @@
 				COMPRESS_PNG_FILES = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				STRIP_PNG_TEXT = NO;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).RunnerTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_PNG_TEXT = NO;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Buzz.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Buzz";
 			};
@@ -783,12 +898,38 @@
 				COMPRESS_PNG_FILES = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				STRIP_PNG_TEXT = NO;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).RunnerTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_PNG_TEXT = NO;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Buzz.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Buzz";
+			};
+			name = Profile;
+		};
+		6D77D6B7337EBA83AA212F5B /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Bl4uzzWatch/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = Bl4uzz;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Profile;
 		};
@@ -908,10 +1049,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
 				ENABLE_BITCODE = NO;
-				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -932,10 +1073,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
 				ENABLE_BITCODE = NO;
-				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -946,6 +1087,32 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		B4008DFDA6BE9DC96697CB3E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Bl4uzzWatch/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = Bl4uzz;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Release;
 		};
@@ -1027,16 +1194,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		BZZ0000000000000000000F /* Build configuration list for PBXNativeTarget "NotificationService" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				BZZ00000000000000000011 /* Debug */,
-				BZZ00000000000000000012 /* Release */,
-				BZZ00000000000000000015 /* Profile */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		331C8087294A63A400263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1067,7 +1224,42 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		987335FC0BED79928194F13F /* Build configuration list for PBXNativeTarget "Bl4uzzWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B4008DFDA6BE9DC96697CB3E /* Release */,
+				1928556A9E28E1CADF767F24 /* Debug */,
+				6D77D6B7337EBA83AA212F5B /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BZZ0000000000000000000F /* Build configuration list for PBXNativeTarget "NotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BZZ00000000000000000011 /* Debug */,
+				BZZ00000000000000000012 /* Release */,
+				BZZ00000000000000000015 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BZZ00000000000000000021 /* XCLocalSwiftPackageReference "BuzzPushKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = BuzzPushKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BZZ00000000000000000022 /* BuzzPushKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BZZ00000000000000000021 /* XCLocalSwiftPackageReference "BuzzPushKit" */;
+			productName = BuzzPushKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 97C146E61CF9000F007C117D /* Project object */;
 }

@@ -42,6 +42,7 @@ import 'shared/relay/relay.dart';
 import 'shared/read_state/read_state_provider.dart';
 import 'shared/theme/theme.dart';
 import 'shared/widgets/buzz_loading_indicator.dart';
+import 'shared/watch/watch_bridge.dart';
 
 const _starterChannelNamespace = '3ce33bea-8f09-5f1b-9c85-8a7d2659e6b0';
 
@@ -298,6 +299,7 @@ class App extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(watchBridgeProvider);
     final ageSignalState = ref.watch(ageSignalProvider);
     ref.listen(ageSignalProvider, (_, next) {
       if (next == AgeSignalState.restricted) {
