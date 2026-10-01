@@ -27,6 +27,20 @@ void main() {
       );
       String define(String origin) =>
           base64.encode(utf8.encode('BUZZ_PUSH_GATEWAY_URL=$origin'));
+
+      final releaseConfig = File(
+        'ios/Flutter/Release.xcconfig',
+      ).readAsStringSync();
+      final releaseOrigin = RegExp(
+        r'^BUZZ_PUSH_GATEWAY_URL = (.+)$',
+        multiLine: true,
+      ).firstMatch(releaseConfig)!.group(1)!.replaceAll(r'$()', '');
+      expect(releaseOrigin, 'https://buzz.bl4ko.com');
+      final release = await buildPhase({
+        'BUZZ_PUSH_GATEWAY_URL': releaseOrigin,
+      });
+      expect(release.exitCode, 0, reason: '${release.stderr}');
+      expect(release.stdout, 'continued:${define(releaseOrigin)}');
       final absent = await buildPhase({});
       expect(absent.exitCode, 0, reason: '${absent.stderr}');
       expect(absent.stdout, 'continued:');
