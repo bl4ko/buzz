@@ -51,7 +51,8 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 # ─── Stage 3: cook dependencies, then build the binary ──────────────────────
 FROM chef AS builder
-RUN apt-get update \
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         pkg-config \
@@ -91,12 +92,14 @@ RUN strip target/release/buzz-relay \
 # vice versa.
 FROM node:${NODE_VERSION}-${DEBIAN_VERSION}-slim AS web-builder
 WORKDIR /build
+COPY --from=chef /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 # Trust an optional corporate-proxy CA so corepack + pnpm can fetch over an
 # intercepting TLS gateway (no-op if EXTRA_CA_CERTS is unset).
 ARG EXTRA_CA_CERTS
 COPY --chmod=0644 ${EXTRA_CA_CERTS:-Dockerfile} /tmp/extra-ca/src
 RUN if [ -n "${EXTRA_CA_CERTS}" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends ca-certificates \
         && cp /tmp/extra-ca/src /usr/local/share/ca-certificates/extra-proxy-ca.crt \
         && update-ca-certificates \
         && rm -rf /var/lib/apt/lists/*; \
@@ -128,6 +131,7 @@ RUN pnpm -C web build && pnpm -C admin-web build
 
 # ─── Stage 5: shared runtime ────────────────────────────────────────────────
 FROM debian:${DEBIAN_VERSION}-slim AS runtime-base
+COPY --from=chef /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # OCI annotations: required for GHCR to auto-link the image to this repo and
 # inherit its visibility. org.opencontainers.image.source is the load-bearing
@@ -139,7 +143,8 @@ LABEL org.opencontainers.image.title="Buzz" \
       org.opencontainers.image.documentation="https://github.com/block/buzz#readme" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-RUN apt-get update \
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
