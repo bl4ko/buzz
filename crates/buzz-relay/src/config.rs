@@ -230,6 +230,7 @@ pub struct Config {
     /// service lands.
     pub huddle_audio_available: bool,
     pub(crate) speech_base_url: Option<String>,
+    pub(crate) speech_transcription_base_url: Option<String>,
     pub(crate) speech_transcription_model: String,
 
     /// Inter-relay mesh configuration (`BUZZ_MESH`, `BUZZ_MESH_BIND_ADDR`).
@@ -1364,6 +1365,7 @@ impl Config {
             require_relay_membership,
             huddle_audio_available,
             speech_base_url: std::env::var("BUZZ_SPEECH_BASE_URL").ok(),
+            speech_transcription_base_url: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_BASE_URL").ok(),
             speech_transcription_model: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_MODEL")
                 .unwrap_or_else(|_| "Systran/faster-whisper-small".to_owned()),
             mesh,

@@ -242,9 +242,14 @@ async fn transcribe_inner(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Response> {
-    let base = state.config.speech_base_url.as_deref().ok_or_else(|| {
-        api_error(StatusCode::SERVICE_UNAVAILABLE, "speech service disabled").into_response()
-    })?;
+    let base = state
+        .config
+        .speech_transcription_base_url
+        .as_deref()
+        .or(state.config.speech_base_url.as_deref())
+        .ok_or_else(|| {
+            api_error(StatusCode::SERVICE_UNAVAILABLE, "speech service disabled").into_response()
+        })?;
     authorize(&state, channel, &headers, &body, "transcribe").await?;
     let request: Transcription = serde_json::from_slice(&body).map_err(|_| {
         api_error(StatusCode::BAD_REQUEST, "invalid transcription request").into_response()
