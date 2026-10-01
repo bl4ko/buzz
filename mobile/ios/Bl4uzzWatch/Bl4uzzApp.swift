@@ -21,6 +21,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
   @Published var busy = false
   @Published var reachable = false
   private var generation = 0
+  private var messageChannelID: String?
 
   override init() {
     super.init()
@@ -36,14 +37,20 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
         self.error = "The iPhone response is not valid."
         return
       }
-      if self.scope != scope { self.messages = [] }
+      if self.scope != scope {
+        self.messages = []
+        self.messageChannelID = nil
+      }
       self.scope = scope
       self.channels = channels
     }
   }
 
   func loadMessages(_ channel: WatchChannel) {
-    messages = []
+    if messageChannelID != channel.id {
+      messages = []
+      messageChannelID = channel.id
+    }
     request(["action": "messages", "scope": scope, "channelId": channel.id]) { response in
       guard response["scope"] as? String == self.scope,
         let messages: [WatchMessage] = self.decode(response["messages"])
@@ -137,6 +144,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
         self.busy = false
         self.channels = []
         self.messages = []
+        self.messageChannelID = nil
         self.scope = newScope
         self.error = "Open Bl4uzz on your paired iPhone. Then tap Refresh."
       }
@@ -198,7 +206,10 @@ struct ConversationView: View {
       if draftScope == store.scope {
         TextField("Message", text: $draft, axis: .vertical)
         Button("Send", systemImage: "paperplane") {
-          store.send(draft, to: channel) { draft = "" }
+          let sentDraft = draft
+          store.send(sentDraft, to: channel) {
+            draft = confirmedWatchDraft(draft, sent: sentDraft)
+          }
         }
         .disabled(
           store.busy || !store.reachable

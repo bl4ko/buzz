@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		1DB4B8FFB1AA6CCA2E3E27BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5911A2521C78AAF59475E6D3 /* Assets.xcassets */; };
+		2F685BB1FF7B95DEBDCEF9A7 /* WatchDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526BEAAEE396C4C67C334B29 /* WatchDraft.swift */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		331C809B294A63AB00263BE5 /* MediaSanitizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C809A294A618700263BE5 /* MediaSanitizer.swift */; };
 		331C809D294A63AB00263BE5 /* UIKitEncoded.png in Resources */ = {isa = PBXBuildFile; fileRef = 331C809C294A618700263BE5 /* UIKitEncoded.png */; };
@@ -119,7 +120,7 @@
 		331C809A294A618700263BE5 /* MediaSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaSanitizer.swift; sourceTree = "<group>"; };
 		331C809C294A618700263BE5 /* UIKitEncoded.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = UIKitEncoded.png; sourceTree = "<group>"; };
 		331C809E294A618700263BE5 /* UIKitEncoded.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = UIKitEncoded.jpg; sourceTree = "<group>"; };
-		34C1280A39BA3E4A744C10B1 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		34C1280A39BA3E4A744C10B1 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Watch.xcconfig; sourceTree = "<group>"; };
 		42F36AA401015EC51F984FEA /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
@@ -141,6 +142,7 @@
 		4A71C0202F4100100A17E01 /* VoiceNotePackager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNotePackager.swift; sourceTree = "<group>"; };
 		4A71C0222F4110100A17E01 /* MP4Canonicalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MP4Canonicalizer.swift; sourceTree = "<group>"; };
 		4A71C0242F4120100A17E01 /* NativeAttachmentPopoverMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAttachmentPopoverMenu.swift; sourceTree = "<group>"; };
+		526BEAAEE396C4C67C334B29 /* WatchDraft.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchDraft.swift; sourceTree = "<group>"; };
 		529B9B84AD8748153EB60BCF /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		57A155722F02B92C397E5AE2 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		5911A2521C78AAF59475E6D3 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -342,6 +344,7 @@
 				5911A2521C78AAF59475E6D3 /* Assets.xcassets */,
 				E744B7A3ECCADF82CEA9A204 /* Info.plist */,
 				3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */,
+				526BEAAEE396C4C67C334B29 /* WatchDraft.swift */,
 			);
 			name = Bl4uzzWatch;
 			path = Bl4uzzWatch;
@@ -658,6 +661,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7C392911DA1EE25993DD94CD /* Bl4uzzApp.swift in Sources */,
+				2F685BB1FF7B95DEBDCEF9A7 /* WatchDraft.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
