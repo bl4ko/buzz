@@ -54,6 +54,7 @@ import os.log
   private var hostedHpkeChannel: FlutterMethodChannel?
   private var browserAuthBridge: BuzzBrowserAuthBridge?
   private var huddleMediaPlugin: HuddleMediaPlugin?
+  private var watchBridge: WatchBridge?
 
   override func application(
     _ application: UIApplication,
@@ -113,6 +114,7 @@ import os.log
         result(FlutterError(code: "backup_unavailable", message: nil, details: nil))
       }
     }
+    watchBridge = WatchBridge(messenger: messenger)
     huddleMediaPlugin = HuddleMediaPlugin(messenger: messenger)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BuzzIosNavigationBar") {
       registrar.register(IosNavigationBarFactory(messenger: messenger, parent: registrar.viewController), withId: "buzz/ios_navigation_bar")

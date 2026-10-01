@@ -1,0 +1,6 @@
+BUNDLE_IDENTIFIER = com.bl4ko.buzz
+BUZZ_DEVELOPMENT_TEAM = 55S37D9HA7
+FLUTTER_BUILD_NAME = 0.1.0
+FLUTTER_BUILD_NUMBER = 1
+#include? "../Flutter/Generated.xcconfig"
+#include? "../Flutter/AppOverrides.xcconfig"
