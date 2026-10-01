@@ -21,7 +21,8 @@ test("Mac TestFlight build uses the sandbox and numeric Apple build number", () 
     ),
   );
   assert.equal(config.app.macOSPrivateApi, false);
-  assert.equal(config.identifier, "xyz.bl4ko.buzz.custom");
+  assert.equal(config.identifier, "com.bl4ko.buzz");
+  assert.equal(config.productName, "Bl4uzz");
   const entitlements = readFileSync(
     new URL(
       `../desktop/src-tauri/${config.bundle.macOS.entitlements}`,
@@ -33,6 +34,7 @@ test("Mac TestFlight build uses the sandbox and numeric Apple build number", () 
     entitlements,
     /<key>com.apple.security.app-sandbox<\/key>\s*<true\/>/,
   );
+  assert.match(entitlements, /<string>55S37D9HA7\.com\.bl4ko\.buzz<\/string>/);
   assert.doesNotMatch(
     entitlements,
     /disable-library-validation|temporary-exception/,

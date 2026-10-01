@@ -1,4 +1,4 @@
-# Buzz Custom
+# Bl4uzz
 
 Build, sign, install, and retain Buzz builds on the Apple silicon Mac mini. Use GitHub only for source code and rebasing the fork onto upstream. Keep GitHub Actions disabled for `bl4ko/buzz`.
 
@@ -35,12 +35,12 @@ Build and upload the desktop app locally:
 
 ```sh
 node --test scripts/release-bl4ko-macos-testflight.test.mjs
-node scripts/release-bl4ko-macos-testflight.mjs 4 --upload
+node scripts/release-bl4ko-macos-testflight.mjs <build-number> --upload
 ```
 
 Increase the numeric build number for each upload. Use a clean, committed checkout. The script stores the signed app, PKG, and source commit in `../buzz-builds/macos-testflight/<upstream-version>/<build>/`. Omit `--upload` to prepare the signed package first. Run the same command with `--upload` to upload an existing package from the same source commit.
 
-Mac TestFlight uses app `6818075298` (`Buzz Desktop`), bundle ID `xyz.bl4ko.buzz.custom`, an App Store provisioning profile, and the shared App Store Connect API key. The Mac App Distribution and Mac Installer Distribution keys are in Vault at `envs/external/apple/restricted/signing/mac-app-distribution` and `mac-installer-distribution`. These are different from the Developer ID certificate used for ZIP builds.
+Mac and iPhone TestFlight builds use the same app `6817066676` (`Bl4uzz`) and bundle ID `com.bl4ko.buzz`, an App Store provisioning profile, and the shared App Store Connect API key. The Mac App Distribution and Mac Installer Distribution keys are in Vault at `envs/external/apple/restricted/signing/mac-app-distribution` and `mac-installer-distribution`. These are different from the Developer ID certificate used for ZIP builds.
 
 The TestFlight configuration enables App Sandbox and disables Tauri private macOS APIs. Child binaries inherit the sandbox. File access is limited to the app container and files selected by the user. Test local agent tools and project access before relying on this build for local development. The direct ZIP build keeps its existing configuration.
 
