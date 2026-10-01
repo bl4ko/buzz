@@ -1,6 +1,6 @@
 {
-  "productName": "Buzz Custom",
-  "identifier": "xyz.bl4ko.buzz.custom",
+  "productName": "Bl4uzz",
+  "identifier": "com.bl4ko.buzz",
   "app": {
     "macOSPrivateApi": false
   },

@@ -16,9 +16,9 @@ import { createSigningKeychain } from "./release-bl4ko-desktop.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = path.join(root, "desktop");
-const identifier = "xyz.bl4ko.buzz.custom";
-const appId = "6818075298";
-const profileName = "Buzz Custom macOS App Store";
+const identifier = "com.bl4ko.buzz";
+const appId = "6817066676";
+const profileName = "Bl4uzz macOS App Store";
 const appleRoot = "envs/external/apple/restricted/";
 
 export function testflightConfig(build) {
@@ -85,8 +85,8 @@ async function release(build, upload) {
     build,
   );
   const commit = output("git", ["rev-parse", "HEAD"]);
-  const app = path.join(directory, "Buzz Custom.app");
-  const pkg = path.join(directory, "Buzz-Desktop.pkg");
+  const app = path.join(directory, "Bl4uzz.app");
+  const pkg = path.join(directory, "Bl4uzz.pkg");
   if (existsSync(directory)) {
     if (
       (!upload && existsSync(pkg)) ||
@@ -223,15 +223,12 @@ async function release(build, upload) {
         { cwd: desktop, env },
       );
       run("ditto", [
-        path.join(
-          desktop,
-          "src-tauri/target/release/bundle/macos/Buzz Custom.app",
-        ),
+        path.join(desktop, "src-tauri/target/release/bundle/macos/Bl4uzz.app"),
         app,
       ]);
       const plist = path.join(app, "Contents/Info.plist");
       for (const field of ["CFBundleName", "CFBundleDisplayName"])
-        run("plutil", ["-replace", field, "-string", "Buzz Custom", plist]);
+        run("plutil", ["-replace", field, "-string", "Bl4uzz", plist]);
       run("plutil", [
         "-insert",
         "ITSAppUsesNonExemptEncryption",
