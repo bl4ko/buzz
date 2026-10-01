@@ -1,0 +1,20 @@
+{
+  "productName": "Buzz Custom",
+  "identifier": "xyz.bl4ko.buzz.custom",
+  "app": {
+    "macOSPrivateApi": false
+  },
+  "bundle": {
+    "category": "SocialNetworking",
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "entitlements": "Entitlements.appstore.plist"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  }
+}
