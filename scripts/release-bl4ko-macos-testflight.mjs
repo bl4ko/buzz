@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   readdirSync,
   rmSync,
   writeFileSync,
@@ -88,8 +89,7 @@ async function release(build, upload) {
   const pkg = path.join(directory, "Buzz-Desktop.pkg");
   if (existsSync(directory)) {
     if (
-      !upload ||
-      !existsSync(pkg) ||
+      (!upload && existsSync(pkg)) ||
       readFileSync(path.join(directory, "source-commit.txt"), "utf8").trim() !==
         commit
     )
@@ -267,6 +267,9 @@ async function release(build, upload) {
           privateKeyPath,
           path.join(temporary, `${index}.p12`),
           keychain,
+          index === 0
+            ? ["/usr/bin/codesign"]
+            : ["/usr/bin/productbuild", "/usr/bin/productsign"],
         );
         run("security", ["import", intermediatePath, "-k", keychain]);
         hashes.push(certificate.fingerprint.replaceAll(":", ""));
@@ -307,9 +310,13 @@ async function release(build, upload) {
         "--component",
         app,
         "/Applications",
-        pkg,
+        path.join(temporary, "Buzz-Desktop.pkg"),
       ]);
-      run("pkgutil", ["--check-signature", pkg]);
+      run("pkgutil", [
+        "--check-signature",
+        path.join(temporary, "Buzz-Desktop.pkg"),
+      ]);
+      renameSync(path.join(temporary, "Buzz-Desktop.pkg"), pkg);
     }
     if (upload) {
       const privateKeys = path.join(temporary, "private_keys");
