@@ -5,11 +5,11 @@ use std::{
 };
 
 use axum::{
-    Json,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
+    Json,
 };
 use base64::Engine;
 use serde::Deserialize;
@@ -203,6 +203,27 @@ async fn upstream_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, Resp
     Ok(bytes)
 }
 
+fn transcription_body(model: &str, audio: &[u8], boundary: &str) -> Vec<u8> {
+    let mut multipart = Vec::new();
+    for (name, value) in [
+        ("model", model),
+        ("language", "en"),
+        ("response_format", "json"),
+        ("vad_filter", "true"),
+    ] {
+        multipart.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    multipart.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes());
+    multipart.extend_from_slice(audio);
+    multipart.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    multipart
+}
+
 pub async fn transcribe(
     State(state): State<Arc<AppState>>,
     Path(channel): Path<Uuid>,
@@ -251,24 +272,7 @@ async fn transcribe_inner(
         api_error(StatusCode::TOO_MANY_REQUESTS, "speech service busy").into_response()
     })?;
     let boundary = format!("buzz-{}", Uuid::new_v4());
-    let mut multipart = Vec::new();
-    for (name, value) in [
-        ("model", state.config.speech_transcription_model.as_str()),
-        ("language", "en"),
-        ("prompt", "Hermes Athene Argus"),
-        ("response_format", "json"),
-        ("vad_filter", "false"),
-    ] {
-        multipart.extend_from_slice(
-            format!(
-                "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
-            )
-            .as_bytes(),
-        );
-    }
-    multipart.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes());
-    multipart.extend_from_slice(&audio);
-    multipart.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let multipart = transcription_body(&state.config.speech_transcription_model, &audio, &boundary);
     let client = CLIENT.as_ref().map_err(|_| {
         api_error(StatusCode::SERVICE_UNAVAILABLE, "speech client unavailable").into_response()
     })?;
@@ -353,6 +357,15 @@ async fn speech_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transcription_requires_speech_without_suggesting_words() {
+        let body = transcription_body("whisper", b"WAV", "boundary");
+        let body = String::from_utf8(body).unwrap();
+        assert!(body.contains("name=\"vad_filter\"\r\n\r\ntrue\r\n"));
+        assert!(!body.contains("name=\"prompt\""));
+        assert!(body.contains("audio/wav\r\n\r\nWAV\r\n--boundary--\r\n"));
+    }
+
     #[test]
     fn wav_bounds() {
         let mut wav = b"RIFF\x26\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x02\x00\x00\x00\x00\x00".to_vec();
