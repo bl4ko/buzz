@@ -1,5 +1,5 @@
 use buzz_sdk::{DeleteMessageOptions, DiffMeta, ThreadRef, VoteDirection};
-use nostr::PublicKey;
+use nostr::{EventBuilder, PublicKey, Tag};
 use uuid::Uuid;
 
 use crate::client::{normalize_events, normalize_write_response, BuzzClient};
@@ -604,8 +604,18 @@ pub struct SendMessageParams {
     pub kind: Option<u16>,
     pub reply_to: Option<String>,
     pub broadcast: bool,
+    pub voice_final: bool,
     pub files: Vec<String>,
     pub mentions: Vec<String>,
+}
+
+fn with_voice_final(builder: EventBuilder, voice_final: bool) -> Result<EventBuilder, CliError> {
+    if !voice_final {
+        return Ok(builder);
+    }
+    let tag = Tag::parse(["voice", "final"])
+        .map_err(|error| CliError::Other(format!("invalid voice tag: {error}")))?;
+    Ok(builder.tags([tag]))
 }
 
 pub async fn cmd_send_message(
@@ -742,6 +752,7 @@ pub async fn cmd_send_message(
         }
     };
 
+    let builder = with_voice_final(builder, p.voice_final)?;
     let event = client.sign_event(builder)?;
     let emitted_mentions = event_mention_pubkeys(&event);
     let resp = client.submit_event(event).await?;
@@ -881,6 +892,7 @@ pub async fn cmd_edit_message(
     client: &BuzzClient,
     event_id: &str,
     content: &str,
+    voice_final: bool,
 ) -> Result<(), CliError> {
     validate_hex64(event_id)?;
     validate_content_size(content)?;
@@ -892,6 +904,7 @@ pub async fn cmd_edit_message(
     let builder = buzz_sdk::build_edit(channel_uuid, target_eid, content)
         .map_err(|e| CliError::Other(format!("build_edit failed: {e}")))?;
 
+    let builder = with_voice_final(builder, voice_final)?;
     let event = client.sign_event(builder)?;
 
     let resp = client.submit_event(event).await?;
@@ -943,6 +956,7 @@ pub async fn dispatch(
             kind,
             reply_to,
             broadcast,
+            voice_final,
             files,
             mentions,
         } => {
@@ -954,6 +968,7 @@ pub async fn dispatch(
                     kind,
                     reply_to,
                     broadcast,
+                    voice_final,
                     files,
                     mentions,
                 },
@@ -993,7 +1008,11 @@ pub async fn dispatch(
             )
             .await
         }
-        MessagesCmd::Edit { event, content } => cmd_edit_message(client, &event, &content).await,
+        MessagesCmd::Edit {
+            event,
+            content,
+            voice_final,
+        } => cmd_edit_message(client, &event, &content, voice_final).await,
         MessagesCmd::Delete {
             event,
             action_id,
@@ -1715,8 +1734,30 @@ mod tests {
             kind: None,
             reply_to: None,
             broadcast: false,
+            voice_final: false,
             files: vec![],
             mentions: vec![],
+        }
+    }
+
+    #[test]
+    fn voice_final_tag_is_signed_only_when_requested() {
+        for kind in [9, 40003] {
+            for final_reply in [false, true] {
+                let builder = nostr::EventBuilder::new(nostr::Kind::Custom(kind), "reply");
+                let event = super::with_voice_final(builder, final_reply)
+                    .unwrap()
+                    .sign_with_keys(&Keys::generate())
+                    .unwrap();
+                assert!(event.verify().is_ok());
+                assert_eq!(
+                    event
+                        .tags
+                        .iter()
+                        .any(|tag| tag.as_slice() == ["voice", "final"]),
+                    final_reply
+                );
+            }
         }
     }
 
@@ -1727,9 +1768,9 @@ mod tests {
         let (url, query_count, captured_event) = fake_send_relay(send_palette_response()).await;
         let client = BuzzClient::new(url, Keys::generate(), None, None).unwrap();
 
-        cmd_send_message(&client, send_params("hello :wave: everyone"))
-            .await
-            .unwrap();
+        let mut params = send_params("hello :wave: everyone");
+        params.voice_final = true;
+        cmd_send_message(&client, params).await.unwrap();
 
         // Palette was queried at least once (short-circuit was NOT triggered).
         assert!(
@@ -1753,6 +1794,7 @@ mod tests {
                     .collect()
             })
             .collect();
+        assert!(tags.iter().any(|tag| tag == &["voice", "final"]));
         let emoji_tags: Vec<&Vec<String>> = tags
             .iter()
             .filter(|t| t.first().map(|s| s.as_str()) == Some("emoji"))

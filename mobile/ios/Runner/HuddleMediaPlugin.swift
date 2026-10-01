@@ -1,6 +1,5 @@
 import AVFoundation
 import Flutter
-import Speech
 import UIKit
 
 /// Foreground-only native seam for iOS Huddle media.
@@ -106,11 +105,14 @@ final class HuddleMediaPlugin {
       }
       if speech == nil {
         speech = HuddleSpeech(
-          onTranscript: { [weak self] text in
-            self?.speechChannel.invokeMethod("transcript", arguments: ["text": text])
+          onAudio: { [weak self] audio in
+            self?.speechChannel.invokeMethod("audio", arguments: ["audio": FlutterStandardTypedData(bytes: audio)])
           },
           onError: { [weak self] message in
             self?.speechChannel.invokeMethod("error", arguments: ["message": message])
+          },
+          onPlaybackFinished: { [weak self] in
+            self?.speechChannel.invokeMethod("status", arguments: ["message": "Listening on this device"])
           }
         )
       }
@@ -119,22 +121,17 @@ final class HuddleMediaPlugin {
     case "stop":
       speech?.stop()
       result(nil)
-    case "voices":
-      result(AVSpeechSynthesisVoice.speechVoices()
-        .filter { $0.language.hasPrefix("en-") }
-        .sorted {
-          if $0.quality != $1.quality { return $0.quality.rawValue > $1.quality.rawValue }
-          return $0.name < $1.name
-        }
-        .map { ["id": $0.identifier, "name": $0.name] })
-    case "speak":
+    case "play":
       let arguments = call.arguments as? [String: Any]
-      guard let text = arguments?["text"] as? String else {
-        result(FlutterError(code: "invalid_arguments", message: "Missing speech text.", details: nil))
+      guard let audio = arguments?["audio"] as? FlutterStandardTypedData else {
+        result(FlutterError(code: "invalid_arguments", message: "Missing speech audio.", details: nil))
         return
       }
-      speech?.speak(text, voiceId: arguments?["voiceId"] as? String)
-      result(nil)
+      guard let speech else {
+        result(FlutterError(code: "invalid_state", message: "Start agent speech first.", details: nil))
+        return
+      }
+      speech.play(audio.data, result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -335,6 +332,7 @@ final class HuddleMediaPlugin {
         )
       }
       try audioEngine.setMuted(muted)
+      speech?.resetCapture()
       result(nil)
     } catch {
       result(
@@ -622,148 +620,139 @@ final class HuddleMediaPlugin {
   }
 }
 
-private final class HuddleSpeech: NSObject, AVSpeechSynthesizerDelegate {
-  private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-  private let synthesizer = AVSpeechSynthesizer()
-  private let onTranscript: (String) -> Void
+private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
+  private let onAudio: (Data) -> Void
   private let onError: (String) -> Void
-  private var request: SFSpeechAudioBufferRecognitionRequest?
-  private var task: SFSpeechRecognitionTask?
-  private var generation = 0
-  private var latestText = ""
+  private let onPlaybackFinished: () -> Void
+  private var player: AVAudioPlayer?
+  private var playbackResult: FlutterResult?
+  private var pcm = Data()
+  private var sampleRate = 48000
   private var silentSamples = 0
+  private var voicedSamples = 0
   private var listening = false
-  private var speaking = false
-  private var finishing = false
-  private var agentName: String?
 
-  init(onTranscript: @escaping (String) -> Void, onError: @escaping (String) -> Void) {
-    self.onTranscript = onTranscript
+  init(onAudio: @escaping (Data) -> Void, onError: @escaping (String) -> Void,
+       onPlaybackFinished: @escaping () -> Void = {}) {
+    self.onAudio = onAudio
     self.onError = onError
+    self.onPlaybackFinished = onPlaybackFinished
     super.init()
-    synthesizer.delegate = self
   }
 
   func start(agentName: String?, result: @escaping FlutterResult) {
-    self.agentName = agentName
-    guard recognizer?.supportsOnDeviceRecognition == true, recognizer?.isAvailable == true else {
-      result(FlutterError(code: "on_device_speech_unavailable", message: "On-device English speech recognition is unavailable.", details: nil))
-      return
-    }
-    SFSpeechRecognizer.requestAuthorization { [weak self] status in
-      DispatchQueue.main.async {
-        guard status == .authorized, let self else {
-          result(FlutterError(code: "speech_permission_denied", message: "Allow speech recognition in Settings.", details: nil))
-          return
-        }
-        self.listening = true
-        self.beginSegment()
-        result(nil)
-      }
-    }
+    listening = true
+    clearSegment()
+    result(nil)
   }
 
   func stop() {
     listening = false
-    speaking = false
+    player?.stop()
+    player = nil
+    playbackResult?(nil)
+    playbackResult = nil
     clearSegment()
-    synthesizer.stopSpeaking(at: .immediate)
   }
 
   func append(_ buffer: AVAudioPCMBuffer) {
-    guard listening, !speaking, !finishing, buffer.frameLength > 0, let request else { return }
-    request.append(buffer)
-    guard let samples = buffer.floatChannelData?.pointee, buffer.frameLength > 0 else { return }
+    guard listening, player == nil, buffer.frameLength > 0,
+          let samples = buffer.floatChannelData?.pointee else { return }
+    let rate = Int(buffer.format.sampleRate)
+    guard rate > 0 else { return }
+    if rate != sampleRate { clearSegment(); sampleRate = rate }
     let count = Int(buffer.frameLength)
-    let energy = (0..<count).reduce(Float.zero) { $0 + samples[$1] * samples[$1] }
-    if energy / Float(count) > 0.000025 {
+    let energy = (0..<count).reduce(Float.zero) { $0 + samples[$1] * samples[$1] } / Float(count)
+    if energy > 0.000025 {
+      voicedSamples += count
       silentSamples = 0
-    } else if !latestText.isEmpty {
+    } else {
       silentSamples += count
-      if silentSamples >= Int(buffer.format.sampleRate * 0.9) {
-        endSegment()
+    }
+    for index in 0..<count {
+      var sample = Int16(max(-1, min(1, samples[index])) * 32767).littleEndian
+      withUnsafeBytes(of: &sample) { pcm.append(contentsOf: $0) }
+    }
+    if voicedSamples == 0 {
+      let leadingBytes = sampleRate * 2 / 5
+      if pcm.count > leadingBytes { pcm.removeFirst(pcm.count - leadingBytes) }
+      return
+    }
+    if silentSamples >= sampleRate * 3 / 5 || pcm.count >= sampleRate * 2 * 15 {
+      let maximumBytes = sampleRate * 2 * 15
+      if pcm.count > maximumBytes { pcm.removeLast(pcm.count - maximumBytes) }
+      if voicedSamples >= sampleRate / 5 { onAudio(wav()) }
+      clearSegment()
+    }
+  }
+
+  func play(_ audio: Data, result: @escaping FlutterResult = { _ in }) {
+    clearSegment()
+    player?.stop()
+    playbackResult?(FlutterError(code: "speech_replaced", message: "Speech playback was replaced.", details: nil))
+    playbackResult = nil
+    do {
+      let next = try AVAudioPlayer(data: audio)
+      next.delegate = self
+      player = next
+      playbackResult = result
+      guard next.play() else {
+        player = nil
+        playbackResult = nil
+        result(FlutterError(code: "speech_play_failed", message: "Could not play speech audio.", details: nil))
+        return
       }
+    } catch {
+      player = nil
+      result(FlutterError(code: "speech_play_failed", message: error.localizedDescription, details: nil))
     }
   }
 
-  func speak(_ text: String, voiceId: String?) {
-    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-    speaking = true
+  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    guard self.player === player else { return }
+    self.player = nil
     clearSegment()
-    synthesizer.stopSpeaking(at: .immediate)
-    let utterance = AVSpeechUtterance(string: String(text.prefix(500)))
-    utterance.voice = voiceId.flatMap { AVSpeechSynthesisVoice(identifier: $0) }
-      ?? AVSpeechSynthesisVoice(language: "en-US")
-    synthesizer.speak(utterance)
+    playbackResult?(flag ? nil : FlutterError(code: "speech_play_failed", message: "Speech audio stopped before completion.", details: nil))
+    playbackResult = nil
+    if flag { onPlaybackFinished() }
   }
 
-  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-    speaking = false
-    if listening { beginSegment() }
-  }
-
-  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-    if listening && !speaking { beginSegment() }
-  }
-
-  private func beginSegment() {
-    guard listening, !speaking else { return }
+  func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+    guard self.player === player else { return }
+    self.player = nil
     clearSegment()
-    let request = SFSpeechAudioBufferRecognitionRequest()
-    request.requiresOnDeviceRecognition = true
-    request.shouldReportPartialResults = true
-    request.taskHint = .dictation
-    request.contextualStrings = agentName.map { [$0] } ?? []
-    self.request = request
-    let currentGeneration = generation
-    task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
-      DispatchQueue.main.async {
-        guard let self, self.listening, self.generation == currentGeneration else { return }
-        if let error {
-          if self.finishing && !self.latestText.isEmpty {
-            self.finishSegment()
-            return
-          }
-          self.listening = false
-          self.clearSegment()
-          self.onError(error.localizedDescription)
-          return
-        }
-        if let result {
-          self.latestText = result.bestTranscription.formattedString
-          if result.isFinal { self.finishSegment() }
-        }
-      }
-    }
+    playbackResult?(FlutterError(code: "speech_decode_failed", message: error?.localizedDescription ?? "Could not decode speech audio.", details: nil))
+    playbackResult = nil
   }
 
-  private func endSegment() {
-    guard !finishing else { return }
-    finishing = true
-    request?.endAudio()
-    let currentGeneration = generation
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-      guard let self, self.listening, self.finishing,
-        self.generation == currentGeneration else { return }
-      self.finishSegment()
-    }
-  }
-
-  private func finishSegment() {
-    let text = latestText.trimmingCharacters(in: .whitespacesAndNewlines)
+  func resetCapture() {
     clearSegment()
-    if !text.isEmpty { onTranscript(text) }
-    beginSegment()
   }
 
   private func clearSegment() {
-    generation += 1
-    if !finishing { request?.endAudio() }
-    task?.cancel()
-    request = nil
-    task = nil
-    latestText = ""
+    pcm.removeAll(keepingCapacity: true)
     silentSamples = 0
-    finishing = false
+    voicedSamples = 0
+  }
+
+  private func wav() -> Data {
+    var data = Data("RIFF".utf8)
+    func number<T: FixedWidthInteger>(_ value: T) {
+      var little = value.littleEndian
+      withUnsafeBytes(of: &little) { data.append(contentsOf: $0) }
+    }
+    number(UInt32(pcm.count + 36))
+    data.append(Data("WAVEfmt ".utf8))
+    number(UInt32(16))
+    number(UInt16(1))
+    number(UInt16(1))
+    number(UInt32(sampleRate))
+    number(UInt32(sampleRate * 2))
+    number(UInt16(2))
+    number(UInt16(16))
+    data.append(Data("data".utf8))
+    number(UInt32(pcm.count))
+    data.append(pcm)
+    return data
   }
 }
