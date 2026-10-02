@@ -236,7 +236,10 @@ async fn transcribe_audio(
         client,
         vad_base,
         "audio/speech/timestamps",
-        &[("model", "silero_vad_v5")],
+        &[
+            ("model", "silero_vad_v5"),
+            ("min_speech_duration_ms", "250"),
+        ],
         audio,
     )
     .await?;
@@ -262,6 +265,7 @@ async fn transcribe_audio(
             ("model", model),
             ("response_format", "json"),
             ("language", "en"),
+            ("to_language", "en"),
         ],
         audio,
     )
@@ -459,22 +463,28 @@ mod tests {
         ] {
             let calls = Arc::new(AtomicUsize::new(0));
             let observed = calls.clone();
-            let app = axum::Router::new().fallback(axum::routing::post(
-                move |uri: axum::http::Uri, body: Bytes| {
-                    let observed = observed.clone();
-                    async move {
-                        if uri.path() == "/audio/speech/timestamps" {
-                            (vad_status, vad_body)
-                        } else {
-                            let body = String::from_utf8_lossy(&body);
-                            assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
-                            assert!(!body.contains("name=\"prompt\""));
-                            observed.fetch_add(1, Ordering::SeqCst);
-                            (StatusCode::OK, "{\"text\":\"hello\"}")
+            let app =
+                axum::Router::new().fallback(axum::routing::post(
+                    move |uri: axum::http::Uri, body: Bytes| {
+                        let observed = observed.clone();
+                        async move {
+                            if uri.path() == "/audio/speech/timestamps" {
+                                let body = String::from_utf8_lossy(&body);
+                                assert!(
+                                    body.contains("name=\"min_speech_duration_ms\"\r\n\r\n250\r\n")
+                                );
+                                (vad_status, vad_body)
+                            } else {
+                                let body = String::from_utf8_lossy(&body);
+                                assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
+                                assert!(body.contains("name=\"to_language\"\r\n\r\nen\r\n"));
+                                assert!(!body.contains("name=\"prompt\""));
+                                observed.fetch_add(1, Ordering::SeqCst);
+                                (StatusCode::OK, "{\"text\":\"hello\"}")
+                            }
                         }
-                    }
-                },
-            ));
+                    },
+                ));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
             let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
