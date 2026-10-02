@@ -203,13 +203,9 @@ async fn upstream_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, Resp
     Ok(bytes)
 }
 
-fn transcription_body(model: &str, audio: &[u8], boundary: &str) -> Vec<u8> {
+fn audio_body(fields: &[(&str, &str)], audio: &[u8], boundary: &str) -> Vec<u8> {
     let mut multipart = Vec::new();
-    for (name, value) in [
-        ("model", model),
-        ("response_format", "json"),
-        ("vad_filter", "true"),
-    ] {
+    for (name, value) in fields {
         multipart.extend_from_slice(
             format!(
                 "--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
@@ -221,6 +217,86 @@ fn transcription_body(model: &str, audio: &[u8], boundary: &str) -> Vec<u8> {
     multipart.extend_from_slice(audio);
     multipart.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
     multipart
+}
+
+#[derive(Deserialize)]
+struct SpeechTimestamp {
+    start: u32,
+    end: u32,
+}
+
+async fn transcribe_audio(
+    client: &reqwest::Client,
+    vad_base: &str,
+    transcription_base: &str,
+    model: &str,
+    audio: &[u8],
+) -> Result<String, Response> {
+    let bytes = request_audio(
+        client,
+        vad_base,
+        "audio/speech/timestamps",
+        &[("model", "silero_vad_v5")],
+        audio,
+    )
+    .await?;
+    let timestamps: Vec<SpeechTimestamp> = serde_json::from_slice(&bytes).map_err(|_| {
+        api_error(StatusCode::BAD_GATEWAY, "invalid speech detection response").into_response()
+    })?;
+    if timestamps
+        .iter()
+        .any(|interval| interval.start >= interval.end || interval.end > 15_000)
+    {
+        return Err(
+            api_error(StatusCode::BAD_GATEWAY, "invalid speech detection interval").into_response(),
+        );
+    }
+    if timestamps.is_empty() {
+        return Ok(String::new());
+    }
+    let bytes = request_audio(
+        client,
+        transcription_base,
+        "audio/transcriptions",
+        &[
+            ("model", model),
+            ("response_format", "json"),
+            ("language", "en"),
+        ],
+        audio,
+    )
+    .await?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
+        api_error(StatusCode::BAD_GATEWAY, "invalid speech response").into_response()
+    })?;
+    value
+        .get("text")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+        .ok_or_else(|| api_error(StatusCode::BAD_GATEWAY, "missing transcript").into_response())
+}
+
+async fn request_audio(
+    client: &reqwest::Client,
+    base: &str,
+    endpoint: &str,
+    fields: &[(&str, &str)],
+    audio: &[u8],
+) -> Result<Vec<u8>, Response> {
+    let boundary = format!("buzz-{}", Uuid::new_v4());
+    let response = client
+        .post(format!("{}/{endpoint}", base.trim_end_matches('/')))
+        .header(
+            "Content-Type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(audio_body(fields, audio, &boundary))
+        .send()
+        .await
+        .map_err(|_| {
+            api_error(StatusCode::BAD_GATEWAY, "speech service unavailable").into_response()
+        })?;
+    upstream_bytes(response).await
 }
 
 pub async fn transcribe(
@@ -275,34 +351,24 @@ async fn transcribe_inner(
     let _slot = SPEECH_SLOTS.try_acquire().map_err(|_| {
         api_error(StatusCode::TOO_MANY_REQUESTS, "speech service busy").into_response()
     })?;
-    let boundary = format!("buzz-{}", Uuid::new_v4());
-    let multipart = transcription_body(&state.config.speech_transcription_model, &audio, &boundary);
+    let vad_base = state.config.speech_base_url.as_deref().ok_or_else(|| {
+        api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "speech detection unavailable",
+        )
+        .into_response()
+    })?;
     let client = CLIENT.as_ref().map_err(|_| {
         api_error(StatusCode::SERVICE_UNAVAILABLE, "speech client unavailable").into_response()
     })?;
-    let response = client
-        .post(format!(
-            "{}/audio/transcriptions",
-            base.trim_end_matches('/')
-        ))
-        .header(
-            "Content-Type",
-            format!("multipart/form-data; boundary={boundary}"),
-        )
-        .body(multipart)
-        .send()
-        .await
-        .map_err(|_| {
-            api_error(StatusCode::BAD_GATEWAY, "speech service unavailable").into_response()
-        })?;
-    let bytes = upstream_bytes(response).await?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
-        api_error(StatusCode::BAD_GATEWAY, "invalid speech response").into_response()
-    })?;
-    let text = value
-        .get("text")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| api_error(StatusCode::BAD_GATEWAY, "missing transcript").into_response())?;
+    let text = transcribe_audio(
+        client,
+        vad_base,
+        base,
+        &state.config.speech_transcription_model,
+        &audio,
+    )
+    .await?;
     Ok(Json(json!({"text": text})).into_response())
 }
 
@@ -363,12 +429,64 @@ mod tests {
     use super::*;
     #[test]
     fn transcription_requires_speech_without_suggesting_words() {
-        let body = transcription_body("whisper", b"WAV", "boundary");
+        let body = audio_body(
+            &[("model", "whisper"), ("response_format", "json")],
+            b"WAV",
+            "boundary",
+        );
         let body = String::from_utf8(body).unwrap();
-        assert!(body.contains("name=\"vad_filter\"\r\n\r\ntrue\r\n"));
+        assert!(!body.contains("name=\"vad_filter\""));
         assert!(!body.contains("name=\"prompt\""));
         assert!(!body.contains("name=\"language\""));
         assert!(body.contains("audio/wav\r\n\r\nWAV\r\n--boundary--\r\n"));
+    }
+
+    #[tokio::test]
+    async fn vad_gates_transcription() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for (vad_status, vad_body, expected_calls, expected_text) in [
+            (StatusCode::OK, "[]", 0, Some("")),
+            (
+                StatusCode::OK,
+                "[{\"start\":160,\"end\":2389}]",
+                1,
+                Some("hello"),
+            ),
+            (StatusCode::OK, "[{\"start\":10,\"end\":5}]", 0, None),
+            (StatusCode::OK, "[{\"start\":-1,\"end\":5}]", 0, None),
+            (StatusCode::OK, "{}", 0, None),
+            (StatusCode::SERVICE_UNAVAILABLE, "[]", 0, None),
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let observed = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::post(
+                move |uri: axum::http::Uri, body: Bytes| {
+                    let observed = observed.clone();
+                    async move {
+                        if uri.path() == "/audio/speech/timestamps" {
+                            (vad_status, vad_body)
+                        } else {
+                            let body = String::from_utf8_lossy(&body);
+                            assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
+                            assert!(!body.contains("name=\"prompt\""));
+                            observed.fetch_add(1, Ordering::SeqCst);
+                            (StatusCode::OK, "{\"text\":\"hello\"}")
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let result =
+                transcribe_audio(&reqwest::Client::new(), &base, &base, "qwen", b"WAV").await;
+            server.abort();
+            assert_eq!(calls.load(Ordering::SeqCst), expected_calls, "{vad_body}");
+            match expected_text {
+                Some(text) => assert_eq!(result.unwrap(), text),
+                None => assert_eq!(result.unwrap_err().status(), StatusCode::BAD_GATEWAY),
+            }
+        }
     }
 
     #[test]
