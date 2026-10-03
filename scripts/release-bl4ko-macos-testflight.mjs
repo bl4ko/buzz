@@ -298,17 +298,21 @@ async function release(build, upload) {
         app,
       ]);
       run("codesign", ["--verify", "--deep", "--strict", app]);
-      run("xcrun", [
-        "productbuild",
-        "--sign",
-        hashes[1],
-        "--keychain",
-        signingKeychains[1],
-        "--component",
-        app,
-        "/Applications",
-        path.join(temporary, "Buzz-Desktop.pkg"),
-      ]);
+      run(
+        "xcrun",
+        [
+          "productbuild",
+          "--sign",
+          hashes[1],
+          "--keychain",
+          signingKeychains[1],
+          "--component",
+          app,
+          "/Applications",
+          path.join(temporary, "Buzz-Desktop.pkg"),
+        ],
+        { env: { ...process.env, TMPDIR: temporary + path.sep } },
+      );
       run("pkgutil", [
         "--check-signature",
         path.join(temporary, "Buzz-Desktop.pkg"),
