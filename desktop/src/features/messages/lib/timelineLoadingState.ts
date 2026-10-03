@@ -18,6 +18,7 @@ export type TimelineQueryStatus = {
 export type TimelineQueryLoadingStatus = TimelineQueryStatus & {
   isEnabled: boolean;
   isError: boolean;
+  hasResolvedWindow?: boolean;
 };
 
 export function selectTimelineLoadingState(
@@ -86,10 +87,14 @@ export function resolveTimelineQueryLoadingState(
     activeChannelId !== null && settledChannelId === activeChannelId;
   const loadingNow =
     status.isEnabled &&
-    selectTimelineLoadingState(
-      status,
-      hasSettledThisChannel || hasPersistedHydratedChannel,
-    );
+    (status.hasResolvedWindow === true
+      ? false
+      : status.hasResolvedWindow === false && !status.isError
+        ? true
+        : selectTimelineLoadingState(
+            status,
+            hasSettledThisChannel || hasPersistedHydratedChannel,
+          ));
 
   return resolveTimelineLoadingLatch(
     settledChannelId,

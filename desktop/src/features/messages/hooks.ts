@@ -1,11 +1,5 @@
 import { useEffect, useEffectEvent } from "react";
-import {
-  type QueryClient,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   channelMessagesKey,
@@ -23,13 +17,8 @@ import {
   projectChannelWindowMessages,
   refreshChannelWindowMessages,
 } from "@/features/messages/lib/projectChannelWindow";
-import { reconcileChannelWindowMessages } from "@/features/messages/lib/channelWindowReconciliation";
-import {
-  channelHeadCacheScope,
-  channelHeadHydration,
-  consumeHydratedChannel,
-} from "@/features/messages/lib/channelHeadCache";
-import { storeChannelHeadCache } from "@/shared/api/tauriChannelHeadCache";
+import { channelMessagesQueryOptions } from "@/features/messages/lib/channelMessagesQuery";
+export { reconcileFetchedChannelWindow } from "@/features/messages/lib/channelMessagesQuery";
 import {
   mergeMessages,
   mergeTimelineCacheMessages,
@@ -50,12 +39,10 @@ import { reactionEmojiUrl } from "@/shared/api/customEmoji";
 import type { CustomEmoji } from "@/shared/lib/remarkCustomEmoji";
 import {
   addReaction,
-  deleteMessage,
   editMessage,
   removeReaction,
   sendChannelMessage,
 } from "@/shared/api/tauri";
-import { getChannelWindowEvents } from "@/shared/api/channelWindow";
 import type { Channel, Identity, RelayEvent } from "@/shared/api/types";
 // Same .mjs the renderer uses, so the cache-update projection can't drift
 // from the on-render overlay.
@@ -66,13 +53,9 @@ import {
   mapChannelWindowEvents,
   mergeLiveChannelWindowEvent,
   mergeLiveThreadSummary,
-  replaceNewestChannelWindow,
   type ChannelWindowStore,
 } from "@/features/messages/lib/channelWindowStore";
-import {
-  parseChannelWindowResponse,
-  parseLiveThreadSummary,
-} from "@/features/messages/lib/channelWindowResponse";
+import { parseLiveThreadSummary } from "@/features/messages/lib/channelWindowResponse";
 import {
   CHANNEL_AUX_EVENT_KINDS,
   CHANNEL_TIMELINE_CONTENT_KINDS,
@@ -255,64 +238,15 @@ export function useChannelWindowQuery(channel: Channel | null) {
       queryClient.getQueryData<ChannelWindowStore>(queryKey) ??
       emptyChannelWindowStore(),
     staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 60 * 60 * 1_000,
   });
-}
-
-export function reconcileFetchedChannelWindow(
-  queryClient: QueryClient,
-  channelId: string,
-  events: Awaited<ReturnType<typeof getChannelWindowEvents>>,
-  previousMessages: RelayEvent[],
-  signal: AbortSignal,
-): RelayEvent[] {
-  // Tauri invokes cannot be canceled after dispatch. A replacement refetch can
-  // therefore win while this older request is still in flight. Never let that
-  // canceled request commit its stale page into the authoritative window.
-  signal.throwIfAborted();
-  const windowKey = channelWindowKey(channelId);
-  const page = parseChannelWindowResponse(events, channelId, null);
-  const current =
-    queryClient.getQueryData<ChannelWindowStore>(windowKey) ??
-    emptyChannelWindowStore();
-  const next = replaceNewestChannelWindow(current, page);
-  queryClient.setQueryData(windowKey, next);
-  const scope = channelHeadCacheScope(queryClient);
-  if (scope) {
-    void storeChannelHeadCache(scope, channelId, events).catch((error) => {
-      console.warn("Failed to persist channel head", channelId, error);
-    });
-  }
-  return reconcileChannelWindowMessages(next, previousMessages);
 }
 
 export function useChannelMessagesQuery(channel: Channel | null) {
   const queryClient = useQueryClient();
-  const queryKey = channelMessagesKey(channel?.id ?? "none");
   return useQuery({
+    ...channelMessagesQueryOptions(queryClient, channel?.id ?? "none"),
     enabled: channel !== null && channel.channelType !== "forum",
-    queryKey,
-    queryFn: async ({ signal }) => {
-      if (!channel) throw new Error("No channel selected.");
-      // Persisted heads seed asynchronously; wait for that seed so a channel
-      // opened during boot takes the hydrated path instead of racing it with
-      // a cold relay fetch.
-      await channelHeadHydration(queryClient);
-      if (consumeHydratedChannel(queryClient, channel.id)) {
-        return queryClient.getQueryData<RelayEvent[]>(queryKey) ?? [];
-      }
-      const previousMessages =
-        queryClient.getQueryData<RelayEvent[]>(queryKey) ?? [];
-      const events = await getChannelWindowEvents(channel.id);
-      return reconcileFetchedChannelWindow(
-        queryClient,
-        channel.id,
-        events,
-        previousMessages,
-        signal,
-      );
-    },
-    staleTime: 5 * 60 * 1_000,
-    gcTime: 60 * 60 * 1_000,
   });
 }
 
@@ -795,28 +729,7 @@ export function useToggleReactionMutation() {
   });
 }
 
-export function useDeleteMessageMutation(channel: Channel | null) {
-  const queryClient = useQueryClient();
-
-  return useMutation<void, Error, { eventId: string }>({
-    mutationFn: async ({ eventId }) => {
-      if (!channel) {
-        throw new Error("No channel selected.");
-      }
-      await deleteMessage(channel.id, eventId);
-    },
-    onSuccess: (_data, { eventId }) => {
-      if (!channel) return;
-      queryClient.setQueryData<RelayEvent[]>(
-        channelMessagesKey(channel.id),
-        (current = []) => current.filter((message) => message.id !== eventId),
-      );
-    },
-    onError: (error) => {
-      toast.error(`Failed to delete message: ${error.message}`);
-    },
-  });
-}
+export { useDeleteMessageMutation } from "./deleteMessageMutation";
 
 export function useEditMessageMutation(channel: Channel | null) {
   const queryClient = useQueryClient();

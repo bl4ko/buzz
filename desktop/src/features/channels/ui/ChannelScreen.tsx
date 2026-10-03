@@ -625,6 +625,7 @@ export function ChannelScreen({
         isPlaceholderData: messagesQuery.isPlaceholderData,
         dataLength: messagesQuery.data?.length ?? null,
         isError: messagesQuery.isError,
+        hasResolvedWindow: (windowQuery.data?.pages.length ?? 0) > 0,
       },
       activeChannelId !== null &&
         hasPersistedHydratedChannel(queryClient, activeChannelId),

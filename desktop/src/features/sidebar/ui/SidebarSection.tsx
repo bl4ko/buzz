@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BellOff, ChevronDown, CircleDot, X } from "lucide-react";
 
 import {
@@ -33,6 +34,7 @@ import {
 import { ChannelActivityPopover } from "@/features/sidebar/ui/ChannelActivityPopover";
 import { useAppShell } from "@/app/AppShellContext";
 import { UserNameIndicators } from "@/features/user-status/ui/UserNameIndicators";
+import { prefetchChannelMessages } from "@/features/messages/lib/channelMessagesQuery";
 
 const SECTION_LABEL_BUTTON_CLASS =
   "group/section-label flex w-fit max-w-[calc(100%-3rem)] cursor-pointer appearance-none items-center gap-1 text-left transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground";
@@ -265,6 +267,10 @@ export function ChannelMenuButton({
   onSelectChannel: (channelId: string) => void;
 }) {
   const resolvedLabel = label ?? channel.name;
+  const queryClient = useQueryClient();
+  const prepareMessages = () => {
+    if (!isActive) void prefetchChannelMessages(queryClient, channel);
+  };
   const ephemeralDisplay = getEphemeralChannelDisplay(channel);
   const { hasSidebarUnreadProjections, unreadThreadChannelIds } = useAppShell();
   const hasThreadUnread =
@@ -297,6 +303,8 @@ export function ChannelMenuButton({
       data-testid={`channel-${channel.name}`}
       isActive={isActive}
       onClick={() => onSelectChannel(channel.id)}
+      onPointerEnter={prepareMessages}
+      onFocus={prepareMessages}
       tooltip={resolvedLabel}
       type="button"
     >
