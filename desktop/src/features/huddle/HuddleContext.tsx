@@ -441,7 +441,7 @@ export function HuddleProvider({
     };
 
     const applyBackendState = (state: HuddleBackendState) => {
-      if (state.phase === "idle") {
+      if (state.phase === "idle" || state.phase === "leaving") {
         void disconnectMedia();
         return;
       }
@@ -451,16 +451,23 @@ export function HuddleProvider({
     };
 
     let cancelled = false;
+    let stateGeneration = 0;
     let unlisten: (() => void) | null = null;
+    const requestedGeneration = stateGeneration;
     void invoke<HuddleBackendState>("get_huddle_state")
       .then((state) => {
-        if (!cancelled && state) applyBackendState(state);
+        if (!cancelled && requestedGeneration === stateGeneration && state) {
+          applyBackendState(state);
+        }
       })
       .catch(() => {
         /* best-effort; lifecycle events remain authoritative */
       });
     void listen<HuddleBackendState>("huddle-state-changed", (event) => {
-      if (!cancelled) applyBackendState(event.payload);
+      if (!cancelled) {
+        stateGeneration += 1;
+        applyBackendState(event.payload);
+      }
     }).then((cleanup) => {
       if (cancelled) cleanup();
       else unlisten = cleanup;

@@ -925,13 +925,19 @@ pub async fn delete_message(
     channel_id: String,
     event_id: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<Event, String> {
     let channel_uuid = uuid::Uuid::parse_str(&channel_id)
         .map_err(|_| format!("invalid channel UUID: {channel_id}"))?;
     let target_eid = EventId::from_hex(&event_id).map_err(|e| format!("invalid event ID: {e}"))?;
     let builder = events::build_delete_compat(channel_uuid, target_eid)?;
-    submit_event(builder, &state).await?;
-    Ok(())
+    let relay_base = crate::relay::relay_api_base_url_with_override(&state);
+    let signing_keys = state.signing_keys()?;
+    let event = builder
+        .sign_with_keys(&signing_keys)
+        .map_err(|e| format!("failed to sign event: {e}"))?;
+    crate::relay::submit_signed_event_at_with_keys(&event, &state, &relay_base, &signing_keys)
+        .await?;
+    Ok(event)
 }
 
 // ── Local helpers ───────────────────────────────────────────────────────────

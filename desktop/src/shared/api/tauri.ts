@@ -536,8 +536,8 @@ export { editMessage } from "@/shared/api/editMessage";
 export async function deleteMessage(
   channelId: string,
   eventId: string,
-): Promise<void> {
-  await invokeTauri("delete_message", { channelId, eventId });
+): Promise<RelayEvent> {
+  return invokeTauri<RelayEvent>("delete_message", { channelId, eventId });
 }
 
 export async function addReaction(

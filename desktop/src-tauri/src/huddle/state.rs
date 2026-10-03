@@ -258,6 +258,25 @@ impl Default for HuddleState {
 }
 
 impl HuddleState {
+    pub(crate) fn begin_leaving(&mut self) -> bool {
+        if matches!(self.phase, HuddlePhase::Idle | HuddlePhase::Leaving) {
+            return false;
+        }
+        self.phase = HuddlePhase::Leaving;
+        self.session_generation.fetch_add(1, Ordering::Release);
+        if let Some(cancel) = self.audio_ws_cancel.take() {
+            cancel.cancel();
+        }
+        self.audio_relay_pcm_tx.take();
+        if let Some(pipeline) = &self.stt_pipeline {
+            pipeline.shutdown();
+        }
+        if let Some(pipeline) = &self.tts_pipeline {
+            pipeline.shutdown();
+        }
+        true
+    }
+
     pub(crate) fn set_stt_pipeline(&mut self, pipeline: Arc<stt::SttPipeline>) {
         *self
             .remote_stt_pipeline
@@ -497,6 +516,61 @@ mod tests {
 
         assert!(!state.owns_huddle_lifetime(first_generation, super::HuddlePhase::Connecting));
         assert!(state.owns_huddle_lifetime(replacement_generation, super::HuddlePhase::Connecting));
+    }
+
+    #[test]
+    fn leaving_stops_audio_and_invalidates_transcription_before_relay_cleanup() {
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (pcm_tx, mut pcm_rx) = tokio::sync::mpsc::channel(1);
+        let mut state = HuddleState {
+            phase: super::HuddlePhase::Active,
+            parent_channel_id: Some("parent".to_owned()),
+            ephemeral_channel_id: Some("huddle".to_owned()),
+            audio_ws_cancel: Some(cancel.clone()),
+            audio_relay_pcm_tx: Some(pcm_tx),
+            ..HuddleState::default()
+        };
+        let generation = state.session_generation.load(Ordering::Acquire);
+
+        assert!(state.begin_leaving());
+
+        assert!(cancel.is_cancelled());
+        assert!(matches!(
+            pcm_rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+        ));
+        assert_eq!(state.phase, super::HuddlePhase::Leaving);
+        assert_eq!(state.parent_channel_id.as_deref(), Some("parent"));
+        assert_eq!(state.ephemeral_channel_id.as_deref(), Some("huddle"));
+        assert_ne!(state.session_generation.load(Ordering::Acquire), generation);
+        assert!(!state.is_current_huddle("huddle", state.huddle_generation));
+        let leaving_generation = state.session_generation.load(Ordering::Acquire);
+        assert!(!state.begin_leaving());
+        assert_eq!(
+            state.session_generation.load(Ordering::Acquire),
+            leaving_generation
+        );
+    }
+
+    #[test]
+    fn leaving_is_idempotent_for_idle_and_each_in_flight_phase() {
+        let mut idle = HuddleState::default();
+        assert!(!idle.begin_leaving());
+        assert_eq!(idle.phase, super::HuddlePhase::Idle);
+        for phase in [
+            super::HuddlePhase::Creating,
+            super::HuddlePhase::Connecting,
+            super::HuddlePhase::Connected,
+            super::HuddlePhase::Active,
+        ] {
+            let mut state = HuddleState {
+                phase,
+                ..HuddleState::default()
+            };
+            assert!(state.begin_leaving());
+            assert_eq!(state.phase, super::HuddlePhase::Leaving);
+            assert!(!state.begin_leaving());
+        }
     }
 
     #[test]

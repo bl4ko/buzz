@@ -43,6 +43,33 @@ test("pending first fetch with no cache is loading", () => {
   );
 });
 
+test("live-seeded empty data cannot settle before an authoritative window", () => {
+  assert.deepEqual(
+    resolveTimelineQueryLoadingState(null, "chan-a", {
+      ...settled,
+      isEnabled: true,
+      isError: false,
+      dataLength: 0,
+      hasResolvedWindow: false,
+    }),
+    { settledChannelId: null, isLoading: true },
+  );
+});
+
+test("a confirmed empty channel stays visible during background refresh", () => {
+  assert.deepEqual(
+    resolveTimelineQueryLoadingState("other", "chan-a", {
+      ...settled,
+      isEnabled: true,
+      isError: false,
+      isFetching: true,
+      dataLength: 0,
+      hasResolvedWindow: true,
+    }),
+    { settledChannelId: "chan-a", isLoading: false },
+  );
+});
+
 test("stale placeholder while refetching is loading", () => {
   // Revisited within gcTime: placeholderData hands back a cached array while the
   // authoritative fetch runs. Must keep the skeleton up, not flash the intro.
