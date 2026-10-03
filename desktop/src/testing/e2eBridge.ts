@@ -10542,7 +10542,7 @@ function handleDeleteMessage(
     eventId: string;
   },
   config: E2eConfig | undefined,
-): void {
+): RelayEvent {
   const history = mockMessages.get(args.channelId);
   if (history) {
     const index = history.findIndex((ev) => ev.id === args.eventId);
@@ -10559,6 +10559,7 @@ function handleDeleteMessage(
     getMockMemberPubkey(config),
   );
   recordMockMessage(args.channelId, deletion);
+  return deletion;
 }
 
 /**
@@ -14510,11 +14511,10 @@ export function maybeInstallE2eTauriMocks() {
           activeConfig,
         );
       case "delete_message":
-        handleDeleteMessage(
+        return handleDeleteMessage(
           payload as Parameters<typeof handleDeleteMessage>[0],
           activeConfig,
         );
-        return null;
       case "edit_message":
         return handleEditMessage(
           (payload as { input: Parameters<typeof handleEditMessage>[0] }).input,

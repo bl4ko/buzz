@@ -413,7 +413,7 @@ export function useHuddlePresentation() {
           },
         );
       }
-      if (event.payload.phase === "idle") {
+      if (event.payload.phase === "idle" || event.payload.phase === "leaving") {
         const endedChannelId = activeHuddleChannelIdRef.current;
         const parentChannelId = activeHuddleParentChannelIdRef.current;
         returnToHuddleParentAfterEnd(endedChannelId, parentChannelId);

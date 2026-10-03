@@ -587,25 +587,22 @@ async fn remove_huddle_agents(ephemeral_channel_id: &str, state: &AppState) {
 
 /// Leave the current huddle.
 ///
-/// Steps:
-/// 1. Transition to Leaving.
-/// 2. Auto-end check: if last human, emit HUDDLE_ENDED + archive.
-/// 3. Shut down pipelines and audio relay.
-///
 /// The relay emits kind:48102 (participant left) when the audio WS disconnects.
 #[tauri::command]
 pub async fn leave_huddle(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let (parent_channel_id, ephemeral_channel_id) = {
         let mut hs = state.huddle()?;
-        if hs.phase == HuddlePhase::Idle {
+        if !hs.begin_leaving() {
             return Ok(()); // Nothing to leave.
         }
-        hs.phase = HuddlePhase::Leaving;
         (
             hs.parent_channel_id.clone().unwrap_or_default(),
             hs.ephemeral_channel_id.clone().unwrap_or_default(),
         )
     };
+
+    state.emit_huddle_state_changed();
+    close_huddle_window(&app, &ephemeral_channel_id);
 
     // Auto-end: check if any human participants remain. If not, end the huddle
     // (emit HUDDLE_ENDED + archive). If others remain, just remove self from
@@ -643,18 +640,11 @@ pub async fn leave_huddle(app: tauri::AppHandle, state: State<'_, AppState>) -> 
     }
 
     teardown_huddle(&state)?;
-    close_huddle_window(&app, &ephemeral_channel_id);
 
     Ok(())
 }
 
 /// End the current huddle (creator only).
-///
-/// Steps:
-/// 1. Emit KIND_HUDDLE_ENDED to the parent channel.
-/// 2. Archive the ephemeral channel.
-/// 3. Shut down the STT pipeline (Fix 5).
-/// 4. Clear local huddle state.
 #[tauri::command]
 pub async fn end_huddle(
     force: Option<bool>,
@@ -663,7 +653,7 @@ pub async fn end_huddle(
 ) -> Result<(), String> {
     let (parent_channel_id, ephemeral_channel_id) = {
         let mut hs = state.huddle()?;
-        if hs.phase == HuddlePhase::Idle {
+        if matches!(hs.phase, HuddlePhase::Idle | HuddlePhase::Leaving) {
             return Ok(()); // Nothing to end.
         }
         // Only the creator can end the huddle for everyone. Non-creators
@@ -673,17 +663,19 @@ pub async fn end_huddle(
         if !hs.is_creator && !force.unwrap_or(false) {
             return Err("only the huddle creator can end it — use leave_huddle instead".into());
         }
-        hs.phase = HuddlePhase::Leaving;
+        hs.begin_leaving();
         (
             hs.parent_channel_id.clone().unwrap_or_default(),
             hs.ephemeral_channel_id.clone().unwrap_or_default(),
         )
     };
 
+    state.emit_huddle_state_changed();
+    close_huddle_window(&app, &ephemeral_channel_id);
+
     emit_end_and_archive(&parent_channel_id, &ephemeral_channel_id, &state).await;
 
     teardown_huddle(&state)?;
-    close_huddle_window(&app, &ephemeral_channel_id);
 
     Ok(())
 }
