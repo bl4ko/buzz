@@ -47,6 +47,27 @@ Future<void> _swipeToNextTheme(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('selects and saves Tokyo Night Storm in dark mode', (
+    tester,
+  ) async {
+    final prefs = await _pumpPicker(
+      tester,
+      prefs: {
+        'buzz_theme_mode': 'dark',
+        'buzz_color_scheme': 'tokyo-night-storm',
+      },
+    );
+
+    expect(
+      find.byKey(const ValueKey('theme-preview-name-tokyo-night-storm')),
+      findsOneWidget,
+    );
+    expect(find.text('Tokyo Night Storm'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('theme-preview-set')));
+    await tester.pumpAndSettle();
+    expect(prefs.getString('buzz_color_scheme'), 'tokyo-night-storm');
+  });
+
   group('ThemePickerPage', () {
     testWidgets(
       'is the direct preview page with the name inside its container',

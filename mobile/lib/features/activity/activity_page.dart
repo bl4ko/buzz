@@ -77,7 +77,7 @@ class ActivityPage extends HookConsumerWidget {
     final feedAsync = ref.watch(activityProvider);
     final channelsAsync = ref.watch(channelsProvider);
     final filter = useState(InboxFilter.all);
-    final unreadOnly = useState(false);
+    final unreadOnly = useState(true);
     final scrollController = useScrollController();
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     useEffect(() {
