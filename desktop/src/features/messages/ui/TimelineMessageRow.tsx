@@ -3,7 +3,10 @@ import * as React from "react";
 import type { MainTimelineEntry } from "@/features/messages/lib/threadPanel";
 import { THREAD_REPLY_ROW_MARGIN_INLINE_REM } from "@/features/messages/lib/threadTreeLayout";
 import type { buildVideoReviewContextForMessage } from "@/features/messages/lib/videoReviewContext";
-import { canManageMessageForCurrentUser } from "@/features/messages/lib/canManageMessage";
+import {
+  canDeleteMessageForCurrentUser,
+  canManageMessageForCurrentUser,
+} from "@/features/messages/lib/canManageMessage";
 import type { TimelineMessage } from "@/features/messages/types";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { cn } from "@/shared/lib/cn";
@@ -128,7 +131,10 @@ export function MessageRowItem({
     currentPubkey,
     profiles,
   );
-  const canDelete = canManage && onDelete ? onDelete : undefined;
+  const canDelete =
+    onDelete && canDeleteMessageForCurrentUser(message, currentPubkey, profiles)
+      ? onDelete
+      : undefined;
   const canEdit = canManage && onEdit ? onEdit : undefined;
   const effectiveThreadRootId = message.rootId ?? message.id;
 
