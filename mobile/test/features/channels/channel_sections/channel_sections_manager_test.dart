@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_manager.dart';
+import 'package:buzz/features/channels/channel_sections/channel_sections_storage.dart';
 import 'package:buzz/shared/relay/relay.dart';
 
 void main() {
@@ -19,6 +20,38 @@ void main() {
     keychain = nostr.Keys.generate();
     crypto = ChannelSectionsCrypto(keychain.nsec, keychain.public);
   }
+
+  test(
+    'creates a section and assigns its channel in one persisted state',
+    () async {
+      await setUpEnv();
+      var changes = 0;
+      final manager = ChannelSectionsManager(
+        pubkey: keychain.public,
+        relayUrl: 'https://relay.example',
+        prefs: prefs,
+        crypto: crypto,
+        relaySession: null,
+        signedEventRelay: null,
+        remoteEnabled: false,
+        onChanged: () => changes++,
+      );
+      addTearDown(manager.dispose);
+      final id = manager.createSection('Servers', channelId: 'alerts');
+      expect(id, isNotNull);
+      expect(manager.store.assignments, {'alerts': id});
+      expect(manager.store.sections.single.id, id);
+      expect(changes, 1);
+      final persisted =
+          jsonDecode(
+                prefs.getString(
+                  channelSectionsKey(keychain.public, 'https://relay.example'),
+                )!,
+              )
+              as Map<String, dynamic>;
+      expect(persisted['assignments'], {'alerts': id});
+    },
+  );
 
   NostrEvent sectionsEvent({
     required List<Map<String, dynamic>> sections,

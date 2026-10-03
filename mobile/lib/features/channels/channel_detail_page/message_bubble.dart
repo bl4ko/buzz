@@ -68,7 +68,8 @@ class _MessageBubble extends HookConsumerWidget {
     final canManageMessage =
         currentPubkey?.toLowerCase() == pk ||
         (profile?.ownerPubkey != null &&
-            profile?.ownerPubkey == currentPubkey?.toLowerCase());
+            profile?.ownerPubkey?.toLowerCase() ==
+                currentPubkey?.toLowerCase());
 
     // Watch only profiles referenced by this message. A batched profile fetch
     // should not rebuild every visible message just because an unrelated user
@@ -335,6 +336,7 @@ class _MessageBubble extends HookConsumerWidget {
                                               ),
                                             ),
                                           ),
+                                          const SizedBox(width: 40),
                                           if (message.edited) ...[
                                             const SizedBox(width: Grid.half),
                                             Text(
@@ -494,7 +496,26 @@ class _MessageBubble extends HookConsumerWidget {
       currentPubkey: currentPubkey,
       isMember: isMember,
       isArchived: isArchived,
-      child: content,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          content,
+          if (showAuthor)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: MessageActionsButton(
+                allMessages: allMessages,
+                message: message,
+                channelId: currentChannelId,
+                currentPubkey: currentPubkey,
+                canManageMessage: canManageMessage,
+                isMember: isMember,
+                isArchived: isArchived,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

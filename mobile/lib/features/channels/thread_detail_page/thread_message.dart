@@ -55,7 +55,8 @@ class _ThreadMessage extends HookConsumerWidget {
     final canManageMessage =
         currentPubkey?.toLowerCase() == pk ||
         (profile?.ownerPubkey != null &&
-            profile?.ownerPubkey == currentPubkey?.toLowerCase());
+            profile?.ownerPubkey?.toLowerCase() ==
+                currentPubkey?.toLowerCase());
 
     final userCache = ref.watch(userCacheProvider);
     final knownAgentPubkeys = agentPubkeysWithProfileOwners(
@@ -304,6 +305,7 @@ class _ThreadMessage extends HookConsumerWidget {
                                                 ),
                                               ),
                                             ),
+                                            const SizedBox(width: 40),
                                             if (message.edited) ...[
                                               const SizedBox(width: Grid.half),
                                               Text(
@@ -459,7 +461,26 @@ class _ThreadMessage extends HookConsumerWidget {
       currentPubkey: currentPubkey,
       isMember: isMember,
       isArchived: isArchived,
-      child: content,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          content,
+          if (showAuthor)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: MessageActionsButton(
+                allMessages: allMessages,
+                message: message,
+                channelId: channelId,
+                currentPubkey: currentPubkey,
+                canManageMessage: canManageMessage,
+                isMember: isMember,
+                isArchived: isArchived,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

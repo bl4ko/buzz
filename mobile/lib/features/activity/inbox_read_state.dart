@@ -5,7 +5,8 @@ import 'inbox_item.dart';
 /// The newest read marker that reads one grouped [event], following the
 /// unread badge's `observedUnreadEventReadAt`: the channel mark, the
 /// event's own `msg:` mark, and for a thread reply `thread:<root>` and
-/// `thread-activity:<root>`. Returns null for an event with no channel.
+/// `thread-activity:<root>`. A reaction reads only through its own `msg:`
+/// mark. Returns null for an event with no channel.
 ///
 /// `activity:<channel>` never counts here. Activity rows hold only mentions,
 /// needs-action and agent events addressed to the reader, and DM messages,
@@ -14,6 +15,7 @@ int? inboxEventReadAt(
   FeedItem event, {
   required int? Function(String contextId) markerOf,
 }) {
+  if (event.kind == 7) return markerOf(msgContextKey(event.id));
   final channelId = event.channelId;
   if (channelId == null) return null;
   final rootId = isThreadReply(event.tags)
@@ -79,7 +81,9 @@ List<String> groupedInboxItemIds(InboxItem item) {
 
   int? timestamp;
   for (final groupItem in item.groupItems) {
-    if (groupItem.channelId != channelId || isThreadReply(groupItem.tags)) {
+    if (groupItem.channelId != channelId ||
+        groupItem.kind == 7 ||
+        isThreadReply(groupItem.tags)) {
       continue;
     }
     if (timestamp == null || groupItem.createdAt > timestamp) {

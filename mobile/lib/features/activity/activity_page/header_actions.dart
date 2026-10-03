@@ -3,6 +3,7 @@ part of '../activity_page.dart';
 const _filterLabels = <InboxFilter, String>{
   InboxFilter.all: 'All',
   InboxFilter.mention: 'Mentions',
+  InboxFilter.reaction: 'Reactions',
   InboxFilter.thread: 'Threads',
   InboxFilter.needsAction: 'Needs Action',
   InboxFilter.activity: 'Activity',

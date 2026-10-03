@@ -320,6 +320,8 @@ List<PopupMenuEntry<String>> _sortMenuItems(
 
 class _ChannelSection extends StatelessWidget {
   final String title;
+  final VoidCallback? onCreateSection;
+  final Map<String, String> sectionAssignments;
   final bool expanded;
   final VoidCallback onToggle;
   final List<Channel> channels;
@@ -334,6 +336,8 @@ class _ChannelSection extends StatelessWidget {
 
   const _ChannelSection({
     required this.title,
+    this.onCreateSection,
+    this.sectionAssignments = const {},
     required this.expanded,
     required this.onToggle,
     required this.channels,
@@ -354,6 +358,7 @@ class _ChannelSection extends StatelessWidget {
       children: [
         _SectionHeader(
           label: title,
+          onCreateSection: onCreateSection,
           expanded: expanded,
           onToggle: onToggle,
           sortMode: sortMode,
@@ -394,7 +399,7 @@ class _ChannelSection extends StatelessWidget {
                     currentPubkey: currentPubkey,
                     onTap: () => onSelectChannel(channel),
                     onMarkRead: null,
-                    sectionId: null,
+                    sectionId: sectionAssignments[channel.id],
                   ),
             ],
           ),
@@ -436,6 +441,7 @@ class _EmptyState extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String label;
+  final VoidCallback? onCreateSection;
   final bool expanded;
   final VoidCallback onToggle;
   final ChannelSortMode? sortMode;
@@ -443,6 +449,7 @@ class _SectionHeader extends StatelessWidget {
 
   const _SectionHeader({
     required this.label,
+    this.onCreateSection,
     required this.expanded,
     required this.onToggle,
     this.sortMode,
@@ -488,9 +495,18 @@ class _SectionHeader extends StatelessWidget {
                       width: 216,
                       alignment: AnchoredPopoverAlignment.end,
                       surfaceKey: ValueKey('sort-popover-$label'),
-                      items: _sortMenuItems(mode, showDivider: false),
+                      items: [
+                        if (onCreateSection != null)
+                          const PopupMenuItem(
+                            value: 'create_section',
+                            child: Text('New section…'),
+                          ),
+                        ..._sortMenuItems(mode, showDivider: false),
+                      ],
                     );
-                    if (value == _kSortRecentMenuValue) {
+                    if (value == 'create_section') {
+                      onCreateSection?.call();
+                    } else if (value == _kSortRecentMenuValue) {
                       onSortModeChange?.call(ChannelSortMode.recent);
                     } else if (value == _kSortAlphaMenuValue) {
                       onSortModeChange?.call(ChannelSortMode.alpha);
