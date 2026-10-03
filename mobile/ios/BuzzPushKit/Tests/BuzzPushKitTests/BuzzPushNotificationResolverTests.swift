@@ -40,6 +40,46 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     XCTAssertTrue(URLProtocolStub.requests.isEmpty)
   }
 
+  func testVerifiedApprovalHasDistinctNotificationPresentation() throws {
+    for isApproval in [false, true] {
+      let tags = [["h", Self.channelID]] + (isApproval ? [["notification", "approval"]] : [])
+      let message = try Self.signedEvent(
+        privateKey: Self.profilePrivateKey,
+        createdAt: Self.now,
+        kind: 9,
+        tags: tags,
+        content: "Dangerous command requires approval"
+      )
+      URLProtocolStub.handler = { request in
+        Self.response(request, status: 200, data: try JSONEncoder().encode([message]))
+      }
+      let result = try XCTUnwrap(resolve(makeResolver(
+        communitiesData: try snapshotData([community()])
+      )))
+      XCTAssertEqual(result.notificationType, isApproval ? .approval : nil)
+      XCTAssertEqual(result.notificationSoundName, isApproval ? "approval.wav" : nil)
+      XCTAssertEqual(result.subtitle, isApproval ? "Approval required · Community" : "Community")
+      XCTAssertEqual(result.navigationTarget?.eventID, message.id)
+    }
+  }
+
+  func testApprovalTagAddedAfterSigningIsRejected() throws {
+    let message = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey,
+      createdAt: Self.now,
+      kind: 9,
+      tags: [["h", Self.channelID]],
+      content: "Normal message"
+    )
+    var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(message)) as? [String: Any])
+    json["tags"] = message.tags + [["notification", "approval"]]
+    let data = try JSONSerialization.data(withJSONObject: [json])
+    URLProtocolStub.handler = { request in
+      Self.response(request, status: 200, data: data)
+    }
+    XCTAssertNil(resolve(makeResolver(communitiesData: try snapshotData([community()]))))
+  }
+
   func testResolveReturnsNilWhenCommunitiesDataIsUndecodable() {
     let result = resolve(makeResolver(communitiesData: Data("not json".utf8)))
 

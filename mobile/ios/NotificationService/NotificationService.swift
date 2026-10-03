@@ -86,6 +86,7 @@ final class NotificationService: UNNotificationServiceExtension {
           userInfo[BuzzPushNavigationTarget.userInfoKey] = navigationTarget.userInfoValue
           content.userInfo = userInfo
         }
+        Self.applyNotificationType(resolution, to: content)
         self.bestAttemptContent = content
         self.communicationPresenter.present(
           ordinaryContent: content,
@@ -97,7 +98,12 @@ final class NotificationService: UNNotificationServiceExtension {
             NSLog("Notification cleanup retry failed: %@", String(describing: error))
           }
         ) { [weak self] specializedContent in
-          self?.finish(specializedContent)
+          if let updated = specializedContent.mutableCopy() as? UNMutableNotificationContent {
+            Self.applyNotificationType(resolution, to: updated)
+            self?.finish(updated)
+          } else {
+            self?.finish(specializedContent)
+          }
         }
         return
       }
@@ -109,6 +115,15 @@ final class NotificationService: UNNotificationServiceExtension {
     if let bestAttemptContent {
       finish(bestAttemptContent)
     }
+  }
+
+  private static func applyNotificationType(
+    _ resolution: BuzzPushResolution, to content: UNMutableNotificationContent
+  ) {
+    guard let soundName = resolution.notificationSoundName else { return }
+    content.subtitle = resolution.subtitle ?? "Approval required"
+    content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
+    content.categoryIdentifier = "BUZZ_APPROVAL"
   }
 
   private func finish(_ content: UNNotificationContent) {
@@ -153,6 +168,8 @@ final class NotificationService: UNNotificationServiceExtension {
     fallback.subtitle = ""
     fallback.body = "Open Buzz to view this message."
     fallback.threadIdentifier = ""
+    fallback.categoryIdentifier = ""
+    fallback.sound = .default
     var userInfo = fallback.userInfo
     userInfo.removeValue(forKey: BuzzPushNavigationTarget.userInfoKey)
     fallback.userInfo = userInfo

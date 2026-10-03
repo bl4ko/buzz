@@ -1,5 +1,9 @@
 import Foundation
 
+public enum BuzzPushNotificationType: String, Decodable, Sendable {
+  case approval
+}
+
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif
@@ -17,6 +21,11 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
   public let conversationDisplayName: String?
   /// Exact verified recipient count for Communication Notifications specialization.
   public let conversationRecipientCount: Int?
+  public let notificationType: BuzzPushNotificationType?
+
+  public var notificationSoundName: String? {
+    notificationType == .approval ? "approval.wav" : nil
+  }
 
   public init(
     title: String,
@@ -28,7 +37,8 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
     senderAvatarPNG: Data? = nil,
     conversationIdentifier: String? = nil,
     conversationDisplayName: String? = nil,
-    conversationRecipientCount: Int? = nil
+    conversationRecipientCount: Int? = nil,
+    notificationType: BuzzPushNotificationType? = nil
   ) {
     self.title = title
     self.body = body
@@ -40,6 +50,7 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
     self.conversationIdentifier = conversationIdentifier
     self.conversationDisplayName = conversationDisplayName
     self.conversationRecipientCount = conversationRecipientCount
+    self.notificationType = notificationType
   }
 }
 
@@ -446,6 +457,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
   ) -> BuzzPushResolution? {
     let body = previewBody(event.content)
     guard !body.isEmpty else { return nil }
+    let isApproval = event.tags.contains(["notification", "approval"])
     let channelID = tagValue("h", in: event)
     let conversationIdentifier = channelID.map {
       BuzzPushPresentationIdentity.conversation(communityID: community.id, channelID: $0)
@@ -456,7 +468,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
     return BuzzPushResolution(
       title: profile?.displayName ?? shortPubkey(event.pubkey),
       body: body,
-      subtitle: community.name,
+      subtitle: isApproval ? "Approval required · \(community.name)" : community.name,
       threadIdentifier: conversationIdentifier ?? community.id,
       navigationTarget: channelID.map {
         BuzzPushNavigationTarget(
@@ -469,7 +481,8 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
       senderAvatarPNG: profile?.avatarPNG,
       conversationIdentifier: conversationIdentifier,
       conversationDisplayName: conversation?.displayName,
-      conversationRecipientCount: conversation?.recipientCount
+      conversationRecipientCount: conversation?.recipientCount,
+      notificationType: isApproval ? .approval : nil
     )
   }
 
