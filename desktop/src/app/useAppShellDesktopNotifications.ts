@@ -6,6 +6,7 @@ import {
   shouldBounceForChannelNotification,
 } from "@/app/AppShell.helpers";
 import { useCommunityJoinAlerts } from "@/features/community-members/useCommunityJoinAlerts";
+import { useLiveRelayMembers } from "@/features/community-members/useLiveRelayMembers";
 import { hasMentionForEvent } from "@/features/notifications/lib/shouldNotify";
 import type { NotificationSettings } from "@/features/notifications/hooks";
 import {
@@ -49,6 +50,8 @@ export function useAppShellDesktopNotifications({
   pubkey?: string;
   silentChannelIds?: ReadonlySet<string>;
 }) {
+  useLiveRelayMembers({ enabled, pubkey });
+
   // Roster alerts are owner/admin-only and self-gating; mounted here because
   // it shares this hook's "desktop notifications are on" precondition and
   // AppShell sits at the file-size ratchet ceiling.

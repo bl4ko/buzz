@@ -10524,12 +10524,6 @@ async function handleSendManagedAgentChannelMessage(
   };
 }
 
-/**
- * Mock the `delete_message` Tauri command. Removes the event from the
- * in-memory mock store and records the kind:5 structural event used by Inbox
- * refreshes. Do not emit it live: mock target IDs may fail the production
- * 64-hex deletion filter, letting a live merge restore the flattened row.
- */
 function handleDeleteMessage(
   args: {
     channelId: string;
@@ -10544,7 +10538,7 @@ function handleDeleteMessage(
   }
 
   const deletion = createMockEvent(
-    KIND_DELETION,
+    KIND_NIP29_DELETION,
     "",
     [
       ["e", args.eventId],

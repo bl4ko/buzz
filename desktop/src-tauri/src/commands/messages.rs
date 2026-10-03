@@ -929,7 +929,7 @@ pub async fn delete_message(
     let channel_uuid = uuid::Uuid::parse_str(&channel_id)
         .map_err(|_| format!("invalid channel UUID: {channel_id}"))?;
     let target_eid = EventId::from_hex(&event_id).map_err(|e| format!("invalid event ID: {e}"))?;
-    let builder = events::build_delete_compat(channel_uuid, target_eid)?;
+    let builder = events::build_delete_message(channel_uuid, target_eid)?;
     let relay_base = crate::relay::relay_api_base_url_with_override(&state);
     let signing_keys = state.signing_keys()?;
     let event = builder

@@ -2,6 +2,8 @@ import { MessageSquareText } from "lucide-react";
 import * as React from "react";
 
 import { handleTimelineMentionCopy } from "@/features/messages/lib/timelineMentionCopy";
+import { canDeleteMessageForCurrentUser } from "@/features/messages/lib/canManageMessage";
+import { useMessageModerationPermission } from "@/features/messages/lib/useMessageModerationPermission";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { mergeCurrentProfileIntoLookup } from "@/features/profile/lib/identity";
 import { getMentionTagPubkey } from "@/shared/lib/resolveMentionNames";
@@ -34,13 +36,6 @@ type ForumViewProps = {
   targetSearchMessageId?: string;
   targetSearchQuery?: string;
 };
-
-function canDelete(postPubkey: string, currentPubkey?: string): boolean {
-  if (!currentPubkey) return false;
-  // Author can always delete their own posts. Admin check would need
-  // channel member role data — for now, author-only is sufficient.
-  return postPubkey.toLowerCase() === currentPubkey.toLowerCase();
-}
 
 export function ForumView({
   channel,
@@ -110,6 +105,10 @@ export function ForumView({
     enabled: allPubkeys.length > 0,
   });
   const effectiveCurrentPubkey = currentPubkey ?? profileQuery.data?.pubkey;
+  const canModerateMessages = useMessageModerationPermission(
+    channel.id,
+    effectiveCurrentPubkey,
+  );
   const profiles = React.useMemo(
     () =>
       mergeCurrentProfileIntoLookup(
@@ -132,7 +131,12 @@ export function ForumView({
   if (selectedPostId) {
     const threadPost = threadQuery.data?.post;
     const canDeleteExpandedPost = threadPost
-      ? canDelete(threadPost.pubkey, effectiveCurrentPubkey)
+      ? canDeleteMessageForCurrentUser(
+          threadPost,
+          effectiveCurrentPubkey,
+          profiles,
+          canModerateMessages,
+        )
       : false;
 
     return (
@@ -140,6 +144,7 @@ export function ForumView({
         key={`${channel.id}:${selectedPostId}`}
         postId={selectedPostId}
         canDeletePost={canDeleteExpandedPost}
+        canModerateMessages={canModerateMessages}
         currentPubkey={effectiveCurrentPubkey}
         isDeletingPost={deletePostMutation.isPending}
         isLoading={threadQuery.isLoading}
@@ -241,7 +246,12 @@ export function ForumView({
             renderItem={(post) => (
               <div className="pb-3">
                 <ForumPostCard
-                  canDelete={canDelete(post.pubkey, effectiveCurrentPubkey)}
+                  canDelete={canDeleteMessageForCurrentUser(
+                    post,
+                    effectiveCurrentPubkey,
+                    profiles,
+                    canModerateMessages,
+                  )}
                   currentPubkey={effectiveCurrentPubkey}
                   isActive={selectedPostId === post.eventId}
                   isDeleting={
