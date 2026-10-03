@@ -203,8 +203,8 @@ class ChannelSectionsManager {
     _unsubscribe = null;
   }
 
-  void createSection(String name) {
-    if (_disposed) return;
+  String? createSection(String name, {String? channelId}) {
+    if (_disposed || name.trim().isEmpty) return null;
     final maxOrder = _store.sections.fold<int>(
       -1,
       (max, s) => s.order > max ? s.order : max,
@@ -216,10 +216,11 @@ class ChannelSectionsManager {
     );
     _store = ChannelSectionStore(
       sections: [..._store.sections, section],
-      assignments: _store.assignments,
+      assignments: {..._store.assignments, ?channelId: section.id},
     );
     _persist();
     markDirty();
+    return section.id;
   }
 
   void renameSection(String sectionId, String newName) {
@@ -517,6 +518,7 @@ class ChannelSectionsManager {
   void _persist() {
     if (_disposed) return;
     _storage.write(pubkey, _store);
+    _onChanged();
   }
 
   List<ChannelSection> _sortedSections() {

@@ -446,7 +446,7 @@ class ChannelDetailsPage extends HookConsumerWidget {
                 onTap: () async {
                   await _showMoveSectionSheet(
                     context,
-                    ref,
+                    ProviderScope.containerOf(context),
                     channel: resolvedChannel,
                     sectionId: currentSectionId,
                   );

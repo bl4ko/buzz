@@ -158,6 +158,15 @@ class ActivityPage extends HookConsumerWidget {
 
     void markItemRead(InboxItem item) {
       final notifier = ref.read(readStateProvider.notifier);
+      if (item.categories.every((category) => category == 'reaction')) {
+        ref
+            .read(inboxLocalStateProvider.notifier)
+            .clearUnread(groupedInboxItemIds(item));
+        for (final event in item.groupItems) {
+          notifier.markContextRead(msgContextKey(event.id), event.createdAt);
+        }
+        return;
+      }
       ref
           .read(inboxLocalStateProvider.notifier)
           .clearUnread(groupedInboxItemIds(item));
@@ -256,14 +265,14 @@ class ActivityPage extends HookConsumerWidget {
       final thread = threadReferenceOf(target.tags);
       final threadRootId = isBroadcastReply(target.tags)
           ? null
-          : thread.parentId;
+          : target.targetThreadRootId ?? thread.parentId;
 
       if (!context.mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ChannelDetailPage(
             channel: resolvedChannel,
-            initialMessageId: target.id,
+            initialMessageId: target.targetEventId ?? target.id,
             initialThreadRootId: threadRootId,
             initialThreadRouteBehavior:
                 InitialThreadRouteBehavior.replaceCurrentRoute,

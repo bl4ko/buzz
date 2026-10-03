@@ -166,6 +166,44 @@ void main() {
     );
   }
 
+  testWidgets('opens a reaction at its referenced message and thread', (
+    tester,
+  ) async {
+    final reaction = FeedItem(
+      id: 'reaction-event',
+      kind: 7,
+      pubkey:
+          'a11ce00000000000000000000000000000000000000000000000000000000000',
+      content: '👍',
+      createdAt: now,
+      channelId: 'ch1',
+      channelName: 'general',
+      tags: const [
+        ['e', 'reacted-message'],
+      ],
+      category: 'reaction',
+      targetEventId: 'reacted-message',
+      targetThreadRootId: 'thread-root',
+      targetContent: 'My original message',
+    );
+    final feed = HomeFeedResponse(
+      mentions: const [],
+      needsAction: const [],
+      activity: [reaction],
+      agentActivity: const [],
+    );
+    await tester.pumpWidget(await buildTestable(feed: feed));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('My original message'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('inbox-row-reaction-event')));
+    await tester.pumpAndSettle();
+    final page = tester.widget<ChannelDetailPage>(
+      find.byType(ChannelDetailPage),
+    );
+    expect(page.initialMessageId, 'reacted-message');
+    expect(page.initialThreadRootId, 'thread-root');
+  });
+
   testWidgets('shows loading skeleton while feed loads', (tester) async {
     await tester.pumpWidget(
       await buildTestable(activityNotifier: _PendingActivityNotifier.new),

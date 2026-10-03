@@ -691,6 +691,56 @@ void main() {
     expect(scrollable.position.pixels, scrollable.position.minScrollExtent);
   });
 
+  testWidgets('custom sections group channels and DMs without duplicate rows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestable(
+        overrides: [
+          channelsProvider.overrideWith(() => _FakeNotifier(testChannels)),
+          channelSectionsProvider.overrideWith(
+            () => _FakeChannelSectionsNotifier(
+              const ChannelSectionStore(
+                sections: [
+                  ChannelSection(id: 'section-1', name: 'Work', order: 0),
+                ],
+                assignments: {'1': 'section-1', '3': 'section-1'},
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
+    await tester.tap(find.text('Work'));
+    await tester.pumpAndSettle();
+    expect(find.text('general'), findsNothing);
+    expect(find.text('Alice'), findsNothing);
+    await tester.tap(find.text('Work'));
+    await tester.pumpAndSettle();
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
+  });
+
+  testWidgets('Channels options open the new section dialog', (tester) async {
+    await tester.pumpWidget(
+      buildTestable(
+        overrides: [
+          channelsProvider.overrideWith(() => _FakeNotifier(testChannels)),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sort-menu-Channels')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New section…'));
+    await tester.pumpAndSettle();
+    expect(find.text('New Section'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Create'), findsOneWidget);
+  });
+
   testWidgets('truncates long custom section names beside the menu', (
     tester,
   ) async {
@@ -2456,7 +2506,9 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('bolds and clears unread channel labels', (tester) async {
+  testWidgets('Unreads groups unread channels and clears them after reading', (
+    tester,
+  ) async {
     final channels = [
       Channel(
         id: '1',
@@ -2499,6 +2551,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Unreads'), findsOneWidget);
 
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
@@ -2511,6 +2564,7 @@ void main() {
 
     readState.markContextRead('1', 20);
     await tester.pump();
+    expect(find.text('Unreads'), findsNothing);
 
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,

@@ -10,6 +10,9 @@ class FeedItem {
   final String? channelId;
   final String channelName;
   final List<List<String>> tags;
+  final String? targetEventId;
+  final String? targetThreadRootId;
+  final String? targetContent;
   final String
   category; // "mention", "needs_action", "activity", "agent_activity"
 
@@ -23,6 +26,9 @@ class FeedItem {
     required this.channelName,
     required this.tags,
     required this.category,
+    this.targetEventId,
+    this.targetThreadRootId,
+    this.targetContent,
   });
 
   factory FeedItem.fromJson(Map<String, dynamic> json) => FeedItem(
@@ -54,6 +60,7 @@ class FeedItem {
 
   /// Human-readable headline based on event kind and category.
   String get headline {
+    if (kind == 7) return 'Reacted ${content.trim()}';
     switch (kind) {
       case 45001:
         return 'Forum post';
@@ -82,7 +89,7 @@ class FeedItem {
 
   /// Trimmed content, with a fallback for empty events.
   String get displayContent {
-    final trimmed = content.trim();
+    final trimmed = (targetContent ?? content).trim();
     if (trimmed.isNotEmpty) return trimmed;
     if (kind == 46010) return 'A workflow is waiting for approval.';
     return 'No additional details.';

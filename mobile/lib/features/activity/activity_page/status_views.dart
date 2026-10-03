@@ -125,6 +125,7 @@ class _EmptyFilterState extends StatelessWidget {
     }
     final (icon, message) = switch (filter) {
       InboxFilter.mention => (LucideIcons.atSign, 'No mentions yet'),
+      InboxFilter.reaction => (LucideIcons.smile, 'No reactions yet'),
       InboxFilter.thread => (
         LucideIcons.messageSquare,
         'No thread replies yet',

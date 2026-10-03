@@ -95,7 +95,8 @@ class ChannelSectionsNotifier extends Notifier<ChannelSectionsState> {
     );
   }
 
-  void createSection(String name) => _manager?.createSection(name);
+  String? createSection(String name, {String? channelId}) =>
+      _manager?.createSection(name, channelId: channelId);
 
   void renameSection(String sectionId, String newName) =>
       _manager?.renameSection(sectionId, newName);

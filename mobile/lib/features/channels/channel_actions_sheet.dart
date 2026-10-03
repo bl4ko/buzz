@@ -10,6 +10,7 @@ import '../../shared/clipboard_utils.dart';
 import '../../shared/community/community_membership_provider.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/theme/theme.dart';
+import '../../shared/relay/relay.dart';
 import '../../shared/widgets/app_list.dart';
 import '../../shared/widgets/app_list_card.dart';
 import '../../shared/widgets/avatar_image.dart';
@@ -182,25 +183,25 @@ class ChannelActionsSheet extends HookConsumerWidget {
                 ),
                 const SizedBox(height: Grid.xs),
               ],
-              if (!channel.isDm)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(LucideIcons.folderInput),
-                  title: const Text('Move to section…'),
-                  onTap: () async {
-                    final pageContext = Navigator.of(
-                      context,
-                      rootNavigator: true,
-                    ).context;
-                    close();
-                    await _showMoveSectionSheet(
-                      pageContext,
-                      ref,
-                      channel: channel,
-                      sectionId: sectionId,
-                    );
-                  },
-                ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(LucideIcons.folderInput),
+                title: const Text('Move to section…'),
+                onTap: () async {
+                  final pageContext = Navigator.of(
+                    context,
+                    rootNavigator: true,
+                  ).context;
+                  final container = ProviderScope.containerOf(context);
+                  close();
+                  await _showMoveSectionSheet(
+                    pageContext,
+                    container,
+                    channel: channel,
+                    sectionId: sectionId,
+                  );
+                },
+              ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(isMuted ? LucideIcons.bell : LucideIcons.bellOff),
@@ -514,11 +515,19 @@ Future<void> _confirmAndRun(
 
 Future<void> _showMoveSectionSheet(
   BuildContext context,
-  WidgetRef ref, {
+  ProviderContainer container, {
   required Channel channel,
   required String? sectionId,
 }) async {
-  final sections = [...ref.read(channelSectionsProvider).store.sections]
+  final scope = container.read(relayConfigProvider);
+  bool isCurrentScope() {
+    final current = container.read(relayConfigProvider);
+    return context.mounted &&
+        current.baseUrl == scope.baseUrl &&
+        current.nsec == scope.nsec;
+  }
+
+  final sections = [...container.read(channelSectionsProvider).store.sections]
     ..sort((a, b) => a.order.compareTo(b.order));
   await showBuzzModalBottomSheet<void>(
     context: context,
@@ -547,8 +556,9 @@ Future<void> _showMoveSectionSheet(
                         )
                       : null,
                   onTap: () {
+                    if (!isCurrentScope()) return;
                     Navigator.of(sheetContext).pop();
-                    ref
+                    container
                         .read(channelSectionsProvider.notifier)
                         .assignChannel(channel.id, section.id);
                   },
@@ -559,18 +569,11 @@ Future<void> _showMoveSectionSheet(
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
                   final name = await _showSectionNameDialog(context);
-                  if (name == null || name.isEmpty) return;
-                  final notifier = ref.read(channelSectionsProvider.notifier);
-                  notifier.createSection(name);
-                  final created = ref
-                      .read(channelSectionsProvider)
-                      .store
-                      .sections
-                      .where((section) => section.name == name.trim())
-                      .lastOrNull;
-                  if (created != null) {
-                    notifier.assignChannel(channel.id, created.id);
-                  }
+                  if (name == null || name.isEmpty || !isCurrentScope()) return;
+                  final notifier = container.read(
+                    channelSectionsProvider.notifier,
+                  );
+                  notifier.createSection(name, channelId: channel.id);
                 },
               ),
               if (sectionId != null)
@@ -578,8 +581,9 @@ Future<void> _showMoveSectionSheet(
                   leading: const Icon(LucideIcons.folderMinus),
                   title: const Text('Remove from section'),
                   onTap: () {
+                    if (!isCurrentScope()) return;
                     Navigator.of(sheetContext).pop();
-                    ref
+                    container
                         .read(channelSectionsProvider.notifier)
                         .unassignChannel(channel.id);
                   },
@@ -592,26 +596,27 @@ Future<void> _showMoveSectionSheet(
   );
 }
 
-Future<String?> _showSectionNameDialog(BuildContext context) async {
-  final controller = TextEditingController();
-  final result = await showBuzzDialog<String>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('New Section'),
-      content: TextField(controller: controller, autofocus: true),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () =>
-              Navigator.of(dialogContext).pop(controller.text.trim()),
-          child: const Text('Create'),
-        ),
-      ],
-    ),
-  );
-  controller.dispose();
-  return result;
-}
+Future<String?> _showSectionNameDialog(BuildContext context) =>
+    showBuzzDialog<String>(
+      context: context,
+      builder: (_) => HookBuilder(
+        builder: (dialogContext) {
+          final controller = useTextEditingController();
+          return AlertDialog(
+            title: const Text('New Section'),
+            content: TextField(controller: controller, autofocus: true),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(controller.text.trim()),
+                child: const Text('Create'),
+              ),
+            ],
+          );
+        },
+      ),
+    );

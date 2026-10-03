@@ -11,6 +11,11 @@ int? resolveInboxItemReadAt(
   required int? Function(String contextId) markerOf,
 }) {
   final channelId = item.item.channelId;
+  if (item.categories.every((category) => category == 'reaction')) {
+    return maxReadAt([
+      for (final id in groupedInboxItemIds(item)) markerOf(msgContextKey(id)),
+    ]);
+  }
   final threadRootId = item.threadRootId;
   if (threadRootId != null) {
     return maxReadAt([
@@ -58,7 +63,9 @@ List<String> groupedInboxItemIds(InboxItem item) {
 
   int? timestamp;
   for (final groupItem in item.groupItems) {
-    if (groupItem.channelId != channelId || isThreadReply(groupItem.tags)) {
+    if (groupItem.channelId != channelId ||
+        groupItem.kind == 7 ||
+        isThreadReply(groupItem.tags)) {
       continue;
     }
     if (timestamp == null || groupItem.createdAt > timestamp) {
