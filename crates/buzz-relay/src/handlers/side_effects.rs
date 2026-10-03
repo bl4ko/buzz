@@ -18,6 +18,7 @@ use buzz_db::channel::{MemberRecord, MemberRole};
 
 use super::channel_authz::{self, ChannelAuthzError, PutUserDecision, RemoveOtherDecision};
 use super::event::dispatch_persistent_event;
+use super::moderation_authz::{authorize_moderation_action, ModerationAction, ModerationTarget};
 use crate::protocol::RelayMessage;
 use crate::state::AppState;
 use buzz_core::tenant::TenantContext;
@@ -451,13 +452,14 @@ pub(crate) async fn authorized_standard_deletion_target(
 
 /// Whether `actor` may delete `author`'s event in `channel_id` with kind 9005:
 /// the author while still a member or the channel is open (a removed member
-/// of a private channel loses this), a channel owner/admin, or the owning
-/// human of the author agent, even when that human is not a channel member.
+/// of a private channel loses this), a community or channel owner/admin, or the
+/// owning human of the author agent, even when that human is not a channel member.
 async fn may_delete_channel_event(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: &Event,
     channel_id: Uuid,
+    target_id: &[u8],
     author: &[u8],
     actor: &[u8],
 ) -> anyhow::Result<bool> {
@@ -478,10 +480,16 @@ async fn may_delete_channel_event(
     {
         return Ok(true);
     }
-    Ok(actor_is_channel_owner_or_admin(
-        &state.db.get_members(tenant.community(), channel_id).await?,
+    Ok(authorize_moderation_action(
+        tenant,
+        state,
         actor,
-    ) || actor_is_community_owner(state, tenant.community(), actor).await?
+        Some(channel_id),
+        ModerationTarget::Event(target_id),
+        ModerationAction::DeleteMessage,
+    )
+    .await
+    .is_ok()
         || state
         .db
         .is_agent_owner(tenant.community(), author, actor)
@@ -996,6 +1004,7 @@ pub async fn validate_admin_event(
                     state,
                     event,
                     channel_id,
+                    &target_id,
                     &author,
                     &actor_bytes,
                 )
@@ -3825,12 +3834,6 @@ fn author_delete_can_use_self_delete_path(author: &[u8], actor: &[u8], event: &E
     author == actor && !has_moderation_delete_metadata(event)
 }
 
-fn actor_is_channel_owner_or_admin(members: &[MemberRecord], actor: &[u8]) -> bool {
-    members
-        .iter()
-        .any(|m| m.pubkey == actor && (m.role == "owner" || m.role == "admin"))
-}
-
 #[cfg(test)]
 fn delete_tombstone_content(
     actor_hex: String,
@@ -4893,6 +4896,10 @@ pub async fn publish_nipia_unarchived(
 }
 
 #[cfg(test)]
+#[path = "side_effects/deletion_postgres_tests.rs"]
+mod deletion_postgres_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -5099,37 +5106,5 @@ mod tests {
         assert!(!author_delete_can_use_self_delete_path(
             &actor, &actor, &event
         ));
-    }
-
-    #[test]
-    fn member_role_is_not_owner_or_admin_for_moderation_metadata() {
-        let channel_id = Uuid::new_v4();
-        let actor = vec![7_u8; 32];
-        let members = vec![MemberRecord {
-            channel_id,
-            pubkey: actor.clone(),
-            role: "member".to_string(),
-            joined_at: chrono::Utc::now(),
-            invited_by: None,
-            removed_at: None,
-        }];
-
-        assert!(!actor_is_channel_owner_or_admin(&members, &actor));
-    }
-
-    #[test]
-    fn admin_role_is_owner_or_admin_for_moderation_metadata() {
-        let channel_id = Uuid::new_v4();
-        let actor = vec![7_u8; 32];
-        let members = vec![MemberRecord {
-            channel_id,
-            pubkey: actor.clone(),
-            role: "admin".to_string(),
-            joined_at: chrono::Utc::now(),
-            invited_by: None,
-            removed_at: None,
-        }];
-
-        assert!(actor_is_channel_owner_or_admin(&members, &actor));
     }
 }
