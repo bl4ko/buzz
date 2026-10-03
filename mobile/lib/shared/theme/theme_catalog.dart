@@ -506,6 +506,14 @@ const themeCatalog = <ThemeColors>[
     deleted: Color(0xFF914C54),
   ),
   ThemeColors(
+    name: 'tokyo-night-storm',
+    bg: Color(0xFF24283B),
+    fg: Color(0xFFA9B1D6),
+    comment: Color(0xFF5F6996),
+    added: Color(0xFF449DAB),
+    deleted: Color(0xFF914C54),
+  ),
+  ThemeColors(
     name: 'vesper',
     bg: Color(0xFF101010),
     fg: Color(0xFFFFFFFF),

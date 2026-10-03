@@ -228,7 +228,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('No activity yet'), findsOneWidget);
+    expect(find.text('No unread messages'), findsOneWidget);
   });
 
   testWidgets('does not imply a back button for the top-level Activity tab', (
@@ -753,6 +753,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
+    await tester.pumpAndSettle();
 
     expect(find.text('New'), findsOneWidget);
   });
@@ -761,6 +765,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(await buildTestable());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('activity-filter-menu')));
@@ -880,16 +888,29 @@ void main() {
     expect(find.text('No drafts'), findsOneWidget);
   });
 
-  testWidgets('unread-only toggle hides read rows', (tester) async {
+  testWidgets('defaults to unread and can show all activity', (tester) async {
     await tester.pumpWidget(await buildTestable(readContexts: {'ch1': now}));
     await tester.pumpAndSettle();
+
+    expect(find.text('Unread'), findsOneWidget);
+    expect(find.textContaining('Deployed the fix'), findsOneWidget);
+    expect(find.textContaining('Hey check this out'), findsNothing);
+    expect(find.textContaining('Job completed successfully'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('All'), findsOneWidget);
+    expect(find.textContaining('Hey check this out'), findsOneWidget);
+    expect(find.textContaining('Job completed successfully'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show unread'));
     await tester.pumpAndSettle();
 
-    // Only the unread thread row remains.
     expect(find.textContaining('Deployed the fix'), findsOneWidget);
     expect(find.textContaining('Hey check this out'), findsNothing);
     expect(find.textContaining('Job completed successfully'), findsNothing);
@@ -901,6 +922,10 @@ void main() {
         readContexts: {'ch1': now, 'ch2': now, 'thread:root1': now},
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('inbox-unread-dot-m1')), findsNothing);
@@ -926,6 +951,10 @@ void main() {
         readContexts: {'ch1': now, 'ch2': now, 'thread:root1': now},
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
     await tester.pumpAndSettle();
 
     final row = find.byKey(const ValueKey('inbox-row-m1'));
@@ -990,6 +1019,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
+    await tester.pumpAndSettle();
 
     final row = find.byKey(const ValueKey('inbox-row-m1'));
     final gesture = await tester.startGesture(tester.getCenter(row));
@@ -1045,6 +1078,10 @@ void main() {
         readContexts: {'ch1': now, 'ch2': now, 'thread:root1': now},
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('activity-options-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show all'));
     await tester.pumpAndSettle();
 
     final row = find.byKey(const ValueKey('inbox-row-m1'));
