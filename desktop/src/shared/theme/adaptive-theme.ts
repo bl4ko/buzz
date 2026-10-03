@@ -76,6 +76,28 @@ function overlay(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function contrastingColor(color: string, backgrounds: string[]): string {
+  const contrast = (candidate: string) =>
+    Math.min(
+      ...backgrounds.map((background) => {
+        const a = luminance(candidate);
+        const b = luminance(background);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      }),
+    );
+  if (contrast(color) >= 4.6) return color;
+  const target =
+    contrast("#000000") > contrast("#ffffff") ? "#000000" : "#ffffff";
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (contrast(mix(color, target, mid)) < 4.6) lo = mid;
+    else hi = mid;
+  }
+  return mix(color, target, hi);
+}
+
 // =============================================================================
 // Chrome Color Calculation
 // =============================================================================
@@ -214,6 +236,14 @@ export function createThemeVars(
   // Derived colors
   const borderColor = mix(primaryBg, syntaxFg, isDark ? 0.15 : 0.12);
   const hoverBg = elevate(0.06);
+  const popoverBg = elevate(0.08);
+  const destructiveColor = contrastingColor(fallbackRed, [
+    primaryBg,
+    hoverBg,
+    popoverBg,
+  ]);
+  const destructiveFg =
+    luminance(destructiveColor) > 0.179 ? "#000000" : "#ffffff";
   const huddleControlBg = isDark ? mix(hoverBg, syntaxFg, 0.14) : "#333333";
   const huddleControlHoverBg = isDark
     ? mix(huddleControlBg, syntaxFg, 0.08)
@@ -227,7 +257,6 @@ export function createThemeVars(
   const huddlePopoverBg = huddleChevronBg;
   const huddlePopoverBorder = huddleControlHoverBg;
   const huddleTooltipBg = huddleControlBg;
-  const primaryFg = hexToHsl(primaryBg);
   const textFg = hexToHsl(syntaxFg);
   const huddleControlFg = isDark ? textFg : "0 0% 98%";
 
@@ -237,7 +266,7 @@ export function createThemeVars(
       // Backgrounds
       "--background": hexToHsl(primaryBg),
       "--card": hexToHsl(primaryBg),
-      "--popover": hexToHsl(elevate(0.08)),
+      "--popover": hexToHsl(popoverBg),
       "--muted": hexToHsl(hoverBg),
       "--accent": hexToHsl(hoverBg),
       "--secondary": hexToHsl(hoverBg),
@@ -261,8 +290,8 @@ export function createThemeVars(
       "--secondary-foreground": textFg,
 
       // Destructive
-      "--destructive": hexToHsl(accentRed),
-      "--destructive-foreground": primaryFg,
+      "--destructive": hexToHsl(destructiveColor),
+      "--destructive-foreground": hexToHsl(destructiveFg),
 
       // Borders
       "--border": hexToHsl(borderColor),
