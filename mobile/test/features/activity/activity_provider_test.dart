@@ -162,7 +162,13 @@ class _RecordingSessionNotifier extends RelaySessionNotifier {
   void seed(NostrEvent event) => _history.add(event);
 
   bool _matches(NostrFilter filter, NostrEvent event) {
-    if (!filter.kinds.contains(event.kind)) return false;
+    if (filter.kinds.isNotEmpty && !filter.kinds.contains(event.kind)) {
+      return false;
+    }
+    if (filter.ids != null && !filter.ids!.contains(event.id)) return false;
+    if (filter.authors != null && !filter.authors!.contains(event.pubkey)) {
+      return false;
+    }
     for (final entry in filter.tags.entries) {
       final tagName = entry.key.startsWith('#')
           ? entry.key.substring(1)
@@ -230,6 +236,121 @@ Future<void> _waitFor(bool Function() predicate) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'includes channel messages, thread replies, DMs, and reactions without mentions',
+    () async {
+      NostrEvent message(
+        String id, {
+        String author = 'other_pk',
+        String channelId = 'channel-1',
+        List<List<String>> tags = const [],
+      }) => NostrEvent(
+        id: id,
+        pubkey: author,
+        createdAt: 1700000000,
+        kind: 40002,
+        tags: [
+          ['h', channelId],
+          ...tags,
+        ],
+        content: id,
+        sig: '',
+      );
+      final session = _RecordingSessionNotifier()
+        ..seed(message('own-root', author: 'me_pk'))
+        ..seed(message('plain-message'))
+        ..seed(
+          message(
+            'thread-reply',
+            tags: [
+              ['e', 'own-root', '', 'root'],
+              ['e', 'own-root', '', 'reply'],
+            ],
+          ),
+        )
+        ..seed(
+          message(
+            'unrelated-reply',
+            tags: [
+              ['e', 'other-root', '', 'root'],
+              ['e', 'other-root', '', 'reply'],
+            ],
+          ),
+        )
+        ..seed(message('direct-message', channelId: 'dm1'))
+        ..seed(
+          NostrEvent(
+            id: 'reaction',
+            pubkey: 'other_pk',
+            createdAt: 1700000001,
+            kind: 7,
+            tags: [
+              ['h', 'channel-1'],
+              ['e', 'own-root'],
+              ['p', 'me_pk'],
+            ],
+            content: '👍',
+            sig: '',
+          ),
+        );
+      final container = ProviderContainer(
+        overrides: [
+          relayConfigProvider.overrideWith(_FixedRelayConfigNotifier.new),
+          myPubkeyProvider.overrideWithValue('me_pk'),
+          relaySessionProvider.overrideWith(() => session),
+          channelsProvider.overrideWith(
+            () => _FixedChannelsNotifier([
+              _dmChannel('dm1'),
+              Channel(
+                id: 'channel-1',
+                name: 'general',
+                channelType: 'stream',
+                visibility: 'open',
+                description: '',
+                createdBy: 'me_pk',
+                createdAt: DateTime(2025),
+                memberCount: 2,
+                isMember: true,
+              ),
+            ]),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(channelsProvider.future);
+      final feed = await container.read(activityProvider.future);
+      expect(feed.activity.map((item) => item.id).toSet(), {
+        'plain-message',
+        'thread-reply',
+        'direct-message',
+        'reaction',
+      });
+      final reaction = feed.activity.singleWhere((item) => item.kind == 7);
+      expect(reaction.targetEventId, 'own-root');
+      expect(reaction.displayContent, 'own-root');
+      await _waitFor(
+        () =>
+            session.visibleDmSubscriptionBatches.isNotEmpty &&
+            session._subscriptions.any(
+              (sub) =>
+                  sub.filter.kinds.contains(7) &&
+                  sub.filter.tags.containsKey('#h'),
+            ),
+      );
+      session.emit(message('live-untagged'));
+      await _waitFor(
+        () =>
+            container
+                .read(activityProvider)
+                .asData
+                ?.value
+                .activity
+                .any((item) => item.id == 'live-untagged') ??
+            false,
+      );
+    },
+  );
+
   test('refetches and includes DMs when channels resolve after first '
       'fetch (cold start)', () async {
     final session = _RecordingSessionNotifier();
@@ -256,7 +377,7 @@ void main() {
 
     expect(session.dmQueries, hasLength(1));
     expect(session.dmQueries.single, ['dm1']);
-    expect(session.queryFilterCounts, [3, 4]);
+    expect(session.queryFilterCounts, [3, 5]);
   });
 
   test('does not query DMs when the resolved channel list has none', () async {

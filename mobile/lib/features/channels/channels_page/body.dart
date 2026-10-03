@@ -144,6 +144,7 @@ class _SliverChannelsList extends HookConsumerWidget {
     final dmChannels = unsortedDms.toList()
       ..sort((a, b) => dmRank[a.id]!.compareTo(dmRank[b.id]!));
 
+    final unreadsExpanded = useState(true);
     final starredExpanded = useState(true);
     final channelsExpanded = useState(true);
     final dmsExpanded = useState(true);
@@ -208,7 +209,13 @@ class _SliverChannelsList extends HookConsumerWidget {
     // Starred is exclusive: a starred channel lives only in the Starred section,
     // not in its custom section or the default Channels list.
     final starredStreamChannels = sortChannelsForList(
-      streamChannels.where((c) => starredChannelIds.contains(c.id)).toList(),
+      visibleChannels
+          .where(
+            (c) =>
+                starredChannelIds.contains(c.id) &&
+                !unreadChannelIds.contains(c.id),
+          )
+          .toList(),
       sortState.sortModeFor('starred'),
     );
     final ungroupedStreamChannels = sortChannelsForList(
@@ -216,17 +223,26 @@ class _SliverChannelsList extends HookConsumerWidget {
           .where(
             (c) =>
                 !assignedChannelIds.contains(c.id) &&
-                !starredChannelIds.contains(c.id),
+                !starredChannelIds.contains(c.id) &&
+                !unreadChannelIds.contains(c.id),
           )
           .toList(),
       sortState.sortModeFor('channels'),
     );
     // DMs default to the display-label alphabetical order (labels can differ
     // from channel names); Recent mode reorders by last message time.
+    final ungroupedDmChannels = dmChannels
+        .where(
+          (c) =>
+              !assignedChannelIds.contains(c.id) &&
+              !starredChannelIds.contains(c.id) &&
+              !unreadChannelIds.contains(c.id),
+        )
+        .toList();
     final sortedDmChannels =
         sortState.sortModeFor('dms') == ChannelSortMode.recent
-        ? sortChannelsForList(dmChannels, ChannelSortMode.recent)
-        : dmChannels;
+        ? sortChannelsForList(ungroupedDmChannels, ChannelSortMode.recent)
+        : ungroupedDmChannels;
 
     final liveSectionIds = [for (final s in userSections) s.id];
     void setSortMode(String groupKey, ChannelSortMode mode) {
@@ -258,11 +274,31 @@ class _SliverChannelsList extends HookConsumerWidget {
             const _EmptyState()
           else ...[
             // Starred channels (exclusive — pinned above all sections).
+            if (unreadChannelIds.isNotEmpty)
+              _ChannelSection(
+                title: 'Unreads',
+                icon: BuzzIcons.mail,
+                showTopDivider: false,
+                expanded: unreadsExpanded.value,
+                onToggle: () => unreadsExpanded.value = !unreadsExpanded.value,
+                channels: sortChannelsForList(
+                  visibleChannels
+                      .where((c) => unreadChannelIds.contains(c.id))
+                      .toList(),
+                  ChannelSortMode.recent,
+                ),
+                unreadChannelIds: unreadChannelIds,
+                mutedChannelIds: mutedChannelIds,
+                currentPubkey: currentPubkey,
+                emptyLabel: '',
+                sectionAssignments: sectionAssignments,
+                onSelectChannel: onSelectChannel,
+              ),
             if (starredStreamChannels.isNotEmpty)
               _ChannelSection(
                 title: 'Starred',
                 icon: BuzzIcons.star,
-                showTopDivider: false,
+                showTopDivider: unreadChannelIds.isNotEmpty,
                 expanded: starredExpanded.value,
                 onToggle: () => starredExpanded.value = !starredExpanded.value,
                 channels: starredStreamChannels,
@@ -279,11 +315,12 @@ class _SliverChannelsList extends HookConsumerWidget {
               _CustomChannelSection(
                 section: section,
                 channels: sortChannelsForList(
-                  streamChannels
+                  visibleChannels
                       .where(
                         (c) =>
                             sectionAssignments[c.id] == section.id &&
-                            !starredChannelIds.contains(c.id),
+                            !starredChannelIds.contains(c.id) &&
+                            !unreadChannelIds.contains(c.id),
                       )
                       .toList(),
                   sortState.sortModeFor(sectionSortGroupKey(section.id)),
@@ -295,6 +332,7 @@ class _SliverChannelsList extends HookConsumerWidget {
                 isFirst: userSections.first.id == section.id,
                 isLast: userSections.last.id == section.id,
                 showTopDivider:
+                    unreadChannelIds.isNotEmpty ||
                     starredStreamChannels.isNotEmpty ||
                     userSections.first.id != section.id,
                 onToggle: () => toggleSection(section.id),
@@ -372,9 +410,25 @@ class _SliverChannelsList extends HookConsumerWidget {
               ),
             _ChannelSection(
               title: 'Channels',
+              onCreateSection: () async {
+                final name = await showBuzzDialog<String>(
+                  context: context,
+                  builder: (_) => const _SectionNameDialog(
+                    title: 'New Section',
+                    confirmLabel: 'Create',
+                  ),
+                );
+                if (name != null && name.trim().isNotEmpty && context.mounted) {
+                  ref
+                      .read(channelSectionsProvider.notifier)
+                      .createSection(name);
+                }
+              },
               icon: BuzzIcons.hash,
               showTopDivider:
-                  starredStreamChannels.isNotEmpty || userSections.isNotEmpty,
+                  unreadChannelIds.isNotEmpty ||
+                  starredStreamChannels.isNotEmpty ||
+                  userSections.isNotEmpty,
               expanded: channelsExpanded.value,
               onToggle: () => channelsExpanded.value = !channelsExpanded.value,
               channels: ungroupedStreamChannels,

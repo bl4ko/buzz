@@ -7,6 +7,7 @@ import 'feed_item.dart';
 enum InboxFilter {
   all,
   mention,
+  reaction,
   thread,
   needsAction,
   activity,
@@ -21,6 +22,7 @@ int categoryPriority(String category) {
   return switch (category) {
     'needs_action' => 0,
     'mention' => 1,
+    'reaction' => 2,
     'agent_activity' => 2,
     _ => 3,
   };
@@ -106,6 +108,9 @@ class InboxItem {
   /// Root id if any grouped event carries thread-reply tags.
   String? get threadRootId {
     for (final candidate in [item, ...groupItems]) {
+      if (candidate.targetThreadRootId != null) {
+        return candidate.targetThreadRootId;
+      }
       if (isThreadReply(candidate.tags)) {
         return threadReferenceOf(candidate.tags).rootId;
       }
@@ -147,6 +152,14 @@ class InboxItem {
   }
 
   final category = item.categories.firstOrNull ?? item.item.category;
+  if (category == 'reaction') {
+    return (
+      text: channelName != null
+          ? '${item.item.headline} in'
+          : item.item.headline,
+      channelLabel: channelName,
+    );
+  }
   if (category == 'mention') {
     return (
       text: channelName != null ? 'Mentioned in' : 'Mentioned',
@@ -183,6 +196,7 @@ bool matchesInboxFilter(InboxItem item, InboxFilter filter) {
       ...item.groupItems,
     ].any((i) => isThreadReply(i.tags)),
     InboxFilter.mention => item.categories.contains('mention'),
+    InboxFilter.reaction => item.categories.contains('reaction'),
     InboxFilter.needsAction => item.categories.contains('needs_action'),
     InboxFilter.activity => item.categories.contains('activity'),
     InboxFilter.agentActivity => item.categories.contains('agent_activity'),
@@ -205,11 +219,13 @@ List<InboxItem> buildInboxItems(
         channelId != null && (isDmChannel?.call(channelId) ?? false)
         ? channelId
         : null;
-    final key = inboxConversationId(
-      item.tags,
-      item.id,
-      dmChannelId: dmChannelId,
-    );
+    final key = item.kind == 7
+        ? 'reaction:${item.targetEventId ?? item.id}'
+        : inboxConversationId(
+            item.tags,
+            item.targetThreadRootId ?? item.targetEventId ?? item.id,
+            dmChannelId: dmChannelId,
+          );
     groups.putIfAbsent(key, () => []).add(item);
   }
 

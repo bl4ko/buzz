@@ -748,6 +748,11 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       if (entry.value.muted) entry.key,
   };
 
+  Set<String> get threadInterestRootIds => {
+    ..._participatedRootIds,
+    ..._authoredRootIds,
+  };
+
   Set<String> _followedRootIds() =>
       ref.read(threadFollowsProvider).followedRootIds;
 

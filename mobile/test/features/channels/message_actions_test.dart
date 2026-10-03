@@ -390,6 +390,7 @@ Future<void> _dismissMessageActionsPopover(WidgetTester tester) async {
 
 class _FakeChannelActions extends ChannelActions {
   final reactions = <({String eventId, String emoji})>[];
+  final deletions = <({String channelId, String eventId})>[];
 
   _FakeChannelActions(Ref ref)
     : super(
@@ -406,6 +407,14 @@ class _FakeChannelActions extends ChannelActions {
   Future<void> addReaction(String eventId, String emoji) async {
     reactions.add((eventId: eventId, emoji: emoji));
   }
+
+  @override
+  Future<void> deleteMessage({
+    required String channelId,
+    required String eventId,
+  }) async {
+    deletions.add((channelId: channelId, eventId: eventId));
+  }
 }
 
 void main() {
@@ -419,6 +428,53 @@ void main() {
           const MethodChannel('dev.fluttercommunity.plus/connectivity_status'),
           (_) async => null,
         );
+  });
+
+  testWidgets('message options expose confirmed deletion of an owned message', (
+    tester,
+  ) async {
+    final prefs = await _mockPrefs();
+    late _FakeChannelActions actions;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          savedPrefsProvider.overrideWithValue(prefs),
+          myPubkeyProvider.overrideWithValue('self'),
+          readStateProvider.overrideWith(
+            () => _FakeReadStateNotifier(_readState({_channelId: 100000})),
+          ),
+          channelActionsProvider.overrideWith(
+            (ref) => actions = _FakeChannelActions(ref),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: MessageActionsButton(
+              message: _message(pubkey: 'self'),
+              channelId: _channelId,
+              currentPubkey: 'self',
+              canManageMessage: true,
+              isMember: true,
+              isArchived: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    ProviderScope.containerOf(
+      tester.element(find.byType(MessageActionsButton)),
+    ).read(channelActionsProvider);
+    await tester.tap(find.byTooltip('Message options'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Delete message'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete message'));
+    await tester.pumpAndSettle();
+    expect(actions.deletions, isEmpty);
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+    expect(actions.deletions, [(channelId: _channelId, eventId: 'msg-1')]);
   });
 
   testWidgets(

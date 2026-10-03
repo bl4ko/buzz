@@ -61,6 +61,46 @@ final _messageActionBackdropFilter = ImageFilter.blur(
   sigmaY: _messageActionBackdropBlurSigma,
 );
 
+class MessageActionsButton extends ConsumerWidget {
+  const MessageActionsButton({
+    required this.message,
+    required this.channelId,
+    required this.currentPubkey,
+    required this.canManageMessage,
+    required this.isMember,
+    required this.isArchived,
+    this.allMessages,
+    super.key,
+  });
+
+  final TimelineMessage message;
+  final String channelId;
+  final String? currentPubkey;
+  final bool canManageMessage;
+  final bool isMember;
+  final bool isArchived;
+  final List<TimelineMessage>? allMessages;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => IconButton(
+    key: ValueKey('message-options-${message.id}'),
+    tooltip: 'Message options',
+    visualDensity: VisualDensity.compact,
+    icon: const Icon(BuzzIcons.ellipsis, size: 18),
+    onPressed: () => showMessageActions(
+      context: context,
+      ref: ref,
+      message: message,
+      channelId: channelId,
+      currentPubkey: currentPubkey,
+      canManageMessage: canManageMessage,
+      isMember: isMember,
+      isArchived: isArchived,
+      allMessages: allMessages,
+    ),
+  );
+}
+
 /// Presents the actions for [message] as an anchored popover when both
 /// [anchorRect] and [captureAnchorSnapshot] are supplied, otherwise as a sheet.
 ///

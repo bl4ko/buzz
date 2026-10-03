@@ -65,12 +65,14 @@ Widget _modalApp({
   required ChannelActions Function(Ref ref) createChannelActions,
   String? canvasContent,
   Future<ChannelCanvas>? pendingCanvas,
+  _FakeChannelSectionsNotifier? sections,
 }) => ProviderScope(
   overrides: [
     currentPubkeyProvider.overrideWith((ref) => _currentPubkey),
     channelMembersProvider(channel.id).overrideWith((ref) => loadMembers()),
     channelSectionsProvider.overrideWith(
-      () => _FakeChannelSectionsNotifier(const ChannelSectionStore()),
+      () =>
+          sections ?? _FakeChannelSectionsNotifier(const ChannelSectionStore()),
     ),
     agentOwnersProvider.overrideWithValue(
       const AsyncValue.data(<String, String>{}),
@@ -104,6 +106,35 @@ Widget _modalApp({
 );
 
 void main() {
+  testWidgets(
+    'creates and assigns a DM section after closing the actions sheet',
+    (tester) async {
+      final sections = _FakeChannelSectionsNotifier(
+        const ChannelSectionStore(),
+      );
+      await tester.pumpWidget(
+        _modalApp(
+          channel: _channel(type: 'dm'),
+          loadMembers: () async => [],
+          createChannelActions: _FakeChannelActions.new,
+          sections: sections,
+        ),
+      );
+      await tester.tap(find.text('Open actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Move to section…'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('New section…'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Home');
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
+      expect(sections.createdName, 'Home');
+      expect(sections.createdChannelId, 'channel-id');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('owner sees the complete regular-channel action set', (
     tester,
   ) async {
@@ -825,6 +856,7 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final label in [
+      'Move to section…',
       'Mute channel',
       'Copy channel name',
       'Copy channel ID',
@@ -836,7 +868,6 @@ void main() {
       'Unstar',
       'Mark Unread',
       'Mark Read',
-      'Move to section…',
       'Manage channel',
       'Leave channel',
       'Archive channel',
@@ -857,6 +888,15 @@ class _FakeChannelSectionsNotifier extends ChannelSectionsNotifier {
   _FakeChannelSectionsNotifier(this._store);
 
   final ChannelSectionStore _store;
+  String? createdName;
+  String? createdChannelId;
+
+  @override
+  String? createSection(String name, {String? channelId}) {
+    createdName = name;
+    createdChannelId = channelId;
+    return 'new-section';
+  }
 
   @override
   ChannelSectionsState build() =>

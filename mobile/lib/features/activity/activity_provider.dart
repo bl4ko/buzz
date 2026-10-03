@@ -10,6 +10,9 @@ import '../channels/channels_provider.dart';
 import 'dm_resurface.dart';
 import 'feed_item.dart';
 import 'inbox_item.dart';
+import 'activity_projection.dart';
+import '../channels/channel_mutes/channel_mutes_provider.dart';
+import '../channels/thread_follows/thread_follows_provider.dart';
 
 typedef DmResurfaceAction = Future<String> Function(List<String> pubkeys);
 
@@ -22,18 +25,10 @@ final dmResurfaceActionProvider = Provider<DmResurfaceAction>(
   },
 );
 
-/// Builds the Activity inbox feed over the relay websocket.
-///
-/// Sources mirror desktop's Home inbox (`useHomeFeedQuery` + `get_feed`):
-/// - mentions of me on user-visible channel kinds (also yields thread
-///   replies, which the thread filter classifies from NIP-10 tags)
-/// - workflow approvals / needs-action events addressed to me
-/// - agent job lifecycle events addressed to me (kinds 43001-43006)
-/// - recent DM messages from others (desktop surfaces DMs through p-tags;
-///   mobile queries DM channels directly so untagged DM sends still appear)
 class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
   static const _addressedKinds = [
     1,
+    7,
     9,
     40002,
     43001,
@@ -51,6 +46,7 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
 
   void Function()? _unsubscribeAddressed;
   final List<void Function()> _unsubscribeDms = [];
+  final List<void Function()> _unsubscribeChannels = [];
   final List<void Function()> _unsubscribeHiddenDms = [];
   Timer? _liveRefreshTimer;
   Future<void>? _refreshInFlight;
@@ -70,12 +66,12 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
   Future<HomeFeedResponse> build() async {
     ref.watch(relayConfigProvider);
     final sessionState = ref.watch(relaySessionProvider);
-    // React to the DM channel set (loading → data, membership changes) so a
-    // cold start where channels resolve after the first fetch still surfaces
-    // DMs without a manual refresh.
-    ref.watch(channelsProvider.select(_dmChannelKey));
+    ref.watch(channelsProvider.select(_channelKey));
+    ref.watch(channelMutesProvider.select((state) => state.store));
+    ref.watch(threadFollowsProvider);
 
     final generation = ++_subscriptionGeneration;
+    final subscriptionSince = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 5;
     final currentPubkey = ref.read(myPubkeyProvider)?.toLowerCase();
     final currentScope =
         '${ref.read(relayConfigProvider).baseUrl}\u0000$currentPubkey';
@@ -92,17 +88,16 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
     final response = await _fetch();
     if (sessionState.status == SessionStatus.connected &&
         generation == _subscriptionGeneration) {
-      unawaited(_subscribeLive(generation));
+      unawaited(_subscribeLive(generation, since: subscriptionSince));
     }
     return response;
   }
 
-  Future<void> _subscribeLive(int generation) async {
+  Future<void> _subscribeLive(int generation, {required int since}) async {
     final myPk = ref.read(myPubkeyProvider);
     if (myPk == null || generation != _subscriptionGeneration) return;
 
     final session = ref.read(relaySessionProvider.notifier);
-    final since = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 5;
     try {
       final unsubscribeAddressed = await session.subscribe(
         NostrFilter(
@@ -144,6 +139,25 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
       );
       if (visibleUnsubscribers == null) return;
       _unsubscribeDms.addAll(visibleUnsubscribers);
+      final channelUnsubscribers = await _subscribeChannelBatches(
+        session,
+        generation,
+        channelIds: [
+          for (final channel in channels)
+            if (channel.isMember && !channel.isArchived) channel.id,
+        ],
+        kinds: const [
+          ...EventKind.channelMessageEventKinds,
+          EventKind.reaction,
+          EventKind.deletion,
+          EventKind.nip29DeleteEvent,
+          EventKind.streamMessageEdit,
+        ],
+        since: since,
+        onEvent: (_) => _scheduleLiveRefresh(generation),
+      );
+      if (channelUnsubscribers == null) return;
+      _unsubscribeChannels.addAll(channelUnsubscribers);
 
       // Resurface trigger: hidden DMs are dropped from the visible-DM sub above,
       // so subscribe to them separately. Channel messages carry a channel_id and
@@ -421,6 +435,10 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
       unsubscribe();
     }
     _unsubscribeDms.clear();
+    for (final unsubscribe in _unsubscribeChannels) {
+      unsubscribe();
+    }
+    _unsubscribeChannels.clear();
     for (final unsubscribe in _unsubscribeHiddenDms) {
       unsubscribe();
     }
@@ -430,12 +448,12 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
   /// Stable identity for the joined DM channel set: null while channels are
   /// loading, otherwise the sorted member-DM ids. Keeps unrelated channel
   /// updates from refetching the feed.
-  static String? _dmChannelKey(AsyncValue<List<Channel>> channels) {
+  static String? _channelKey(AsyncValue<List<Channel>> channels) {
     final value = channels.asData?.value;
     if (value == null) return null;
     final ids = [
       for (final channel in value)
-        if (channel.isDm && channel.isMember) channel.id,
+        if (channel.isMember && !channel.isArchived) channel.id,
     ]..sort();
     return ids.join(',');
   }
@@ -453,25 +471,23 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
 
     final session = ref.read(relaySessionProvider.notifier);
 
-    // DM channels come from the channel list; while it is still loading the
-    // DM source is skipped, and build() rebuilds when it resolves (see the
-    // channelsProvider watch above).
-    final dmChannelIds = [
+    final channelIds = [
       for (final channel
           in ref.read(channelsProvider).asData?.value ?? const <Channel>[])
-        if (channel.isDm && channel.isMember) channel.id,
+        if (channel.isMember && !channel.isArchived) channel.id,
     ];
-
+    final interestedRootIds = {
+      ...ref.read(channelsProvider.notifier).threadInterestRootIds,
+      ...ref.read(threadFollowsProvider).followedRootIds,
+    };
     final filters = <NostrFilter>[
-      // Mentions of me on user-visible channel content.
       NostrFilter(
-        kinds: const [9, 40002, 1, 45001, 45003],
+        kinds: const [9, 40002, 1, 7, 45001, 45003],
         tags: {
           '#p': [myPk],
         },
-        limit: 50,
+        limit: 100,
       ),
-      // Workflow approvals addressed to me.
       NostrFilter(
         kinds: const [46010, 46011, 46012],
         tags: {
@@ -479,7 +495,6 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
         },
         limit: 20,
       ),
-      // Agent job lifecycle events addressed to me.
       NostrFilter(
         kinds: const [43001, 43002, 43003, 43004, 43005, 43006],
         tags: {
@@ -487,98 +502,96 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
         },
         limit: 20,
       ),
-      // Recent DM traffic (filtered to other senders below).
-      if (dmChannelIds.isNotEmpty)
-        NostrFilter(kinds: const [9], tags: {'#h': dmChannelIds}, limit: 30),
+      for (
+        var start = 0;
+        start < channelIds.length;
+        start += kMaxExplicitChannelValues
+      )
+        NostrFilter(
+          kinds: const [
+            ...EventKind.channelMessageEventKinds,
+            EventKind.reaction,
+            EventKind.deletion,
+            EventKind.nip29DeleteEvent,
+            EventKind.streamMessageEdit,
+          ],
+          tags: {
+            '#h': channelIds
+                .skip(start)
+                .take(kMaxExplicitChannelValues)
+                .toList(),
+          },
+          limit: 100,
+        ),
+      if (channelIds.isNotEmpty)
+        NostrFilter(
+          kinds: EventKind.channelMessageEventKinds,
+          authors: [myPk],
+          limit: 100,
+        ),
     ];
-
-    // The HTTP bridge keeps each NIP-01 filter's independent limit while
-    // executing the batch with bounded server-side concurrency. One request
-    // here replaces the four simultaneous websocket history subscriptions that
-    // otherwise compete with channel and preference startup sync.
-    final events = await _queryWithWebSocketFallback(session, filters);
-
-    bool isFromOther(NostrEvent e) =>
-        e.pubkey.toLowerCase() != myPk.toLowerCase();
-    bool isAddressedToMe(NostrEvent event) => event.tags.any(
-      (tag) =>
-          tag.length > 1 &&
-          tag[0] == 'p' &&
-          tag[1].toLowerCase() == myPk.toLowerCase(),
-    );
-
-    const mentionKinds = {9, 40002, 1, 45001, 45003};
-    const needsActionKinds = {46010, 46011, 46012};
-    const agentActivityKinds = {43001, 43002, 43003, 43004, 43005, 43006};
-    final dmChannelIdSet = dmChannelIds.toSet();
-
-    // Dedupe across sources by event id, keeping the higher-priority
-    // category (needs_action > mention > agent_activity > activity).
-    final byId = <String, FeedItem>{};
-    void add(Iterable<NostrEvent> events, String category) {
-      for (final event in events) {
-        final existing = byId[event.id];
-        if (existing != null &&
-            categoryPriority(existing.category) <= categoryPriority(category)) {
-          continue;
-        }
-        byId[event.id] = _feedItem(event, category: category);
-      }
+    final events = [...await _queryWithWebSocketFallback(session, filters)];
+    final fetchedIds = {for (final event in events) event.id};
+    final missingTargets = {
+      for (final event in events)
+        if (event.kind == EventKind.reaction)
+          for (final tag
+              in event.tags
+                  .where((tag) => tag.length > 1 && tag[0] == 'e')
+                  .toList()
+                  .reversed
+                  .take(1))
+            if (!fetchedIds.contains(tag[1])) tag[1],
+    }.take(100).toList();
+    if (missingTargets.isNotEmpty) {
+      events.addAll(
+        await _queryWithWebSocketFallback(session, [
+          NostrFilter(
+            kinds: EventKind.channelMessageEventKinds,
+            ids: missingTargets,
+            limit: missingTargets.length,
+          ),
+        ]),
+      );
     }
-
-    add(
-      events.where(
-        (event) =>
-            needsActionKinds.contains(event.kind) && isAddressedToMe(event),
-      ),
-      'needs_action',
-    );
-    add(
-      events.where(
-        (event) =>
-            mentionKinds.contains(event.kind) &&
-            isAddressedToMe(event) &&
-            isFromOther(event),
-      ),
-      'mention',
-    );
-    add(
-      events.where(
-        (event) =>
-            agentActivityKinds.contains(event.kind) && isAddressedToMe(event),
-      ),
-      'agent_activity',
-    );
-    add(
-      events.where(
-        (event) =>
-            event.kind == 9 &&
-            dmChannelIdSet.contains(event.channelId) &&
-            isFromOther(event),
-      ),
-      'activity',
-    );
-
-    final items = byId.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    return HomeFeedResponse(
-      mentions: [
-        for (final i in items)
-          if (i.category == 'mention') i,
-      ],
-      needsAction: [
-        for (final i in items)
-          if (i.category == 'needs_action') i,
-      ],
-      activity: [
-        for (final i in items)
-          if (i.category == 'activity') i,
-      ],
-      agentActivity: [
-        for (final i in items)
-          if (i.category == 'agent_activity') i,
-      ],
+    final rootIds = {
+      ...interestedRootIds,
+      for (final event in events)
+        if (event.pubkey.toLowerCase() == myPk.toLowerCase() &&
+            EventKind.channelMessageEventKinds.contains(event.kind))
+          event.threadReference.rootId ?? event.id,
+    }.toList();
+    if (rootIds.isNotEmpty) {
+      events.addAll(
+        await _queryWithWebSocketFallback(session, [
+          for (
+            var start = 0;
+            start < rootIds.length;
+            start += kMaxExplicitChannelValues
+          )
+            NostrFilter(
+              kinds: EventKind.channelMessageEventKinds,
+              tags: {
+                '#e': rootIds
+                    .skip(start)
+                    .take(kMaxExplicitChannelValues)
+                    .toList(),
+              },
+              limit: 100,
+            ),
+        ]),
+      );
+    }
+    return buildActivityFeed(
+      events,
+      myPubkey: myPk,
+      channelIds: channelIds.toSet(),
+      interestedRootIds: interestedRootIds,
+      mutedChannelIds: {
+        for (final entry
+            in ref.read(channelMutesProvider).store.channels.entries)
+          if (entry.value.muted) entry.key,
+      },
     );
   }
 
@@ -602,33 +615,15 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
           ? start + fallbackConcurrency
           : filters.length;
       final results = await Future.wait(
-        filters.sublist(start, end).map((filter) async {
-          try {
-            return await session.fetchHistory(filter);
-          } catch (_) {
-            return const <NostrEvent>[];
-          }
-        }),
+        filters
+            .sublist(start, end)
+            .map((filter) => session.fetchHistory(filter)),
       );
       for (final result in results) {
         events.addAll(result);
       }
     }
     return events;
-  }
-
-  FeedItem _feedItem(NostrEvent event, {required String category}) {
-    return FeedItem(
-      id: event.id,
-      kind: event.kind,
-      pubkey: event.pubkey,
-      content: event.content,
-      createdAt: event.createdAt,
-      channelId: event.channelId,
-      channelName: '',
-      tags: event.tags,
-      category: category,
-    );
   }
 
   Future<void> refresh() async {
