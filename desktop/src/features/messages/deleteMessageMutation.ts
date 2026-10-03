@@ -15,7 +15,7 @@ import {
 import { channelMessagesKey, channelWindowKey } from "./lib/messageQueryKeys";
 import { deleteMessage } from "@/shared/api/tauri";
 import type { Channel, RelayEvent } from "@/shared/api/types";
-import { KIND_DELETION } from "@/shared/constants/kinds";
+import { KIND_NIP29_DELETE_EVENT } from "@/shared/constants/kinds";
 
 type DeleteInput = { eventId: string };
 type DeleteVariables = DeleteInput & { channelId: string | null };
@@ -125,7 +125,7 @@ export function useDeleteMessageMutation(
         id: `optimistic-delete-${crypto.randomUUID()}`,
         pubkey: "",
         created_at: Math.floor(Date.now() / 1_000),
-        kind: KIND_DELETION,
+        kind: KIND_NIP29_DELETE_EVENT,
         tags: [
           ["h", channelId],
           ["e", eventId],

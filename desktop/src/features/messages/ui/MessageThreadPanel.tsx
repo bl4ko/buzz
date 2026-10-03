@@ -18,6 +18,7 @@ import {
   canManageMessageForCurrentUser,
 } from "@/features/messages/lib/canManageMessage";
 import { handleTimelineMentionCopy } from "@/features/messages/lib/timelineMentionCopy";
+import { useMessageModerationPermission } from "@/features/messages/lib/useMessageModerationPermission";
 import type { TimelineMessage } from "@/features/messages/types";
 import type { VideoReviewPresentation } from "@/features/messages/lib/videoReviewContext";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
@@ -225,6 +226,10 @@ export function MessageThreadPanel({
     string | null
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
+  const canModerateMessages = useMessageModerationPermission(
+    channelId,
+    currentPubkey,
+  );
   const threadHeadId = threadHead?.id ?? null;
   useEscapeKey(
     onClose,
@@ -553,6 +558,7 @@ export function MessageThreadPanel({
                     threadHead,
                     currentPubkey,
                     profiles,
+                    canModerateMessages,
                   )
                     ? onDelete
                     : undefined
@@ -723,6 +729,7 @@ export function MessageThreadPanel({
                               entry.message,
                               currentPubkey,
                               profiles,
+                              canModerateMessages,
                             )
                               ? onDelete
                               : undefined

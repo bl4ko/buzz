@@ -170,7 +170,7 @@ async function startDelete(h, target) {
 function accepted(h, target, id = "d") {
   return {
     ...event(id),
-    kind: 5,
+    kind: 9005,
     content: "",
     tags: [
       ["h", h.channelId],

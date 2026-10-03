@@ -31,6 +31,7 @@ import { MessageRowItem, SystemRow } from "./TimelineMessageRow";
 import { TimelineRowShell } from "./TimelineRowShell";
 import { UnreadDivider } from "./UnreadDivider";
 import { useTimelineRetention } from "./useTimelineRetention";
+import { useMessageModerationPermission } from "@/features/messages/lib/useMessageModerationPermission";
 import { useUpwardPaginationWheel } from "./useUpwardPaginationWheel";
 import { useVirtualizedBottomSettle } from "./useVirtualizedBottomSettle";
 
@@ -171,6 +172,10 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   onVirtualizerRangeChanged,
   onVirtualizerScrollerChange,
 }: TimelineMessageListProps) {
+  const canModerateMessages = useMessageModerationPermission(
+    channelId,
+    currentPubkey,
+  );
   const entries = React.useMemo(
     () =>
       mainEntries ??
@@ -246,6 +251,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
         case "message":
           return (
             <MessageRowItem
+              canModerateMessages={canModerateMessages}
               channelId={channelId}
               currentPubkey={currentPubkey}
               entry={item.entry}
@@ -294,6 +300,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
       }
     },
     [
+      canModerateMessages,
       channelId,
       channelType,
       alwaysShowMessageIdentity,

@@ -63,6 +63,7 @@ export function SystemRow({
 }
 
 type MessageRowItemProps = {
+  canModerateMessages?: boolean;
   channelId?: string | null;
   currentPubkey?: string;
   entry: MainTimelineEntry;
@@ -95,6 +96,7 @@ type MessageRowItemProps = {
 };
 
 export function MessageRowItem({
+  canModerateMessages = false,
   channelId,
   currentPubkey,
   entry,
@@ -132,7 +134,13 @@ export function MessageRowItem({
     profiles,
   );
   const canDelete =
-    onDelete && canDeleteMessageForCurrentUser(message, currentPubkey, profiles)
+    onDelete &&
+    canDeleteMessageForCurrentUser(
+      message,
+      currentPubkey,
+      profiles,
+      canModerateMessages,
+    )
       ? onDelete
       : undefined;
   const canEdit = canManage && onEdit ? onEdit : undefined;

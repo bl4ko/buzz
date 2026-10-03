@@ -381,9 +381,7 @@ pub fn build_message_edit(
     Ok(EventBuilder::new(Kind::Custom(40003), content).tags(tags))
 }
 
-/// Kind 5 — NIP-09 deletion. The `h` tag is non-standard for NIP-09 but is
-/// required so channel-scoped subscriptions observe the delete.
-pub fn build_delete_compat(
+pub fn build_delete_message(
     channel_id: Uuid,
     target_event_id: EventId,
 ) -> Result<EventBuilder, String> {
@@ -391,7 +389,7 @@ pub fn build_delete_compat(
         tag(vec!["h", &channel_id.to_string()])?,
         tag(vec!["e", &target_event_id.to_hex()])?,
     ];
-    Ok(EventBuilder::new(Kind::Custom(5), "").tags(tags))
+    Ok(EventBuilder::new(Kind::Custom(9005), "").tags(tags))
 }
 
 // ── Reactions ────────────────────────────────────────────────────────────────
@@ -783,6 +781,24 @@ pub use workflows::{
 mod tests {
     use super::*;
     use nostr::Keys;
+    #[test]
+    fn delete_message_uses_channel_moderation_event() {
+        let channel_id = Uuid::new_v4();
+        let target = EventId::all_zeros();
+        let event = build_delete_message(channel_id, target)
+            .unwrap()
+            .sign_with_keys(&Keys::generate())
+            .unwrap();
+        assert_eq!(event.kind, Kind::Custom(9005));
+        let tags: Vec<Vec<String>> = event.tags.iter().map(|t| t.as_slice().to_vec()).collect();
+        assert_eq!(
+            tags,
+            vec![
+                vec!["h".to_string(), channel_id.to_string()],
+                vec!["e".to_string(), target.to_hex()]
+            ]
+        );
+    }
     #[test]
     fn channel_builders_reject_hash_only_names() {
         let channel_id = Uuid::new_v4();
