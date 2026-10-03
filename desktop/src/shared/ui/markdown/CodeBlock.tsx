@@ -10,7 +10,10 @@ import {
 } from "shiki";
 
 import { useTheme } from "@/shared/theme/ThemeProvider";
-import { resolveShikiThemeName } from "@/shared/theme/theme-loader";
+import {
+  loadThemeData,
+  resolveShikiThemeName,
+} from "@/shared/theme/theme-loader";
 import { copyCodeBlockToClipboard } from "@/shared/lib/codeBlockClipboard";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -166,7 +169,7 @@ export function SyntaxHighlightedCode({
         }
         if (!loadedThemes.has(shikiTheme)) {
           try {
-            await shikiHighlighter.loadTheme(shikiTheme as BundledTheme);
+            await shikiHighlighter.loadTheme(await loadThemeData(shikiTheme));
             loadedThemes.add(shikiTheme);
             loaded = true;
           } catch {

@@ -114,7 +114,7 @@ export function HomeView({
     homeInboxWidthPx < INBOX_SINGLE_COLUMN_BREAKPOINT_PX;
   const [filter, setFilter] = React.useState<InboxFilter>("all");
   const [unreadOnly, setUnreadOnly] = React.useState(
-    () => getStorageItem(INBOX_UNREAD_ONLY_STORAGE_KEY) === "true",
+    () => getStorageItem(INBOX_UNREAD_ONLY_STORAGE_KEY) !== "false",
   );
   const handleUnreadOnlyChange = React.useCallback((value: boolean) => {
     setUnreadOnly(value);

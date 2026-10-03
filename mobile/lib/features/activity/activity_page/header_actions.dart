@@ -42,7 +42,11 @@ class _ActivityActionsPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _FilterMenuButton(filter: filter, onChanged: onFilterChanged),
+            _FilterMenuButton(
+              filter: filter,
+              unreadOnly: unreadOnly,
+              onChanged: onFilterChanged,
+            ),
             _InboxOptionsButton(
               unreadOnly: unreadOnly,
               unreadCount: unreadCount,
@@ -60,9 +64,14 @@ class _ActivityActionsPill extends StatelessWidget {
 /// inbox filter menu (`FILTER_OPTIONS`).
 class _FilterMenuButton extends StatelessWidget {
   final InboxFilter filter;
+  final bool unreadOnly;
   final ValueChanged<InboxFilter> onChanged;
 
-  const _FilterMenuButton({required this.filter, required this.onChanged});
+  const _FilterMenuButton({
+    required this.filter,
+    required this.unreadOnly,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +130,9 @@ class _FilterMenuButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _filterLabels[filter]!,
+                  unreadOnly && filter == InboxFilter.all
+                      ? 'Unread'
+                      : _filterLabels[filter]!,
                   style: context.textTheme.labelLarge?.copyWith(
                     color: navigationPrimaryForeground(context),
                     fontWeight: FontWeight.w600,
