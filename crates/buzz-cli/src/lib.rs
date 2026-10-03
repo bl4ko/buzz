@@ -436,6 +436,8 @@ pub enum MessagesCmd {
         mentions: Vec<String>,
         #[arg(long)]
         voice_final: bool,
+        #[arg(long)]
+        approval_request: bool,
     },
     /// Send a code diff / patch to a channel
     SendDiff {

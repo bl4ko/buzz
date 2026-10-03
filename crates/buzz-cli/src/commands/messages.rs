@@ -605,6 +605,7 @@ pub struct SendMessageParams {
     pub reply_to: Option<String>,
     pub broadcast: bool,
     pub voice_final: bool,
+    pub approval_request: bool,
     pub files: Vec<String>,
     pub mentions: Vec<String>,
 }
@@ -615,6 +616,18 @@ fn with_voice_final(builder: EventBuilder, voice_final: bool) -> Result<EventBui
     }
     let tag = Tag::parse(["voice", "final"])
         .map_err(|error| CliError::Other(format!("invalid voice tag: {error}")))?;
+    Ok(builder.tags([tag]))
+}
+
+fn with_approval_request(
+    builder: EventBuilder,
+    approval_request: bool,
+) -> Result<EventBuilder, CliError> {
+    if !approval_request {
+        return Ok(builder);
+    }
+    let tag = Tag::parse(["notification", "approval"])
+        .map_err(|error| CliError::Other(format!("invalid notification tag: {error}")))?;
     Ok(builder.tags([tag]))
 }
 
@@ -753,6 +766,7 @@ pub async fn cmd_send_message(
     };
 
     let builder = with_voice_final(builder, p.voice_final)?;
+    let builder = with_approval_request(builder, p.approval_request)?;
     let event = client.sign_event(builder)?;
     let emitted_mentions = event_mention_pubkeys(&event);
     let resp = client.submit_event(event).await?;
@@ -957,6 +971,7 @@ pub async fn dispatch(
             reply_to,
             broadcast,
             voice_final,
+            approval_request,
             files,
             mentions,
         } => {
@@ -969,6 +984,7 @@ pub async fn dispatch(
                     reply_to,
                     broadcast,
                     voice_final,
+                    approval_request,
                     files,
                     mentions,
                 },
@@ -1735,6 +1751,7 @@ mod tests {
             reply_to: None,
             broadcast: false,
             voice_final: false,
+            approval_request: false,
             files: vec![],
             mentions: vec![],
         }
@@ -1761,6 +1778,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn approval_request_tag_is_signed_only_when_requested() {
+        for approval_request in [false, true] {
+            let builder = nostr::EventBuilder::new(nostr::Kind::Custom(9), "Approve command");
+            let event = super::with_approval_request(builder, approval_request)
+                .unwrap()
+                .sign_with_keys(&Keys::generate())
+                .unwrap();
+            assert!(event.verify().is_ok());
+            assert_eq!(
+                event
+                    .tags
+                    .iter()
+                    .any(|tag| tag.as_slice() == ["notification", "approval"]),
+                approval_request
+            );
+        }
+    }
+
     #[tokio::test]
     async fn cmd_send_message_attaches_emoji_tags_for_known_shortcodes() {
         // Content contains `:wave:` which resolves in the palette.
@@ -1770,6 +1806,7 @@ mod tests {
 
         let mut params = send_params("hello :wave: everyone");
         params.voice_final = true;
+        params.approval_request = true;
         cmd_send_message(&client, params).await.unwrap();
 
         // Palette was queried at least once (short-circuit was NOT triggered).
@@ -1795,6 +1832,9 @@ mod tests {
             })
             .collect();
         assert!(tags.iter().any(|tag| tag == &["voice", "final"]));
+        assert!(tags.iter().any(|tag| tag == &["notification", "approval"]));
+        let signed: nostr::Event = serde_json::from_value(event).unwrap();
+        assert!(signed.verify().is_ok());
         let emoji_tags: Vec<&Vec<String>> = tags
             .iter()
             .filter(|t| t.first().map(|s| s.as_str()) == Some("emoji"))
