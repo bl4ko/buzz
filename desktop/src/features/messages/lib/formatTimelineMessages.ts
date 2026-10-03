@@ -50,11 +50,18 @@ import { truncateNpub } from "@/shared/lib/pubkey";
 const HEX_RE = /^[0-9a-f]+$/i;
 
 export function isTimelineContentEvent(event: RelayEvent) {
+  if (event.kind === KIND_SYSTEM_MESSAGE) {
+    try {
+      return JSON.parse(event.content)?.type !== "message_deleted";
+    } catch {
+      return true;
+    }
+  }
+
   return (
     event.kind === KIND_STREAM_MESSAGE ||
     event.kind === KIND_STREAM_MESSAGE_V2 ||
     event.kind === KIND_STREAM_MESSAGE_DIFF ||
-    event.kind === KIND_SYSTEM_MESSAGE ||
     event.kind === KIND_JOB_REQUEST ||
     event.kind === KIND_JOB_ACCEPTED ||
     event.kind === KIND_JOB_PROGRESS ||
