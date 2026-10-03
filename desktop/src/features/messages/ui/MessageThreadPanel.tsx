@@ -13,7 +13,10 @@ import {
   isWithinGroupingWindow,
 } from "@/features/messages/lib/messageGrouping";
 import type { MessageComposerEditTarget } from "@/features/messages/ui/MessageComposer.types";
-import { canManageMessageForCurrentUser } from "@/features/messages/lib/canManageMessage";
+import {
+  canDeleteMessageForCurrentUser,
+  canManageMessageForCurrentUser,
+} from "@/features/messages/lib/canManageMessage";
 import { handleTimelineMentionCopy } from "@/features/messages/lib/timelineMentionCopy";
 import type { TimelineMessage } from "@/features/messages/types";
 import type { VideoReviewPresentation } from "@/features/messages/lib/videoReviewContext";
@@ -546,7 +549,7 @@ export function MessageThreadPanel({
                 message={threadHead}
                 onDelete={
                   onDelete &&
-                  canManageMessageForCurrentUser(
+                  canDeleteMessageForCurrentUser(
                     threadHead,
                     currentPubkey,
                     profiles,
@@ -716,7 +719,7 @@ export function MessageThreadPanel({
                           }
                           onDelete={
                             onDelete &&
-                            canManageMessageForCurrentUser(
+                            canDeleteMessageForCurrentUser(
                               entry.message,
                               currentPubkey,
                               profiles,
