@@ -2,6 +2,7 @@ import { ArrowLeft, MessageSquare } from "lucide-react";
 import * as React from "react";
 
 import { handleTimelineMentionCopy } from "@/features/messages/lib/timelineMentionCopy";
+import { canDeleteMessageForCurrentUser } from "@/features/messages/lib/canManageMessage";
 import {
   resolveUserLabel,
   type UserProfileLookup,
@@ -41,21 +42,15 @@ type ForumThreadPanelProps = {
   onDeleteReply?: (eventId: string) => void;
   onTargetReached?: (eventId: string) => void;
   canDeletePost?: boolean;
+  canModerateMessages?: boolean;
   isDeletingPost?: boolean;
   targetEventId?: string | null;
   targetSearchMessageId?: string;
   targetSearchQuery?: string;
 };
 
-function canDeleteReply(
-  reply: ThreadReply,
-  currentPubkey: string | undefined,
-): boolean {
-  if (!currentPubkey) return false;
-  return reply.pubkey.toLowerCase() === currentPubkey.toLowerCase();
-}
-
 function ReplyRow({
+  canModerateMessages,
   reply,
   currentPubkey,
   profiles,
@@ -63,6 +58,7 @@ function ReplyRow({
   onDelete,
   searchQuery,
 }: {
+  canModerateMessages: boolean;
   reply: ThreadReply;
   currentPubkey?: string;
   profiles?: UserProfileLookup;
@@ -80,7 +76,14 @@ function ReplyRow({
     profiles?.[reply.pubkey.toLowerCase()]?.avatarUrl ?? null;
   const replyAuthorIsAgent =
     profiles?.[reply.pubkey.toLowerCase()]?.isAgent === true;
-  const showDelete = onDelete && canDeleteReply(reply, currentPubkey);
+  const showDelete =
+    onDelete &&
+    canDeleteMessageForCurrentUser(
+      reply,
+      currentPubkey,
+      profiles,
+      canModerateMessages,
+    );
   const {
     mentionNames: replyMentionNames,
     mentionPubkeysByName: replyMentionPubkeysByName,
@@ -156,6 +159,7 @@ export function ForumThreadPanel({
   onDeleteReply,
   onTargetReached,
   canDeletePost,
+  canModerateMessages = false,
   isDeletingPost,
   targetEventId,
   targetSearchMessageId,
@@ -310,6 +314,7 @@ export function ForumThreadPanel({
         <div className="divide-y divide-border/40">
           {replies.map((reply) => (
             <ReplyRow
+              canModerateMessages={canModerateMessages}
               channelNames={channelNames}
               currentPubkey={currentPubkey}
               key={reply.eventId}
