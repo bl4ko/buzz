@@ -114,6 +114,8 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
       pubkey: data.pubkey,
       displayName: data.displayName,
       avatarUrl: data.avatarUrl,
+      bannerUrl: data.bannerUrl,
+      modelUrl: data.modelUrl,
       about: data.about,
       nip05Handle: data.nip05,
       ownerPubkey: verifiedOaOwnerPubkey(latest.tags, data.pubkey),
@@ -143,6 +145,38 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
   /// Updates the current user's profile photo URL.
   Future<void> updateAvatarUrl(String avatarUrl) =>
       _publishProfilePatch({'picture': avatarUrl.trim()});
+
+  Future<void> updateMedia({String? bannerUrl, String? modelUrl}) =>
+      _publishProfilePatch({
+        if (bannerUrl != null) 'banner': bannerUrl,
+        if (modelUrl != null) 'buzz_model': modelUrl,
+      });
+
+  Future<void> updateAgentMedia({
+    required String agentPubkey,
+    String? bannerUrl,
+    String? modelUrl,
+  }) async {
+    final context = _currentWriteContext();
+    final events = await context.session.fetchHistory(
+      NostrFilters.profile(agentPubkey),
+    );
+    _requireCurrentWriteContext(context);
+    if (events.isEmpty ||
+        verifiedOaOwnerPubkey(events.first.tags, agentPubkey) !=
+            context.pubkey) {
+      throw StateError(
+        'Only the verified agent owner can edit its profile media.',
+      );
+    }
+    await _publishProfilePatch({
+      '_agent_media_patch': {
+        'pubkey': agentPubkey,
+        if (bannerUrl != null) 'banner': bannerUrl,
+        if (modelUrl != null) 'buzz_model': modelUrl,
+      },
+    });
+  }
 
   Future<void> _publishProfilePatch(Map<String, dynamic> patch) {
     final context = _currentWriteContext();
@@ -191,6 +225,25 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
         ? <String, dynamic>{}
         : _decodeProfileMetadata(currentHead);
     final nextMetadata = {...currentMetadata, ...patch};
+    final mediaPatch = nextMetadata.remove('_agent_media_patch');
+    if (mediaPatch is Map<String, dynamic>) {
+      final existing = currentMetadata['buzz_agent_media'];
+      final agents = existing is Map<String, dynamic>
+          ? {...existing}
+          : <String, dynamic>{};
+      final target = mediaPatch['pubkey'] as String;
+      final priorMedia = agents[target];
+      agents[target] = {
+        if (priorMedia is Map<String, dynamic>) ...priorMedia,
+        if (mediaPatch.containsKey('banner')) 'banner': mediaPatch['banner'],
+        if (mediaPatch.containsKey('buzz_model'))
+          'buzz_model': mediaPatch['buzz_model'],
+      };
+      if (agents.length > 32) {
+        throw StateError('Profile media supports up to 32 agents.');
+      }
+      nextMetadata['buzz_agent_media'] = agents;
+    }
     if (patch['display_name'] == '') {
       nextMetadata
         ..remove('display_name')
@@ -231,6 +284,8 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
       displayName:
           _metadata['display_name'] as String? ?? _metadata['name'] as String?,
       avatarUrl: _metadata['picture'] as String?,
+      bannerUrl: _metadata['banner'] as String?,
+      modelUrl: _metadata['buzz_model'] as String?,
       about: _metadata['about'] as String?,
       nip05Handle: _metadata['nip05'] as String?,
       ownerPubkey: verifiedOaOwnerPubkey(submittedEvent.tags, pubkey),

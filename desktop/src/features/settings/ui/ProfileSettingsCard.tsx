@@ -1,3 +1,4 @@
+import { ProfileMediaEditor } from "@/features/profile/ui/ProfileMedia";
 import { Check, ChevronDown, Copy, Pencil } from "lucide-react";
 import {
   AnimatePresence,
@@ -677,6 +678,10 @@ export function ProfileSettingsCard({
                       inert={isAvatarEditorOpen ? true : undefined}
                     >
                       <SettingsOptionGroupList>
+                        <ProfileMediaEditor
+                          key={profile?.pubkey}
+                          profile={profile}
+                        />
                         <SettingsOptionGroup
                           headerAction={
                             <EditProfileMetadataButton

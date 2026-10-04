@@ -267,6 +267,8 @@ class ProfileData {
   final String pubkey;
   final String? displayName;
   final String? avatarUrl;
+  final String? bannerUrl;
+  final String? modelUrl;
   final String? about;
   final String? nip05;
 
@@ -274,6 +276,8 @@ class ProfileData {
     required this.pubkey,
     this.displayName,
     this.avatarUrl,
+    this.bannerUrl,
+    this.modelUrl,
     this.about,
     this.nip05,
   });
@@ -289,6 +293,10 @@ class ProfileData {
       displayName:
           (meta['display_name'] as String?) ?? (meta['name'] as String?),
       avatarUrl: meta['picture'] as String?,
+      bannerUrl: meta['banner'] is String ? meta['banner'] as String : null,
+      modelUrl: meta['buzz_model'] is String
+          ? meta['buzz_model'] as String
+          : null,
       about: meta['about'] as String?,
       nip05: meta['nip05'] as String?,
     );

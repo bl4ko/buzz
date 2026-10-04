@@ -112,6 +112,18 @@ async fn proxy_handler(AxumState(state): AxumState<ProxyState>, req: Request) ->
         StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
     let mut headers = HeaderMap::new();
+    if origin == "tauri://localhost" {
+        headers.insert(
+            "access-control-allow-origin",
+            HeaderValue::from_static("tauri://localhost"),
+        );
+    } else if origin == "http://tauri.localhost" {
+        headers.insert(
+            "access-control-allow-origin",
+            HeaderValue::from_static("http://tauri.localhost"),
+        );
+    }
+    headers.insert("vary", HeaderValue::from_static("Origin"));
     for key in &[
         "content-type",
         "content-range",

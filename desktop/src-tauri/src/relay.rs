@@ -569,6 +569,38 @@ pub async fn sync_managed_agent_profile(
         about,
         auth_tag,
     )?;
+    let filter = serde_json::json!({"kinds": [0], "authors": [agent_keys.public_key().to_hex()], "limit": 1});
+    let previous = query_relay_at_with_keys(
+        state,
+        &relay_http_base_url(relay_url),
+        &[filter],
+        agent_keys,
+        auth_tag,
+    )
+    .await?;
+    let mut metadata = previous
+        .first()
+        .and_then(|prior| serde_json::from_str::<serde_json::Value>(&prior.content).ok())
+        .and_then(|content| content.as_object().cloned())
+        .unwrap_or_default();
+    let fields: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&event.content).map_err(|error| error.to_string())?;
+    for field in ["display_name", "picture", "about"] {
+        metadata.remove(field);
+    }
+    metadata.extend(fields);
+    let event = nostr::EventBuilder::new(
+        nostr::Kind::Metadata,
+        serde_json::Value::Object(metadata).to_string(),
+    )
+    .tags(event.tags.clone())
+    .custom_created_at(crate::managed_agents::persona_events::monotonic_created_at(
+        previous
+            .first()
+            .map(|prior| prior.created_at.as_secs() as i64),
+    ))
+    .sign_with_keys(agent_keys)
+    .map_err(|error| error.to_string())?;
     let event_json = event.as_json();
     let body_bytes = event_json.into_bytes();
     crate::egress_guard::assert_no_key_backup_bytes(&body_bytes, "agent profile sync")?;

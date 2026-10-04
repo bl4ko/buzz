@@ -362,15 +362,24 @@ pub async fn cmd_set_profile(
     avatar_url: Option<&str>,
     about: Option<&str>,
     nip05_handle: Option<&str>,
+    banner: Option<&str>,
+    model: Option<&str>,
 ) -> Result<(), CliError> {
-    if display_name.is_none() && avatar_url.is_none() && about.is_none() && nip05_handle.is_none() {
+    if display_name.is_none()
+        && avatar_url.is_none()
+        && about.is_none()
+        && nip05_handle.is_none()
+        && banner.is_none()
+        && model.is_none()
+    {
         return Err(CliError::Usage(
-            "at least one field required (--name, --avatar, --about, --nip05)".into(),
+            "at least one field required (--name, --avatar, --about, --nip05, --banner, --model)"
+                .into(),
         ));
     }
 
     // Read-merge-write: fetch current profile, merge in the new fields, then sign.
-    let current = fetch_current_profile(client).await?;
+    let (current, prior_timestamp) = fetch_current_profile(client).await?;
 
     // Merge: caller-supplied fields win; fall back to current profile values.
     let merged_name = display_name
@@ -406,14 +415,31 @@ pub async fn cmd_set_profile(
             .map(|s| s.to_string())
     });
 
-    let builder = buzz_sdk::build_profile(
-        merged_name.as_deref(),
-        None, // `name` field (username) — not exposed by CLI
-        merged_picture.as_deref(),
-        merged_about.as_deref(),
-        merged_nip05.as_deref(),
+    let mut metadata = current.clone();
+    for (field, value) in [
+        ("display_name", merged_name.as_deref()),
+        ("picture", merged_picture.as_deref()),
+        ("about", merged_about.as_deref()),
+        ("nip05", merged_nip05.as_deref()),
+        ("banner", banner),
+        ("buzz_model", model),
+    ] {
+        if let Some(value) = value {
+            metadata.insert(
+                field.to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+    let builder = nostr::EventBuilder::new(
+        nostr::Kind::Metadata,
+        serde_json::Value::Object(metadata).to_string(),
     )
-    .map_err(|e| CliError::Other(format!("build_profile failed: {e}")))?;
+    .custom_created_at(nostr::Timestamp::from(
+        nostr::Timestamp::now()
+            .as_secs()
+            .max(prior_timestamp.saturating_add(1)),
+    ));
 
     let event = client.sign_event(builder)?;
 
@@ -426,7 +452,7 @@ pub async fn cmd_set_profile(
 /// Returns the parsed content JSON object, or an empty object if no profile exists.
 async fn fetch_current_profile(
     client: &BuzzClient,
-) -> Result<serde_json::Map<String, serde_json::Value>, CliError> {
+) -> Result<(serde_json::Map<String, serde_json::Value>, u64), CliError> {
     let my_pk = client.keys().public_key().to_hex();
     let filter = serde_json::json!({
         "kinds": [0],
@@ -438,10 +464,10 @@ async fn fetch_current_profile(
         .map_err(|e| CliError::Other(format!("failed to parse profile query: {e}")))?;
 
     let Some(arr) = events.as_array() else {
-        return Ok(serde_json::Map::new());
+        return Ok((serde_json::Map::new(), 0));
     };
     let Some(event) = arr.first() else {
-        return Ok(serde_json::Map::new());
+        return Ok((serde_json::Map::new(), 0));
     };
     // kind:0 content is a JSON string containing the profile fields
     let content_str = event
@@ -449,7 +475,13 @@ async fn fetch_current_profile(
         .and_then(|c| c.as_str())
         .unwrap_or("{}");
     let content: serde_json::Value = serde_json::from_str(content_str).unwrap_or_default();
-    Ok(content.as_object().cloned().unwrap_or_default())
+    Ok((
+        content.as_object().cloned().unwrap_or_default(),
+        event
+            .get("created_at")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+    ))
 }
 
 /// Get presence status for users — query kind:40902 presence snapshot events.
@@ -546,6 +578,8 @@ pub async fn dispatch(
             avatar,
             about,
             nip05,
+            banner,
+            model,
         } => {
             cmd_set_profile(
                 client,
@@ -553,6 +587,8 @@ pub async fn dispatch(
                 avatar.as_deref(),
                 about.as_deref(),
                 nip05.as_deref(),
+                banner.as_deref(),
+                model.as_deref(),
             )
             .await
         }

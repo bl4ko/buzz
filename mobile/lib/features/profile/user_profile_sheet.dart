@@ -1,4 +1,8 @@
+import '../../shared/crypto/nip_oa.dart';
+import '../../shared/profile/user_profile.dart';
+import 'profile_media.dart';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -88,19 +92,44 @@ class UserProfileSheet extends HookConsumerWidget {
     final userStatus = statusCache[pk];
 
     // Fetch about from the user's kind:0 profile event.
+    final mediaRevision = useState(0);
+    final mediaConfig = ref.watch(relayConfigProvider);
+    final mediaSession = ref.watch(relaySessionProvider.notifier);
     final aboutFuture = useMemoized(
-      () => ref
-          .read(relaySessionProvider.notifier)
+      () => mediaSession
           .fetchHistory(NostrFilters.profile(pk))
-          .then((events) {
-            if (events.isEmpty) return '';
-            return ProfileData.fromEvent(events.first).about ?? '';
+          .then((events) async {
+            if (events.isEmpty) return null;
+            final data = ProfileData.fromEvent(events.first);
+            final owner = verifiedOaOwnerPubkey(events.first.tags, pk);
+            if (owner == null) return data;
+            final owners = await mediaSession.fetchHistory(
+              NostrFilters.profile(owner),
+            );
+            if (owners.isEmpty) return data;
+            final metadata = jsonDecode(owners.first.content);
+            final media = metadata is Map ? metadata['buzz_agent_media'] : null;
+            final visual = media is Map ? media[pk] : null;
+            if (visual is! Map) return data;
+            return ProfileData(
+              pubkey: pk,
+              displayName: data.displayName,
+              avatarUrl: data.avatarUrl,
+              about: data.about,
+              nip05: data.nip05,
+              bannerUrl: visual['banner'] is String
+                  ? visual['banner'] as String
+                  : data.bannerUrl,
+              modelUrl: visual['buzz_model'] is String
+                  ? visual['buzz_model'] as String
+                  : data.modelUrl,
+            );
           })
-          .catchError((_) => ''),
-      [pk],
+          .catchError((_) => null),
+      [pk, mediaConfig, mediaRevision.value],
     );
     final aboutSnapshot = useFuture(aboutFuture);
-    final about = aboutSnapshot.data ?? profile?.about ?? '';
+    final about = aboutSnapshot.data?.about ?? profile?.about ?? '';
 
     // Ensure presence and status are tracked.
     useEffect(() {
@@ -177,6 +206,36 @@ class UserProfileSheet extends HookConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    ProfileMedia(
+                      bannerUrl:
+                          aboutSnapshot.data?.bannerUrl ?? profile?.bannerUrl,
+                      modelUrl:
+                          aboutSnapshot.data?.modelUrl ?? profile?.modelUrl,
+                    ),
+                    if (profile?.ownerPubkey == currentPubkey &&
+                        pk != currentPubkey)
+                      TextButton(
+                        onPressed: () =>
+                            showModalBottomSheet<void>(
+                              context: context,
+                              isScrollControlled: true,
+                              builder: (context) => SingleChildScrollView(
+                                child: SafeArea(
+                                  child: ProfileMediaEditor(
+                                    agentPubkey: pk,
+                                    profile: UserProfile(
+                                      pubkey: pk,
+                                      bannerUrl: aboutSnapshot.data?.bannerUrl,
+                                      modelUrl: aboutSnapshot.data?.modelUrl,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ).then((_) {
+                              if (context.mounted) mediaRevision.value++;
+                            }),
+                        child: const Text('Edit profile media'),
+                      ),
                     // Center the presence chip on the avatar's lower edge.
                     Padding(
                       padding: const EdgeInsets.only(bottom: Grid.xl / 2),

@@ -39,6 +39,7 @@ class SettingsPage extends HookConsumerWidget {
     required this.profileHeader,
     required this.identityRecoveryPageBuilder,
     this.profileEditPageBuilder = _emptyProfileEditPage,
+    this.profileMediaPageBuilder = _emptyProfileEditPage,
     this.onSetStatus,
     this.onEditDisplayName,
     this.onEditProfileDescription,
@@ -52,6 +53,7 @@ class SettingsPage extends HookConsumerWidget {
 
   /// Builds the current-user profile editor opened from the Photo row.
   final WidgetBuilder profileEditPageBuilder;
+  final WidgetBuilder profileMediaPageBuilder;
 
   /// Opens the current-user status editor.
   final void Function(BuildContext context)? onSetStatus;
@@ -119,6 +121,7 @@ class SettingsPage extends HookConsumerWidget {
             _StatusSection(onSetStatus: onSetStatus),
             _ProfileSection(
               profileEditPageBuilder: profileEditPageBuilder,
+              profileMediaPageBuilder: profileMediaPageBuilder,
               onEditDisplayName: onEditDisplayName,
               onEditProfileDescription: onEditProfileDescription,
             ),

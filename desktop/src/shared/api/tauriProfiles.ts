@@ -9,6 +9,8 @@ import type {
 } from "@/shared/api/types";
 
 type RawProfile = {
+  banner_url?: string | null;
+  model_url?: string | null;
   pubkey: string;
   display_name: string | null;
   avatar_url: string | null;
@@ -38,6 +40,8 @@ type RawSearchUsersResponse = {
 function fromRawProfile(profile: RawProfile): Profile {
   return {
     pubkey: profile.pubkey,
+    bannerUrl: profile.banner_url ?? null,
+    modelUrl: profile.model_url ?? null,
     displayName: profile.display_name,
     avatarUrl: profile.avatar_url,
     about: profile.about,

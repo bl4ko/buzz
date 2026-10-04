@@ -648,7 +648,6 @@ export function CustomChannelSection({
                         : undefined
                     }
                     asChild
-                    className={section.icon ? undefined : "pl-8"}
                   >
                     <button
                       aria-controls={contentId}

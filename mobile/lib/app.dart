@@ -472,6 +472,8 @@ class _SettingsPageContent extends ConsumerWidget {
       profileHeader: const SettingsProfileHeader(),
       profileEditPageBuilder: (_) =>
           const ProfileEditPage(startInPhotoEditor: true),
+      profileMediaPageBuilder: (_) =>
+          const ProfileEditPage(refreshOnOpen: true),
       onSetStatus: (context) => showSetStatusSheet(
         context,
         currentStatus: ref.read(userStatusProvider).asData?.value,

@@ -25,6 +25,7 @@ import 'image_avatar_capture.dart';
 import 'profile_avatar_editor.dart';
 import 'profile_avatar_draft.dart';
 import 'profile_provider.dart';
+import 'profile_media.dart';
 import 'profile_text_editor.dart';
 
 /// Edits the current user's public profile metadata.
@@ -33,12 +34,14 @@ class ProfileEditPage extends HookConsumerWidget {
   const ProfileEditPage({
     super.key,
     this.startInPhotoEditor = false,
+    this.refreshOnOpen = false,
     this.animatedAvatarCaptureBuilder,
     this.imageAvatarCaptureBuilder,
   });
 
   /// Opens directly into the photo editor when launched from Settings.
   final bool startInPhotoEditor;
+  final bool refreshOnOpen;
 
   /// Overrides animated capture for focused integration tests.
   final AnimatedAvatarCaptureBuilder? animatedAvatarCaptureBuilder;
@@ -51,6 +54,16 @@ class ProfileEditPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    useEffect(() {
+      if (!refreshOnOpen) {
+        return null;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted)
+          unawaited(ref.read(profileProvider.notifier).refresh());
+      });
+      return null;
+    }, const []);
     final profileAsync = ref.watch(profileProvider);
     final profile = profileAsync.asData?.value;
     final profileHydrated = profileAsync.hasValue;
@@ -440,6 +453,7 @@ class ProfileEditPage extends HookConsumerWidget {
                     handoff: avatarHandoff,
                     onEditPhoto: profileHydrated ? openAvatarEditor : null,
                   ),
+                  ProfileMediaEditor(profile: profile),
                   AppListCard(
                     key: const ValueKey('profile-info-card'),
                     dividerIndent: Grid.xs,

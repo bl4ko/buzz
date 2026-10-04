@@ -958,6 +958,10 @@ pub enum UsersCmd {
         /// NIP-05 identifier (e.g. user@example.com)
         #[arg(long)]
         nip05: Option<String>,
+        #[arg(long)]
+        banner: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
     },
     /// Get presence status for users
     Presence {
