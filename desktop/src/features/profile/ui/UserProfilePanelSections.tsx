@@ -1,3 +1,7 @@
+import {
+  ProfileMedia,
+  ProfileMediaEditor,
+} from "@/features/profile/ui/ProfileMedia";
 import * as React from "react";
 import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
 
@@ -394,6 +398,15 @@ export function ProfileSummaryView({
       data-testid="user-profile-summary-scroll-layout"
       ref={stickyLayoutRef}
     >
+      {isBot && isOwner && !isSelf && profile?.ownerPubkey ? (
+        <ProfileMediaEditor
+          key={profile.pubkey}
+          profile={profile}
+          agentPubkey={profile.pubkey}
+        />
+      ) : (
+        <ProfileMedia profile={profile} />
+      )}
       <div
         className={cn(isBot && "sticky top-0 z-40 -mx-4 px-4")}
         data-testid={isBot ? "user-profile-sticky-hero" : undefined}

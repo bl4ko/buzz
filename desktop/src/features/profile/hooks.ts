@@ -78,6 +78,8 @@ async function persistSelfProfile(
     displayName: profile.displayName,
     avatarUrl: profile.avatarUrl,
     about: profile.about,
+    bannerUrl: profile.bannerUrl,
+    modelUrl: profile.modelUrl,
     avatarDataUrl,
     updatedAt: Date.now(),
     // Only persist the presence bit when true — no-event fallbacks
@@ -112,6 +114,8 @@ export function useProfileQuery(enabled = true) {
             displayName: cached.displayName,
             avatarUrl: cached.avatarUrl,
             about: cached.about,
+            bannerUrl: cached.bannerUrl,
+            modelUrl: cached.modelUrl,
             nip05Handle: null,
             ownerPubkey: null,
             // Only true when the cache entry was explicitly written with a

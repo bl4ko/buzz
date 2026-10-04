@@ -43,6 +43,8 @@ ParsedProfileEvent parseProfileEvent(NostrEvent event) {
       pubkey: data.pubkey.toLowerCase(),
       displayName: data.displayName,
       avatarUrl: data.avatarUrl,
+      bannerUrl: data.bannerUrl,
+      modelUrl: data.modelUrl,
       about: data.about,
       nip05Handle: data.nip05,
       ownerPubkey: verifiedOaOwnerPubkey(event.tags, event.pubkey),

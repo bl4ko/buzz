@@ -315,6 +315,11 @@ pub fn profile_info_from_event(event: &Event) -> Result<ProfileInfo, String> {
     let nip05_handle = v.get("nip05").and_then(Value::as_str).map(str::to_string);
 
     Ok(ProfileInfo {
+        banner_url: v.get("banner").and_then(Value::as_str).map(str::to_string),
+        model_url: v
+            .get("buzz_model")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         pubkey: event.pubkey.to_hex(),
         display_name,
         avatar_url,

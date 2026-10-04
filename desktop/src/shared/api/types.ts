@@ -93,6 +93,8 @@ export type AddChannelMembersResult = {
 export type { Identity, IdentityStorage } from "./identityTypes";
 
 export type Profile = {
+  bannerUrl?: string | null;
+  modelUrl?: string | null;
   pubkey: string;
   displayName: string | null;
   avatarUrl: string | null;
@@ -138,6 +140,11 @@ export type UserSearchPage = {
 };
 
 export type UpdateProfileInput = {
+  agentPubkey?: string;
+  expectedPubkey?: string;
+  relayUrl?: string;
+  bannerUrl?: string;
+  modelUrl?: string;
   displayName?: string;
   avatarUrl?: string;
   about?: string;

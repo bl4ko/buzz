@@ -312,7 +312,7 @@ async fn non_media_external_and_inline_avatars_are_not_fetched() {
         .unwrap()
         .requests
         .iter()
-        .all(|(kind, _)| kind == "profile"));
+        .all(|(kind, _)| kind == "profile" || kind == "query"));
 }
 
 #[test]

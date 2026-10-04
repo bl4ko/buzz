@@ -7,6 +7,8 @@ class UserProfile {
   final String pubkey;
   final String? displayName;
   final String? avatarUrl;
+  final String? bannerUrl;
+  final String? modelUrl;
   final String? about;
   final String? nip05Handle;
 
@@ -20,6 +22,8 @@ class UserProfile {
     required this.pubkey,
     this.displayName,
     this.avatarUrl,
+    this.bannerUrl,
+    this.modelUrl,
     this.about,
     this.nip05Handle,
     this.ownerPubkey,
@@ -29,6 +33,8 @@ class UserProfile {
     pubkey: json['pubkey'] as String,
     displayName: json['display_name'] as String?,
     avatarUrl: json['avatar_url'] as String?,
+    bannerUrl: json['banner_url'] as String?,
+    modelUrl: json['model_url'] as String?,
     about: json['about'] as String?,
     nip05Handle: json['nip05_handle'] as String?,
   );

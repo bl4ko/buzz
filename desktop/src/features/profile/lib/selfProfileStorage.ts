@@ -28,6 +28,8 @@ export const MAX_SELF_PROFILE_CACHES = 32;
 export const SELF_PROFILE_CACHE_EVENT = "buzz:self-profile-cache";
 
 export type SelfProfileCache = {
+  bannerUrl?: string | null;
+  modelUrl?: string | null;
   version: 1;
   displayName: string | null;
   /** Original relay URL from the kind-0 profile event. */
@@ -102,6 +104,8 @@ export function parseSelfProfileCache(json: unknown): SelfProfileCache | null {
 
   return {
     version: 1,
+    ...(typeof obj.bannerUrl === "string" && { bannerUrl: obj.bannerUrl }),
+    ...(typeof obj.modelUrl === "string" && { modelUrl: obj.modelUrl }),
     displayName,
     avatarUrl,
     about,

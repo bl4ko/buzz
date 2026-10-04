@@ -6,13 +6,11 @@ use tauri::State;
 
 use crate::{
     app_state::AppState,
-    events,
     managed_agents::persona_events::monotonic_created_at,
     models::{ProfileInfo, SearchUsersResponse, UserNotesResponse, UsersBatchResponse},
     nostr_convert,
     relay::{
-        query_relay, query_relay_at_with_keys, relay_http_base_url, submit_event,
-        submit_event_at_with_keys,
+        query_relay, query_relay_at_with_keys, relay_http_base_url, submit_event_at_with_keys,
     },
 };
 
@@ -40,24 +38,51 @@ pub async fn get_profile(state: State<'_, AppState>) -> Result<ProfileInfo, Stri
 pub async fn update_profile(
     display_name: Option<String>,
     avatar_url: Option<String>,
+    banner_url: Option<String>,
+    model_url: Option<String>,
+    agent_pubkey: Option<String>,
+    expected_pubkey: Option<String>,
+    relay_url: Option<String>,
     about: Option<String>,
     nip05_handle: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProfileInfo, String> {
     // Read-merge-write: kind 0 is a full profile snapshot.
     let my_pubkey = current_pubkey_hex(&state)?;
-    let prior_events = query_relay(
-        &state,
-        &[serde_json::json!({
-            "kinds": [0],
-            "authors": [my_pubkey],
-            "limit": 1
-        })],
-    )
-    .await?;
-
-    // Pull the current content as a JSON object so we can merge with
-    // the caller's overrides.
+    let signer = capture_expected_signer(&state, expected_pubkey.as_deref().unwrap_or(&my_pubkey))?;
+    let relay_url = relay_url.unwrap_or_else(|| crate::relay::relay_ws_url_with_override(&state));
+    let api_base_url = relay_http_base_url(&relay_url);
+    let filter = serde_json::json!({"kinds": [0], "authors": [my_pubkey], "limit": 1});
+    let agent_profile = if let Some(ref agent_pubkey) = agent_pubkey {
+        if display_name.is_some()
+            || avatar_url.is_some()
+            || about.is_some()
+            || nip05_handle.is_some()
+        {
+            return Err("agent media update cannot change identity fields".to_string());
+        }
+        let events = query_relay_at_with_keys(
+            &state,
+            &api_base_url,
+            &[serde_json::json!({"kinds": [0], "authors": [agent_pubkey], "limit": 1})],
+            &signer,
+            None,
+        )
+        .await?;
+        let profile = events
+            .first()
+            .map(nostr_convert::profile_info_from_event)
+            .transpose()?
+            .ok_or_else(|| "agent profile is not available".to_string())?;
+        if profile.owner_pubkey.as_deref() != Some(&my_pubkey) {
+            return Err("only the verified agent owner can edit its profile media".to_string());
+        }
+        Some(profile)
+    } else {
+        None
+    };
+    let prior_events =
+        query_relay_at_with_keys(&state, &api_base_url, &[filter.clone()], &signer, None).await?;
     let current: Value = prior_events
         .first()
         .and_then(|ev| serde_json::from_str::<Value>(&ev.content).ok())
@@ -77,25 +102,68 @@ pub async fn update_profile(
         .as_deref()
         .or_else(|| current.get("nip05").and_then(Value::as_str));
 
-    let builder = events::build_profile(dn, name, picture, ab, nip05)?;
-    submit_event(builder, &state).await?;
-
-    // Re-fetch to return canonical profile.
-    let events = query_relay(
-        &state,
-        &[serde_json::json!({
-            "kinds": [0],
-            "authors": [current_pubkey_hex(&state)?],
-            "limit": 1
-        })],
-    )
-    .await?;
-
-    Ok(events
+    let mut metadata = current.as_object().cloned().unwrap_or_default();
+    for (field, value) in [
+        ("display_name", dn),
+        ("name", name),
+        ("picture", picture),
+        ("about", ab),
+        ("nip05", nip05),
+    ] {
+        if let Some(value) = value {
+            metadata.insert(field.to_string(), Value::String(value.to_string()));
+        }
+    }
+    let mut media = serde_json::Map::new();
+    for (field, value) in [("banner", banner_url), ("buzz_model", model_url)] {
+        if let Some(value) = value {
+            validate_profile_media_url(&value)?;
+            media.insert(field.to_string(), Value::String(value));
+        }
+    }
+    if let Some(ref target) = agent_pubkey {
+        let mut agents = metadata
+            .get("buzz_agent_media")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let mut visual = agents
+            .get(target)
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        visual.extend(media);
+        agents.insert(target.clone(), Value::Object(visual));
+        if agents.len() > 32 {
+            return Err("profile media supports up to 32 agents".to_string());
+        }
+        metadata.insert("buzz_agent_media".to_string(), Value::Object(agents));
+    } else {
+        metadata.extend(media);
+    }
+    let builder =
+        nostr::EventBuilder::new(nostr::Kind::Custom(0), Value::Object(metadata).to_string())
+            .tags(
+                prior_events
+                    .first()
+                    .map(|event| event.tags.clone())
+                    .unwrap_or_default(),
+            )
+            .custom_created_at(monotonic_created_at(
+                prior_events
+                    .first()
+                    .map(|event| event.created_at.as_secs() as i64),
+            ));
+    submit_event_at_with_keys(builder, &state, &api_base_url, &signer).await?;
+    let events = query_relay_at_with_keys(&state, &api_base_url, &[filter], &signer, None).await?;
+    let owner = events
         .first()
-        .map(nostr_convert::profile_info_from_event)
-        .transpose()?
-        .unwrap_or_else(|| empty_profile_info(&current_pubkey_hex_unwrap(&state))))
+        .ok_or_else(|| "profile save could not be confirmed".to_string())?;
+    if let Some(mut agent) = agent_profile {
+        apply_agent_media(&mut agent, owner)?;
+        return Ok(agent);
+    }
+    nostr_convert::profile_info_from_event(owner)
 }
 
 #[tauri::command]
@@ -152,13 +220,15 @@ fn build_deferred_profile_event(
     avatar_url: &str,
     prior_event: Option<&nostr::Event>,
 ) -> Result<nostr::EventBuilder, String> {
-    let display_name = current.get("display_name").and_then(Value::as_str);
-    let name = current.get("name").and_then(Value::as_str);
-    let about = current.get("about").and_then(Value::as_str);
-    let nip05 = current.get("nip05").and_then(Value::as_str);
-
+    let mut metadata = current.as_object().cloned().unwrap_or_default();
+    metadata.insert("picture".to_string(), Value::String(avatar_url.to_string()));
     Ok(
-        events::build_profile(display_name, name, Some(avatar_url), about, nip05)?
+        nostr::EventBuilder::new(nostr::Kind::Custom(0), Value::Object(metadata).to_string())
+            .tags(
+                prior_event
+                    .map(|event| event.tags.clone())
+                    .unwrap_or_default(),
+            )
             .custom_created_at(monotonic_created_at(
                 prior_event.map(|event| event.created_at.as_secs() as i64),
             )),
@@ -197,11 +267,22 @@ pub async fn get_user_profile(
     )
     .await?;
 
-    Ok(events
+    let mut profile = events
         .first()
         .map(nostr_convert::profile_info_from_event)
         .transpose()?
-        .unwrap_or_else(|| empty_profile_info(&target)))
+        .unwrap_or_else(|| empty_profile_info(&target));
+    if let Some(ref owner) = profile.owner_pubkey {
+        let owners = query_relay(
+            &state,
+            &[serde_json::json!({"kinds": [0], "authors": [owner], "limit": 1})],
+        )
+        .await?;
+        if let Some(event) = owners.first() {
+            apply_agent_media(&mut profile, event)?;
+        }
+    }
+    Ok(profile)
 }
 
 #[tauri::command]
@@ -401,8 +482,47 @@ fn current_pubkey_hex_unwrap(state: &AppState) -> String {
     current_pubkey_hex(state).unwrap_or_default()
 }
 
+fn apply_agent_media(profile: &mut ProfileInfo, owner: &nostr::Event) -> Result<(), String> {
+    if profile.owner_pubkey.as_deref() != Some(owner.pubkey.to_hex().as_str()) {
+        return Err("agent profile owner does not match".to_string());
+    }
+    let metadata: Value =
+        serde_json::from_str(&owner.content).map_err(|error| error.to_string())?;
+    if let Some(media) = metadata
+        .get("buzz_agent_media")
+        .and_then(|agents| agents.get(&profile.pubkey))
+    {
+        if let Some(value) = media.get("banner").and_then(Value::as_str) {
+            profile.banner_url = Some(value.to_string());
+        }
+        if let Some(value) = media.get("buzz_model").and_then(Value::as_str) {
+            profile.model_url = Some(value.to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_profile_media_url(value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Ok(());
+    }
+    let url = url::Url::parse(value).map_err(|_| "invalid profile media URL".to_string())?;
+    if url.scheme() != "https"
+        && !(url.scheme() == "http"
+            && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")))
+    {
+        return Err("profile media must use HTTPS".to_string());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("profile media URL must not contain credentials".to_string());
+    }
+    Ok(())
+}
+
 fn empty_profile_info(pubkey: &str) -> ProfileInfo {
     ProfileInfo {
+        banner_url: None,
+        model_url: None,
         pubkey: pubkey.to_string(),
         display_name: None,
         avatar_url: None,

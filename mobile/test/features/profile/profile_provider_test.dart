@@ -17,6 +17,65 @@ import 'package:nostr/nostr.dart' as nostr;
 import 'package:pointycastle/digests/sha256.dart';
 
 void main() {
+  test(
+    'a media patch preserves the other media and unknown metadata',
+    () async {
+      final keys = nostr.Keys.generate();
+      final relay = _ProfileRelaySession(
+        NostrEvent(
+          id: 'media-profile',
+          sig: '',
+          pubkey: keys.public,
+          createdAt: 1,
+          kind: EventKind.profile,
+          tags: const [],
+          content: jsonEncode({
+            'banner': 'https://example.com/banner.png',
+            'buzz_model': 'https://example.com/current.glb',
+            'custom': 'keep',
+          }),
+        ),
+      );
+      final container = _profileContainer(keys.nsec, relay);
+      addTearDown(container.dispose);
+      await container.read(profileProvider.future);
+      await container.read(profileProvider.notifier).updateMedia(bannerUrl: '');
+      final saved =
+          jsonDecode(relay.published.single.content) as Map<String, dynamic>;
+      expect(saved['banner'], '');
+      expect(saved['buzz_model'], 'https://example.com/current.glb');
+      expect(saved['custom'], 'keep');
+    },
+  );
+
+  test('agent media edits require a verified owner', () async {
+    final keys = nostr.Keys.generate();
+    final relay = _ProfileRelaySession(
+      NostrEvent(
+        id: 'unowned',
+        sig: '',
+        pubkey: keys.public,
+        createdAt: 1,
+        kind: EventKind.profile,
+        tags: const [],
+        content: '{}',
+      ),
+    );
+    final container = _profileContainer(keys.nsec, relay);
+    addTearDown(container.dispose);
+    await container.read(profileProvider.future);
+    await expectLater(
+      container
+          .read(profileProvider.notifier)
+          .updateAgentMedia(
+            agentPubkey: nostr.Keys.generate().public,
+            bannerUrl: 'https://example.com/banner.png',
+          ),
+      throwsStateError,
+    );
+    expect(relay.published, isEmpty);
+  });
+
   test('profile updates preserve existing kind:0 metadata', () async {
     final keys = nostr.Keys.generate();
     final owner = nostr.Keys.generate();

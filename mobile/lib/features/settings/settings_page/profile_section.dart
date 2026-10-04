@@ -3,11 +3,13 @@ part of '../settings_page.dart';
 class _ProfileSection extends StatelessWidget {
   const _ProfileSection({
     required this.profileEditPageBuilder,
+    required this.profileMediaPageBuilder,
     this.onEditDisplayName,
     this.onEditProfileDescription,
   });
 
   final WidgetBuilder profileEditPageBuilder;
+  final WidgetBuilder profileMediaPageBuilder;
   final Future<void> Function(BuildContext context)? onEditDisplayName;
   final Future<void> Function(BuildContext context)? onEditProfileDescription;
 
@@ -17,6 +19,17 @@ class _ProfileSection extends StatelessWidget {
     dividerIndent: Grid.xs,
     verticalPadding: Grid.twelve,
     children: [
+      AppListRow(
+        key: const ValueKey('edit-profile-media'),
+        title: 'Banner and 3D model',
+        trailing: const _RowChevron(),
+        onTap: () {
+          unawaited(HapticFeedback.selectionClick());
+          Navigator.of(
+            context,
+          ).push(immediatePageRoute<void>(builder: profileMediaPageBuilder));
+        },
+      ),
       AppListRow(
         key: const ValueKey('edit-profile-display-name'),
         title: 'Display name',

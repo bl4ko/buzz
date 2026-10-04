@@ -28,6 +28,10 @@ pub struct IdentityInfo {
 
 #[derive(Serialize, Deserialize)]
 pub struct ProfileInfo {
+    #[serde(default)]
+    pub banner_url: Option<String>,
+    #[serde(default)]
+    pub model_url: Option<String>,
     pub pubkey: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
