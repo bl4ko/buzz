@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:nostr/nostr.dart' as nostr;
@@ -252,6 +254,43 @@ void main() {
   });
 
   group('buildDeleteMessageTags', () {
+    test('message deletion submits signed channel kind 9005', () async {
+      final keys = nostr.Keys.generate();
+      final session = _RecordingPublishRelaySession();
+      final actionsProvider = Provider<ChannelActions>((ref) {
+        return ChannelActions(
+          ref: ref,
+          session: session,
+          signedEventRelay: SignedEventRelay(session: session, nsec: keys.nsec),
+          currentPubkey: keys.public,
+        );
+      });
+      final container = ProviderContainer(retry: (_, _) => null);
+      addTearDown(container.dispose);
+
+      await container
+          .read(actionsProvider)
+          .deleteMessage(channelId: _channelId, eventId: 'abc123');
+      final event = session.publishedEvents.single;
+      expect(event.kind, 9005);
+      expect(event.pubkey, keys.public);
+      expect(event.content, isEmpty);
+      expect(event.tags, [
+        ['h', _channelId],
+        ['e', 'abc123'],
+      ]);
+      expect(
+        nostr.Event.fromJson(jsonEncode(event.toJson())).isValid(),
+        isTrue,
+      );
+
+      await container.read(actionsProvider).removeReaction('reaction-id', '👍');
+      expect(session.publishedEvents.last.kind, 5);
+      expect(session.publishedEvents.last.tags, [
+        ['e', 'reaction-id'],
+      ]);
+    });
+
     test('emits both channel h tag and target e tag', () {
       final tags = buildDeleteMessageTags(
         channelId: 'c8c629ae-d35c-44fa-bc39-f6c1816756cc',

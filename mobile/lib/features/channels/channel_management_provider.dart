@@ -639,8 +639,6 @@ final channelCanvasProvider = FutureProvider.family<ChannelCanvas, String>((
   );
 });
 
-/// Channel-scoped kind:5 deletion tags. The `h` tag lets channel-scoped
-/// subscriptions observe the delete; the `e` tag points at the target event.
 @visibleForTesting
 List<List<String>> buildDeleteMessageTags({
   required String channelId,

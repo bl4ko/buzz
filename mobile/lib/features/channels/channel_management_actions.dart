@@ -370,7 +370,7 @@ class ChannelActions {
   }) async {
     _ensureCommunityValid();
     await _signedEventRelay.submit(
-      kind: EventKind.deletion,
+      kind: EventKind.nip29DeleteEvent,
       content: '',
       tags: buildDeleteMessageTags(channelId: channelId, eventId: eventId),
     );
