@@ -58,8 +58,10 @@ class AppTheme {
   static ThemeData dark({
     ColorScheme? colorScheme,
     Gradient? topSectionGradient,
+    String? themeName,
   }) {
     final scheme = colorScheme ?? darkColorScheme;
+    final storm = themeName == 'tokyo-night-storm';
     final appColors = AppColors(
       success: const Color(0xFF3DD68C), // Desktop green-11
       warning: const Color(0xFFFFCA16), // Desktop amber-11
@@ -71,6 +73,11 @@ class AppTheme {
       ),
       onHuddleDrawer: scheme.onPrimaryContainer,
       topSectionGradient: topSectionGradient,
+      messageHeading: storm ? const Color(0xFF7AA2F7) : null,
+      messageStrong: storm ? const Color(0xFFBB9AF7) : null,
+      messageCode: storm ? const Color(0xFF9ECE6A) : null,
+      messageLink: storm ? const Color(0xFF7DCFFF) : null,
+      messageAuthor: storm ? const Color(0xFF7AA2F7) : null,
     );
 
     return _buildTheme(

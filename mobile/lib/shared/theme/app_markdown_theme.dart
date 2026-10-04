@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
 import 'app_theme.dart';
+import 'app_colors.dart';
 import 'code_style.dart';
 
 /// States the app's code style on every `GptMarkdown` below it and leaves the
@@ -32,7 +33,17 @@ class AppMarkdownTheme extends HookWidget {
     // what it is derived from changes.
     final data = useMemoized(() {
       final scheme = theme.colorScheme;
-      return GptMarkdownTheme.of(context).copyWith(
+      final colors = theme.extension<AppColors>();
+      final ambient = GptMarkdownTheme.of(context);
+      return ambient.copyWith(
+        h1: ambient.h1?.copyWith(color: colors?.messageHeading),
+        h2: ambient.h2?.copyWith(color: colors?.messageHeading),
+        h3: ambient.h3?.copyWith(color: colors?.messageHeading),
+        h4: ambient.h4?.copyWith(color: colors?.messageHeading),
+        h5: ambient.h5?.copyWith(color: colors?.messageHeading),
+        h6: ambient.h6?.copyWith(color: colors?.messageHeading),
+        linkColor: colors?.messageLink,
+        linkHoverColor: colors?.messageLink,
         // Inline code is otherwise drawn in gpt_markdown's own bundled face, at
         // its own size, tinted from `onSurface`. Stating the app's code style
         // gives every Markdown surface the face, size and chip colours a fenced
@@ -40,7 +51,7 @@ class AppMarkdownTheme extends HookWidget {
         inlineCode: InlineCodeStyle(
           fontFamily: CodeStyle.fontFamily,
           fontSizeFactor: CodeStyle.fontSizeFactor,
-          color: scheme.onSurface,
+          color: colors?.messageCode ?? scheme.onSurface,
           backgroundColor: CodeStyle.background(scheme),
           borderColor: CodeStyle.border(scheme),
           // A chip is small, so it takes the smallest step of the app's radius

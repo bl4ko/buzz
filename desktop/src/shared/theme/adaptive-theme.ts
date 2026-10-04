@@ -215,7 +215,13 @@ export function createThemeVars(
   syntaxFg: string,
   syntaxComment: string,
   gitColors?: ThemeGitColors,
+  themeName?: string,
 ): ThemeResult {
+  const storm = themeName === "tokyo-night-storm";
+  if (storm) {
+    syntaxFg = "#c0caf5";
+    syntaxComment = "#9aa5ce";
+  }
   const isDark = luminance(syntaxBg) < 0.5;
 
   const { chrome: chromeColor, primary: primaryBg } =
@@ -288,6 +294,13 @@ export function createThemeVars(
       "--muted-foreground": hexToHsl(syntaxComment),
       "--accent-foreground": textFg,
       "--secondary-foreground": textFg,
+      "--message-heading-foreground": storm ? hexToHsl("#7aa2f7") : textFg,
+      "--message-strong-foreground": storm ? hexToHsl("#bb9af7") : textFg,
+      "--message-code-foreground": storm ? hexToHsl("#9ece6a") : "inherit",
+      "--message-link-foreground": storm
+        ? hexToHsl("#7dcfff")
+        : "var(--primary)",
+      "--message-author-foreground": storm ? hexToHsl("#7aa2f7") : textFg,
 
       // Destructive
       "--destructive": hexToHsl(destructiveColor),

@@ -8,6 +8,11 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color huddleDrawerSurface;
   final Color huddleControlSurface;
   final Color onHuddleDrawer;
+  final Color? messageHeading;
+  final Color? messageStrong;
+  final Color? messageCode;
+  final Color? messageLink;
+  final Color? messageAuthor;
 
   /// Gradient for the app's top section, non-null only under the Buzz themes.
   /// Carried on the theme rather than read from a provider so any surface can
@@ -22,6 +27,11 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.huddleControlSurface,
     required this.onHuddleDrawer,
     this.topSectionGradient,
+    this.messageHeading,
+    this.messageStrong,
+    this.messageCode,
+    this.messageLink,
+    this.messageAuthor,
   });
 
   @override
@@ -33,6 +43,11 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? huddleControlSurface,
     Color? onHuddleDrawer,
     Gradient? topSectionGradient,
+    Color? messageHeading,
+    Color? messageStrong,
+    Color? messageCode,
+    Color? messageLink,
+    Color? messageAuthor,
   }) => AppColors(
     success: success ?? this.success,
     warning: warning ?? this.warning,
@@ -41,6 +56,11 @@ class AppColors extends ThemeExtension<AppColors> {
     huddleControlSurface: huddleControlSurface ?? this.huddleControlSurface,
     onHuddleDrawer: onHuddleDrawer ?? this.onHuddleDrawer,
     topSectionGradient: topSectionGradient ?? this.topSectionGradient,
+    messageHeading: messageHeading ?? this.messageHeading,
+    messageStrong: messageStrong ?? this.messageStrong,
+    messageCode: messageCode ?? this.messageCode,
+    messageLink: messageLink ?? this.messageLink,
+    messageAuthor: messageAuthor ?? this.messageAuthor,
   );
 
   @override
@@ -66,6 +86,11 @@ class AppColors extends ThemeExtension<AppColors> {
         other.topSectionGradient,
         t,
       ),
+      messageHeading: Color.lerp(messageHeading, other.messageHeading, t),
+      messageStrong: Color.lerp(messageStrong, other.messageStrong, t),
+      messageCode: Color.lerp(messageCode, other.messageCode, t),
+      messageLink: Color.lerp(messageLink, other.messageLink, t),
+      messageAuthor: Color.lerp(messageAuthor, other.messageAuthor, t),
     );
   }
 }

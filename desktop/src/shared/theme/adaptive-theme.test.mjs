@@ -56,3 +56,41 @@ test("destructive controls stay readable in every bundled theme", async () => {
     );
   }
 });
+
+test("Storm separates readable message colors from the button accent", async () => {
+  const info = extractThemeInfo(
+    "tokyo-night-storm",
+    await loadThemeData("tokyo-night-storm"),
+  );
+  const { vars } = createThemeVars(
+    info.bg,
+    info.fg,
+    info.comment,
+    undefined,
+    info.name,
+  );
+  const roles = [
+    "--foreground",
+    "--muted-foreground",
+    "--message-heading-foreground",
+    "--message-strong-foreground",
+    "--message-code-foreground",
+    "--message-link-foreground",
+    "--message-author-foreground",
+  ];
+  for (const role of roles) {
+    for (const surface of ["--background", "--popover", "--muted"]) {
+      assert.ok(
+        contrast(hslToHex(vars[role]), hslToHex(vars[surface])) >= 4.5,
+        `${role} must remain readable on ${surface}`,
+      );
+    }
+  }
+  assert.notEqual(vars["--message-heading-foreground"], vars["--foreground"]);
+  assert.notEqual(vars["--message-strong-foreground"], vars["--foreground"]);
+  assert.notEqual(vars["--message-code-foreground"], vars["--foreground"]);
+  assert.equal(info.fg, "#a9b1d6");
+  assert.equal(info.comment, "#5f6996");
+  const other = createThemeVars(info.bg, info.fg, info.comment);
+  assert.notEqual(other.vars["--foreground"], vars["--foreground"]);
+});
