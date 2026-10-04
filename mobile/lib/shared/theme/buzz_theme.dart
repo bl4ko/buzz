@@ -46,15 +46,9 @@ Color navigationSecondaryForeground(BuildContext context) {
 ///
 /// Section labels need more hierarchy than a placeholder. Buzz therefore uses
 /// a stronger neutral over its gradient.
-Color navigationSectionForeground(BuildContext context, {String label = ''}) {
-  final colors = Theme.of(context).extension<AppColors>()?.sectionColors;
-  if (colors != null && colors.isNotEmpty && label.isNotEmpty) {
-    var index = 0;
-    for (final unit in label.trim().toLowerCase().codeUnits) {
-      index = (index * 31 + unit) % colors.length;
-    }
-    return colors[index];
-  }
+Color navigationSectionForeground(BuildContext context) {
+  final color = Theme.of(context).extension<AppColors>()?.sectionForeground;
+  if (color != null) return color;
   final scheme = Theme.of(context).colorScheme;
   if (!isBuzzThemeContext(context)) return scheme.onSurfaceVariant;
   return navigationPrimaryForeground(context).withValues(alpha: 0.8);

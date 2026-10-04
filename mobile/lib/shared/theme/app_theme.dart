@@ -76,18 +76,7 @@ class AppTheme {
       messageCode: storm ? const Color(0xFF9ECE6A) : null,
       messageLink: storm ? const Color(0xFF7DCFFF) : null,
       messageAuthor: storm ? const Color(0xFF7AA2F7) : null,
-      sectionColors: storm
-          ? const [
-              Color(0xFF7AA2F7),
-              Color(0xFF73DACA),
-              Color(0xFF9ECE6A),
-              Color(0xFFBB9AF7),
-              Color(0xFF7DCFFF),
-              Color(0xFFF7768E),
-              Color(0xFFB4F9F8),
-              Color(0xFFE0AF68),
-            ]
-          : null,
+      sectionForeground: storm ? const Color(0xFF7AA2F7) : null,
     );
 
     return _buildTheme(

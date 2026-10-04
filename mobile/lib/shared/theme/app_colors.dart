@@ -13,7 +13,7 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color? messageCode;
   final Color? messageLink;
   final Color? messageAuthor;
-  final List<Color>? sectionColors;
+  final Color? sectionForeground;
 
   /// Gradient for the app's top section, non-null only under the Buzz themes.
   /// Carried on the theme rather than read from a provider so any surface can
@@ -34,7 +34,7 @@ class AppColors extends ThemeExtension<AppColors> {
     this.messageCode,
     this.messageLink,
     this.messageAuthor,
-    this.sectionColors,
+    this.sectionForeground,
   });
 
   @override
@@ -51,7 +51,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? messageCode,
     Color? messageLink,
     Color? messageAuthor,
-    List<Color>? sectionColors,
+    Color? sectionForeground,
   }) => AppColors(
     success: success ?? this.success,
     warning: warning ?? this.warning,
@@ -65,7 +65,7 @@ class AppColors extends ThemeExtension<AppColors> {
     messageCode: messageCode ?? this.messageCode,
     messageLink: messageLink ?? this.messageLink,
     messageAuthor: messageAuthor ?? this.messageAuthor,
-    sectionColors: sectionColors ?? this.sectionColors,
+    sectionForeground: sectionForeground ?? this.sectionForeground,
   );
 
   @override
@@ -96,16 +96,11 @@ class AppColors extends ThemeExtension<AppColors> {
       messageCode: Color.lerp(messageCode, other.messageCode, t),
       messageLink: Color.lerp(messageLink, other.messageLink, t),
       messageAuthor: Color.lerp(messageAuthor, other.messageAuthor, t),
-      sectionColors: sectionColors == null || other.sectionColors == null
-          ? (t < 0.5 ? sectionColors : other.sectionColors)
-          : List.generate(
-              sectionColors!.length,
-              (index) => Color.lerp(
-                sectionColors![index],
-                other.sectionColors![index],
-                t,
-              )!,
-            ),
+      sectionForeground: Color.lerp(
+        sectionForeground,
+        other.sectionForeground,
+        t,
+      ),
     );
   }
 }

@@ -312,7 +312,7 @@ function ChannelSectionHeader({
         asChild
         style={
           themeName === "tokyo-night-storm"
-            ? { color: sectionForeground(title) }
+            ? { color: sectionForeground() }
             : undefined
         }
       >
@@ -644,7 +644,7 @@ export function CustomChannelSection({
                   <SidebarGroupLabel
                     style={
                       themeName === "tokyo-night-storm"
-                        ? { color: sectionForeground(section.name) }
+                        ? { color: sectionForeground() }
                         : undefined
                     }
                     asChild

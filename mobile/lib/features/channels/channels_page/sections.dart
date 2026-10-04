@@ -115,10 +115,7 @@ class _CustomSectionHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final sectionColor = navigationSectionForeground(
-      context,
-      label: section.name,
-    );
+    final sectionColor = navigationSectionForeground(context);
     final icon = section.icon;
     final customEmoji = icon == null
         ? null
@@ -532,7 +529,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sectionColor = navigationSectionForeground(context, label: label);
+    final sectionColor = navigationSectionForeground(context);
 
     return GestureDetector(
       onTap: onToggle,
