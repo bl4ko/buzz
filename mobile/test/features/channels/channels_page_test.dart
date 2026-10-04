@@ -99,6 +99,7 @@ void main() {
   Widget buildTestable({
     required List<Override> overrides,
     Brightness brightness = Brightness.light,
+    ThemeData? theme,
     double keyboardInset = 0,
     bool disableAnimations = false,
     double bottomPadding = 0,
@@ -130,9 +131,11 @@ void main() {
       ],
       child: MaterialApp(
         navigatorObservers: [appRouteObserver],
-        theme: brightness == Brightness.dark
-            ? AppTheme.dark()
-            : AppTheme.light(topSectionGradient: topSectionGradient),
+        theme:
+            theme ??
+            (brightness == Brightness.dark
+                ? AppTheme.dark()
+                : AppTheme.light(topSectionGradient: topSectionGradient)),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
             disableAnimations: disableAnimations,
@@ -1036,6 +1039,39 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(scrollable.position.pixels, scrollable.position.minScrollExtent);
+  });
+
+  testWidgets('Storm colors custom section labels in the channel list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildTestable(
+        theme: AppTheme.dark(themeName: 'tokyo-night-storm'),
+        overrides: [
+          channelsProvider.overrideWith(() => _FakeNotifier(testChannels)),
+          channelSectionsProvider.overrideWith(
+            () => _FakeChannelSectionsNotifier(
+              const ChannelSectionStore(
+                sections: [
+                  ChannelSection(id: 'agents', name: 'Agents', order: 0),
+                  ChannelSection(id: 'alerts', name: 'Alerts', order: 1),
+                ],
+                assignments: {'1': 'agents', '2': 'alerts'},
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.text('Agents')).style?.color,
+      const Color(0xFFB4F9F8),
+    );
+    expect(
+      tester.widget<Text>(find.text('Alerts')).style?.color,
+      const Color(0xFFE0AF68),
+    );
   });
 
   testWidgets('custom sections group channels and DMs without duplicate rows', (

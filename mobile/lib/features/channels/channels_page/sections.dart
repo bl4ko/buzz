@@ -114,7 +114,10 @@ class _CustomSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sectionColor = navigationHeadingForeground(context);
+    final sectionColor = navigationHeadingForeground(
+      context,
+      label: section.name,
+    );
     return GestureDetector(
       onTap: onToggle,
       behavior: HitTestBehavior.opaque,
@@ -458,7 +461,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sectionColor = navigationHeadingForeground(context);
+    final sectionColor = navigationHeadingForeground(context, label: label);
 
     return GestureDetector(
       onTap: onToggle,
