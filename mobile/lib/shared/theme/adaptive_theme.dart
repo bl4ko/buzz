@@ -100,8 +100,9 @@ Color _findColorWithLuminance(Color base, double targetLum) {
 ColorScheme generateColorScheme(ThemeColors theme) {
   final isDark = theme.isDark;
   final syntaxBg = theme.bg;
-  final syntaxFg = theme.fg;
-  final syntaxComment = theme.comment;
+  final storm = theme.name == 'tokyo-night-storm';
+  final syntaxFg = storm ? const Color(0xFFC0CAF5) : theme.fg;
+  final syntaxComment = storm ? const Color(0xFF9AA5CE) : theme.comment;
 
   final (:chrome, :primary) = _calculateChromeColors(syntaxBg);
 

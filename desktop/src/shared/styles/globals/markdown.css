@@ -388,3 +388,27 @@
 .dark .code-line-diff-remove {
   background-color: hsl(0 60% 50% / 0.12);
 }
+
+[data-syntax-theme="tokyo-night-storm"] .message-author {
+  color: hsl(var(--message-author-foreground));
+}
+
+[data-syntax-theme="tokyo-night-storm"]
+  .message-markdown
+  :is(h1, h2, h3, h4, h5, h6) {
+  color: hsl(var(--message-heading-foreground));
+}
+
+[data-syntax-theme="tokyo-night-storm"] .message-markdown strong {
+  color: hsl(var(--message-strong-foreground));
+}
+
+[data-syntax-theme="tokyo-night-storm"] .message-markdown .inline-code-chip {
+  color: hsl(var(--message-code-foreground));
+}
+
+[data-syntax-theme="tokyo-night-storm"]
+  .message-markdown
+  a:not(.mention-chip):not(.inline-channel-chip) {
+  color: hsl(var(--message-link-foreground));
+}

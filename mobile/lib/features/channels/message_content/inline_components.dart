@@ -68,7 +68,12 @@ List<MarkdownComponent> _useMessageInlineComponents({
       ),
       _MarkdownLabelEntityMd(),
       for (final component in MarkdownComponent.inlineComponents)
-        component is ATagMd ? _MessageLinkMd() : component,
+        if (component is BoldMd)
+          _ThemedBoldMd()
+        else if (component is ATagMd)
+          _MessageLinkMd()
+        else
+          component,
     ],
     [inputs],
   );

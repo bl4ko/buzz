@@ -260,6 +260,7 @@ function resolveEffectiveAccent(
 
 /** Toggle the Buzz-specific gradient marker independently from glass. */
 function applyBuzzSidebar(themeName: string) {
+  document.documentElement.setAttribute("data-syntax-theme", themeName);
   const root = document.documentElement;
   if (isBuzzTheme(themeName)) {
     root.setAttribute("data-buzz-sidebar", "");
@@ -435,11 +436,17 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
   if (requestToken !== themeApplyRequest) return null;
 
   const info = extractThemeInfo(name, themeData);
-  const { isDark, vars } = createThemeVars(info.bg, info.fg, info.comment, {
-    added: info.added,
-    deleted: info.deleted,
-    modified: info.modified,
-  });
+  const { isDark, vars } = createThemeVars(
+    info.bg,
+    info.fg,
+    info.comment,
+    {
+      added: info.added,
+      deleted: info.deleted,
+      modified: info.modified,
+    },
+    info.name,
+  );
 
   const root = document.documentElement;
   for (const [key, value] of Object.entries(vars)) {

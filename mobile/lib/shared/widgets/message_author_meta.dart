@@ -64,7 +64,10 @@ class MessageAuthorMeta extends StatelessWidget {
         normalizedUsername != null &&
         normalizedUsername.isNotEmpty &&
         normalizedUsername != displayName.trim();
-    final resolvedNameStyle = nameStyle.copyWith(color: nameColor);
+    final resolvedNameStyle = nameStyle.copyWith(
+      color:
+          Theme.of(context).extension<AppColors>()?.messageAuthor ?? nameColor,
+    );
     final resolvedMetadataStyle = metadataStyle.copyWith(color: metadataColor);
     final resolvedTimestampStyle = timestampStyle.copyWith(
       color: metadataColor,

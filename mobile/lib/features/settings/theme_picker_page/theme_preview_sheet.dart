@@ -380,7 +380,11 @@ class _ThemeDevicePairPreview extends StatelessWidget {
     final scheme = applyAccent(base, effectiveAccent);
     final gradient = buzzTopSectionGradient(displayed.name, scheme.brightness);
     final previewTheme = scheme.brightness == Brightness.dark
-        ? AppTheme.dark(colorScheme: scheme, topSectionGradient: gradient)
+        ? AppTheme.dark(
+            colorScheme: scheme,
+            topSectionGradient: gradient,
+            themeName: displayed.name,
+          )
         : AppTheme.light(colorScheme: scheme, topSectionGradient: gradient);
 
     return Row(

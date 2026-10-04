@@ -403,6 +403,7 @@ class App extends HookConsumerWidget {
       darkTheme: AppTheme.dark(
         colorScheme: darkScheme,
         topSectionGradient: buzzDarkGradient,
+        themeName: resolved.darkTheme?.name,
       ),
       themeMode: effectiveMode,
       // Above the navigator, so an age restriction cannot be bypassed by a

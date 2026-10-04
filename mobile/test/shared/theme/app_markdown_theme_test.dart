@@ -4,6 +4,9 @@ import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:buzz/shared/theme/app_markdown_theme.dart';
 import 'package:buzz/shared/theme/app_theme.dart';
 import 'package:buzz/shared/theme/code_style.dart';
+import 'package:buzz/shared/theme/adaptive_theme.dart';
+import 'package:buzz/shared/theme/theme_catalog.dart';
+import 'package:buzz/shared/theme/app_colors.dart';
 
 /// The Markdown theme a widget reads under [theme], with [wrapped] deciding
 /// whether the app states its code style above it.
@@ -33,6 +36,43 @@ Future<GptMarkdownThemeData> _markdownTheme(
 }
 
 void main() {
+  testWidgets(
+    'Storm message colors are readable and independent of the accent',
+    (tester) async {
+      final storm = findTheme('tokyo-night-storm')!;
+      final scheme = generateColorScheme(
+        storm,
+      ).copyWith(primary: const Color(0xFF00BCD4));
+      final theme = AppTheme.dark(colorScheme: scheme, themeName: storm.name);
+      final stated = await _markdownTheme(tester, theme, wrapped: true);
+      final colors = theme.extension<AppColors>()!;
+      expect(stated.h1?.color, const Color(0xFF7AA2F7));
+      expect(stated.h6?.color, const Color(0xFF7AA2F7));
+      expect(stated.inlineCode.color, const Color(0xFF9ECE6A));
+      expect(stated.linkColor, const Color(0xFF7DCFFF));
+      expect(colors.messageAuthor, const Color(0xFF7AA2F7));
+      expect(scheme.primary, const Color(0xFF00BCD4));
+      for (final color in [
+        scheme.onSurface,
+        scheme.onSurfaceVariant,
+        colors.messageHeading!,
+        colors.messageCode!,
+        colors.messageLink!,
+        colors.messageAuthor!,
+      ]) {
+        for (final surface in [
+          scheme.surface,
+          scheme.surfaceContainerHigh,
+          scheme.surfaceContainerHighest,
+        ]) {
+          final a = color.computeLuminance();
+          final b = surface.computeLuminance();
+          expect((a + 0.05) / (b + 0.05), greaterThanOrEqualTo(4.5));
+        }
+      }
+    },
+  );
+
   testWidgets('states inline code and leaves the rest of Markdown alone', (
     tester,
   ) async {

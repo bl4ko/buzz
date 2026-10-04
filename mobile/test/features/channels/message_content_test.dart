@@ -373,6 +373,71 @@ class _TestChannelsNotifier extends ChannelsNotifier {
 }
 
 void main() {
+  testWidgets(
+    'Storm colors bold message text without changing its button accent',
+    (tester) async {
+      final storm = findTheme('tokyo-night-storm')!;
+      final scheme = generateColorScheme(
+        storm,
+      ).copyWith(primary: const Color(0xFF00BCD4));
+      final theme = AppTheme.dark(colorScheme: scheme, themeName: storm.name);
+      await tester.pumpWidget(
+        _testable(
+          Theme(
+            data: theme,
+            child: const AppMarkdownTheme(
+              child: MessageContent(
+                content: 'This is **bold** text and `code`.',
+                baseStyle: TextStyle(color: Color(0xFFC0CAF5)),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widgetList(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is RichText ||
+                    widget.runtimeType.toString() == 'BidiRichText',
+              ),
+            )
+            .any(
+              (rt) => _spanHasStyle(
+                (rt as dynamic).text as InlineSpan,
+                'bold',
+                (style) =>
+                    style.color == const Color(0xFFBB9AF7) &&
+                    style.fontWeight == FontWeight.bold,
+              ),
+            ),
+        isTrue,
+      );
+      expect(
+        tester
+            .widgetList(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is RichText ||
+                    widget.runtimeType.toString() == 'BidiRichText',
+              ),
+            )
+            .any(
+              (rt) => _spanHasStyle(
+                (rt as dynamic).text as InlineSpan,
+                'code',
+                (style) => style.color == const Color(0xFF9ECE6A),
+              ),
+            ),
+        isTrue,
+      );
+      expect(theme.colorScheme.primary, const Color(0xFF00BCD4));
+    },
+  );
+
   test('wide voice-note waveforms distribute bars across their full width', () {
     const width = 320.0;
     const sampleCount = 48;

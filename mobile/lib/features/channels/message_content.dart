@@ -41,6 +41,7 @@ import 'voice_note_attachment.dart';
 part 'message_content/media_carousel.dart';
 part 'message_content/inline_components.dart';
 part 'message_content/token_pill.dart';
+part 'message_content/themed_bold_md.dart';
 part 'message_content/video_preview.dart';
 
 typedef OpenDownloadedFile =
@@ -480,15 +481,15 @@ class MessageContent extends HookConsumerWidget {
     };
 
     final authoredLinkStyle = baseStyle.copyWith(
-      color: context.colors.primary,
+      color: context.appColors.messageLink ?? context.colors.primary,
       decoration: TextDecoration.underline,
-      decorationColor: context.colors.primary,
+      decorationColor: context.appColors.messageLink ?? context.colors.primary,
     );
     final linkTextWidget = isCanonicalBuzzLabel
         ? Text(
             text,
             style: baseStyle.copyWith(
-              color: context.colors.primary,
+              color: context.appColors.messageLink ?? context.colors.primary,
               fontWeight: FontWeight.w600,
             ),
           )
