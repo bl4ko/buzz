@@ -1,3 +1,5 @@
+import { useTheme } from "@/shared/theme/ThemeProvider";
+import { sectionForeground } from "@/shared/theme/section-colors";
 import {
   ArrowDown,
   ArrowUp,
@@ -303,9 +305,17 @@ function ChannelSectionHeader({
   testId: string;
   actions: React.ReactNode;
 }) {
+  const { themeName } = useTheme();
   return (
     <div className="relative">
-      <SidebarGroupLabel asChild>
+      <SidebarGroupLabel
+        asChild
+        style={
+          themeName === "tokyo-night-storm"
+            ? { color: sectionForeground(title) }
+            : undefined
+        }
+      >
         <button
           aria-controls={contentId}
           aria-expanded={!isCollapsed}
@@ -612,6 +622,7 @@ export function CustomChannelSection({
   onDeleteChannel?: (channel: Channel) => void;
   onLeaveChannel?: (channel: Channel) => void;
 }) {
+  const { themeName } = useTheme();
   const contentId = `sidebar-section-${section.id}`;
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
 
@@ -631,6 +642,11 @@ export function CustomChannelSection({
               <ContextMenuTrigger asChild>
                 <div className="relative" {...dragHandleProps}>
                   <SidebarGroupLabel
+                    style={
+                      themeName === "tokyo-night-storm"
+                        ? { color: sectionForeground(section.name) }
+                        : undefined
+                    }
                     asChild
                     className={section.icon ? undefined : "pl-8"}
                   >

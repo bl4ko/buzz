@@ -1,3 +1,5 @@
+import { useTheme } from "@/shared/theme/ThemeProvider";
+import { sectionForeground } from "@/shared/theme/section-colors";
 import type * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellOff, ChevronDown, CircleDot, X } from "lucide-react";
@@ -433,6 +435,7 @@ export function SidebarSection({
   onUnmuteChannel?: (channelId: string) => void;
   sectionActionsOpen?: boolean;
 }) {
+  const { themeName } = useTheme();
   if (items.length === 0 && !action && !emptyState) {
     return null;
   }
@@ -446,7 +449,14 @@ export function SidebarSection({
       data-section-actions-open={sectionActionsOpen || undefined}
     >
       <div className="relative">
-        <SidebarGroupLabel asChild={canToggle}>
+        <SidebarGroupLabel
+          asChild={canToggle}
+          style={
+            themeName === "tokyo-night-storm"
+              ? { color: sectionForeground(title) }
+              : undefined
+          }
+        >
           {canToggle ? (
             <button
               aria-controls={contentId}

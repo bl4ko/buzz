@@ -156,6 +156,7 @@ class _FigmaHomeScreen extends ConsumerWidget {
     ).withValues(alpha: 0.38);
     final sectionForeground = navigationSectionForeground(
       context,
+      label: 'Channels',
     ).withValues(alpha: 0.52);
     final chrome = scheme.surfaceContainerHighest;
 
