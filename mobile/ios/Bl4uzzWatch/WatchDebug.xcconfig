@@ -1,0 +1,4 @@
+#include "Watch.xcconfig"
+BUNDLE_IDENTIFIER = xyz.block.buzz.dogfood.mobile
+BUZZ_DEVELOPMENT_TEAM = JMTDPW9CG3
+#include? "../Flutter/AppOverrides.xcconfig"
