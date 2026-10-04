@@ -28,6 +28,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     final selected = useState<String?>(null);
     final voiceId = useState<String?>(null);
     final status = useState<String>('Add an agent to speak');
+    final heardText = useState<String?>(null);
+    final microphoneMode = useState<String?>(null);
+    final agentSpeaking = useValueListenable(speech.agentSpeaking);
     final selecting = useRef(false);
     final selectedAt = useRef(0);
     final heard = useMemoized(() => <String>{});
@@ -85,6 +88,8 @@ class _HuddleAgentVoice extends HookConsumerWidget {
               .firstOrNull,
         );
         if (context.mounted) status.value = 'Listening on this device';
+        final mode = await speech.microphoneMode();
+        if (context.mounted) microphoneMode.value = mode;
       } catch (error) {
         if (context.mounted) {
           selected.value = null;
@@ -109,6 +114,21 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     }, [bots.join(',')]);
 
     useEffect(() {
+      if (selected.value == null) return null;
+      final timer = Timer.periodic(const Duration(seconds: 2), (_) {
+        unawaited(
+          speech
+              .microphoneMode()
+              .then((mode) {
+                if (context.mounted) microphoneMode.value = mode;
+              })
+              .catchError((Object _) {}),
+        );
+      });
+      return timer.cancel;
+    }, [speech, selected.value]);
+
+    useEffect(() {
       return () {
         unawaited(
           speech.stop().catchError((Object error) {
@@ -127,10 +147,11 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         return;
       }
       if (ref.read(huddleSessionProvider).isMuted) {
-        status.value = 'Microphone muted. Unmute and repeat your sentence.';
+        status.value = 'Microphone muted. Unmute to talk to the agent.';
         return;
       }
       status.value = 'Sending speech';
+      heardText.value = text;
       unawaited(
         ref
             .read(sendMessageProvider)
@@ -174,7 +195,6 @@ class _HuddleAgentVoice extends HookConsumerWidget {
             )) {
           continue;
         }
-        status.value = 'Agent speaking';
         unawaited(
           speech.speak(event.content, voiceId: voiceId.value).catchError((
             Object error,
@@ -257,10 +277,38 @@ class _HuddleAgentVoice extends HookConsumerWidget {
               ),
               child: const Text('Huddle chat'),
             ),
+          if (agent != null && microphoneMode.value != null)
+            TextButton(
+              onPressed: () => unawaited(
+                speech.showMicrophoneModes().catchError((Object _) {}),
+              ),
+              child: Text(switch (microphoneMode.value) {
+                'voiceIsolation' => 'Mic mode: Voice Isolation',
+                'wideSpectrum' =>
+                  'Mic mode: Wide Spectrum. Use Voice Isolation',
+                _ => 'Mic mode: Standard. Use Voice Isolation',
+              }),
+            ),
+          if (agent != null && agentSpeaking)
+            TextButton(
+              onPressed: () => unawaited(
+                speech.stopSpeaking().catchError((Object error) {
+                  if (context.mounted) status.value = 'Could not stop: $error';
+                }),
+              ),
+              child: const Text('Stop speaking'),
+            ),
           Semantics(
             liveRegion: true,
             child: Text(status.value, style: context.textTheme.bodySmall),
           ),
+          if (heardText.value != null)
+            Text(
+              'You: ${heardText.value}',
+              style: context.textTheme.bodySmall,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
         ],
       ),
     );
