@@ -626,6 +626,12 @@ final class HuddleAudioEngine {
     do {
       let input = audioEngine.inputNode
       try input.setVoiceProcessingEnabled(true)
+      if #available(iOS 17.0, *) {
+        input.voiceProcessingOtherAudioDuckingConfiguration = .init(
+          enableAdvancedDucking: true,
+          duckingLevel: .min
+        )
+      }
       let inputFormat = input.outputFormat(forBus: 0)
       guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
         throw HuddleNativeMediaError.unsupported(

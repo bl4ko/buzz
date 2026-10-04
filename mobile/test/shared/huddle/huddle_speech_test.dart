@@ -158,4 +158,106 @@ void main() {
       messenger.setMockMethodCallHandler(channel, null);
     },
   );
+
+  test('stopping agent speech drops replies queued behind it', () async {
+    final finish = Completer<void>();
+    final calls = <String>[];
+    var requests = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      if (call.method == 'play') await finish.future;
+      if (call.method == 'stopPlayback' && !finish.isCompleted) {
+        finish.complete();
+      }
+      return null;
+    });
+    final speech = HuddleSpeech(
+      baseUrl: 'https://buzz.example',
+      nsec: nostr.Keys.generate().nsec,
+      channelId: 'child',
+      client: MockClient((_) async {
+        requests++;
+        return http.Response.bytes([1, 2], 200);
+      }),
+    );
+    await speech.start();
+    final first = speech.speak('First');
+    final second = speech.speak('Second');
+    await Future<void>.delayed(Duration.zero);
+    expect(calls, ['start', 'play']);
+    await speech.stopSpeaking();
+    await Future.wait([first, second]);
+    expect(requests, 1);
+    expect(calls, ['start', 'play', 'stopPlayback']);
+    final third = speech.speak('Third');
+    await third;
+    expect(requests, 2);
+    expect(calls.last, 'play');
+    await speech.stop();
+    speech.dispose();
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
+  test('a pause inside one sentence becomes one transcript', () async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    final first = Completer<http.Response>();
+    final replies = [
+      first.future,
+      Future.value(http.Response('{"text":"a table"}', 200)),
+    ];
+    final transcripts = <String>[];
+    final speech = HuddleSpeech(
+      baseUrl: 'https://buzz.example',
+      nsec: nostr.Keys.generate().nsec,
+      channelId: 'child',
+      client: MockClient((_) => replies.removeAt(0)),
+    );
+    speech.onTranscript = transcripts.add;
+    await speech.start();
+    Future<void> send(String method, Map<String, Object> arguments) {
+      final delivered = Completer<void>();
+      messenger.handlePlatformMessage(
+        channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, arguments),
+        ),
+        (_) => delivered.complete(),
+      );
+      return delivered.future;
+    }
+
+    final audio = {
+      'audio': Uint8List.fromList([1, 2]),
+    };
+    final firstClip = send('audio', audio);
+    await send('speaking', {'speaking': true});
+    first.complete(http.Response('{"text":"Book"}', 200));
+    await firstClip;
+    expect(transcripts, isEmpty);
+    await send('audio', audio);
+    expect(transcripts, ['Book a table']);
+    await send('speaking', {'speaking': true});
+    await send('speaking', {'speaking': false});
+    expect(transcripts, ['Book a table']);
+    await speech.stop();
+    speech.dispose();
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
+  test('replies are spoken as plain sentence groups', () {
+    final chunks = speechChunks(
+      'Done. See **the report** at https://x.example/r and [notes](https://n). '
+      '```\ncode\n``` ${'word ' * 80}End.',
+    );
+    expect(chunks.first, 'Done.');
+    expect(chunks[1], startsWith('See the report at link and notes. word'));
+    expect(chunks.every((chunk) => chunk.length <= 300), isTrue);
+    expect(chunks.join(' '), isNot(contains('code')));
+    expect(chunks.last, endsWith('End.'));
+    expect(speechChunks('  **  '), isEmpty);
+  });
 }

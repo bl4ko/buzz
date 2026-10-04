@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
@@ -13,14 +15,19 @@ final class HuddleSpeech {
   final String baseUrl;
   final String? nsec;
   final String channelId;
+  final ValueNotifier<bool> agentSpeaking = ValueNotifier(false);
   void Function(String)? onTranscript;
   void Function(String)? onError;
   void Function(String)? onStatus;
   int _generation = 0;
+  int _playbackGeneration = 0;
+  int _replies = 0;
   bool _transcribing = false;
+  bool _userSpeaking = false;
   bool _active = false;
   String? _agentName;
-  Uint8List? _pendingAudio;
+  String _heard = '';
+  final List<Uint8List> _clips = [];
 
   HuddleSpeech({
     required this.baseUrl,
@@ -33,7 +40,17 @@ final class HuddleSpeech {
     if (!identical(_owner, this)) return;
     final values = call.arguments as Map?;
     if (call.method == 'audio' && values?['audio'] is Uint8List) {
-      await _transcribe(values!['audio'] as Uint8List);
+      _userSpeaking = false;
+      if (!_active) return;
+      if (_clips.length >= 4) {
+        onError?.call('Speech service is busy. Please repeat your sentence.');
+        return;
+      }
+      _clips.add(values!['audio'] as Uint8List);
+      await _drain();
+    } else if (call.method == 'speaking' && values?['speaking'] is bool) {
+      _userSpeaking = values!['speaking'] as bool;
+      _flush();
     } else if (call.method == 'error') {
       final message = values?['message'];
       if (message is String && message.trim().isNotEmpty) {
@@ -47,73 +64,87 @@ final class HuddleSpeech {
   Future<http.Response> _post(String path, Map<String, Object?> payload) async {
     final url = Uri.parse(baseUrl).resolve('/huddle/$channelId/$path');
     final bytes = utf8.encode(jsonEncode(payload));
-    final response = await _client
-        .post(
-          url,
-          headers: {
-            'Authorization': buildNip98AuthHeader(
-              method: 'POST',
-              url: url.toString(),
-              bodyBytes: bytes,
-              nsec: nsec,
-            ),
-            'Content-Type': 'application/json',
-          },
-          body: bytes,
-        )
-        .timeout(const Duration(seconds: 65));
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            url,
+            headers: {
+              'Authorization': buildNip98AuthHeader(
+                method: 'POST',
+                url: url.toString(),
+                bodyBytes: bytes,
+                nsec: nsec,
+              ),
+              'Content-Type': 'application/json',
+            },
+            body: bytes,
+          )
+          .timeout(const Duration(seconds: 65));
+    } on TimeoutException {
+      throw const HuddleSpeechException('The speech service timed out.');
+    } on http.ClientException {
+      throw const HuddleSpeechException('Check the network connection.');
+    }
+    if (response.statusCode == 429) {
+      throw const HuddleSpeechException('The speech service is busy.');
+    }
     if (response.statusCode != 200) {
-      throw Exception(
-        'Speech service ${response.statusCode}: ${response.body}',
+      debugPrint('[HuddleSpeech] $path ${response.statusCode}');
+      throw HuddleSpeechException(
+        'The speech service failed (${response.statusCode}).',
       );
     }
     return response;
   }
 
-  Future<void> _transcribe(Uint8List audio) async {
-    if (!_active) return;
-    if (_transcribing) {
-      if (_pendingAudio != null) {
-        onError?.call(
-          'Speech service is busy. Please repeat your last sentence.',
-        );
-      } else {
-        _pendingAudio = audio;
-      }
-      return;
-    }
+  Future<void> _drain() async {
+    if (_transcribing) return;
     _transcribing = true;
     final generation = _generation;
-    onStatus?.call('Recognizing speech');
+    var failed = false;
     try {
-      final response = await _post('transcribe', {
-        'audio': base64Encode(audio),
-        'agent_name': _agentName,
-      });
-      if (!_active || generation != _generation) return;
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final text = (data['text'] as String).trim();
-      onStatus?.call('Listening on this device');
-      if (text.isNotEmpty) {
-        onTranscript?.call(text);
-      }
-    } catch (error) {
-      if (_active && generation == _generation) {
-        onError?.call('Could not recognize speech: $error');
+      while (_clips.isNotEmpty && _active && generation == _generation) {
+        final clip = _clips.removeAt(0);
+        onStatus?.call('Recognizing speech');
+        try {
+          final response = await _post('transcribe', {
+            'audio': base64Encode(clip),
+            'agent_name': _agentName,
+          });
+          if (!_active || generation != _generation) return;
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final text = (data['text'] as String).trim();
+          if (text.isNotEmpty) _heard = _heard.isEmpty ? text : '$_heard $text';
+          failed = false;
+        } catch (error) {
+          if (!_active || generation != _generation) return;
+          failed = true;
+          onError?.call('Could not recognize speech. ${_reason(error)}');
+        }
       }
     } finally {
       _transcribing = false;
-      final pending = _pendingAudio;
-      _pendingAudio = null;
-      if (_active && pending != null) {
-        await _transcribe(pending);
-      }
     }
+    if (!_active || generation != _generation) return;
+    if (!failed) onStatus?.call('Listening on this device');
+    _flush();
+  }
+
+  void _flush() {
+    if (_userSpeaking || _transcribing || _clips.isNotEmpty || _heard.isEmpty) {
+      return;
+    }
+    final text = _heard;
+    _heard = '';
+    onTranscript?.call(text);
   }
 
   Future<void> start({String? agentName}) async {
     _generation++;
-    _pendingAudio = null;
+    _clips.clear();
+    _heard = '';
+    _userSpeaking = false;
     _agentName = agentName;
     _owner = this;
     _channel.setMethodCallHandler(_handleCall);
@@ -124,7 +155,9 @@ final class HuddleSpeech {
   Future<void> stop() {
     _generation++;
     _active = false;
-    _pendingAudio = null;
+    _clips.clear();
+    _heard = '';
+    _userSpeaking = false;
     if (!identical(_owner, this)) return Future.value();
     return _channel.invokeMethod<void>('stop');
   }
@@ -135,9 +168,30 @@ final class HuddleSpeech {
     HuddleVoice('af_heart', 'Heart'),
   ];
 
+  Future<void> stopSpeaking() async {
+    _playbackGeneration++;
+    agentSpeaking.value = false;
+    await _channel.invokeMethod<void>('stopPlayback');
+    if (_active) onStatus?.call('Listening on this device');
+  }
+
+  Future<String> microphoneMode() async =>
+      await _channel.invokeMethod<String>('microphoneMode') ?? 'standard';
+
+  Future<void> showMicrophoneModes() =>
+      _channel.invokeMethod<void>('showMicrophoneModes');
+
   Future<void> speak(String text, {String? voiceId}) {
     final generation = _generation;
-    final task = _playback.then((_) => _speak(text, voiceId, generation));
+    final playback = _playbackGeneration;
+    _replies++;
+    agentSpeaking.value = true;
+    final task = _playback
+        .then((_) => _speak(text, voiceId, generation, playback))
+        .whenComplete(() {
+          _replies--;
+          if (_replies == 0) agentSpeaking.value = false;
+        });
     _playback = task.then<void>(
       (_) {},
       onError: (Object error, StackTrace stack) {},
@@ -145,18 +199,38 @@ final class HuddleSpeech {
     return task;
   }
 
-  Future<void> _speak(String text, String? voiceId, int generation) async {
-    if (!_active || generation != _generation || text.trim().isEmpty) return;
+  Future<void> _speak(
+    String text,
+    String? voiceId,
+    int generation,
+    int playback,
+  ) async {
+    bool current() =>
+        _active && generation == _generation && playback == _playbackGeneration;
+    final chunks = speechChunks(text);
+    if (!current() || chunks.isEmpty) return;
     onStatus?.call('Preparing voice');
-    final response = await _post('speech', {
-      'text': text,
-      'voice': const {'am_michael', 'bm_george', 'af_heart'}.contains(voiceId)
-          ? voiceId
-          : null,
-    });
-    if (!_active || generation != _generation) return;
-    onStatus?.call('Agent speaking');
-    await _channel.invokeMethod<void>('play', {'audio': response.bodyBytes});
+    final voice =
+        const {'am_michael', 'bm_george', 'af_heart'}.contains(voiceId)
+        ? voiceId
+        : null;
+    Future<Uint8List> fetch(String chunk) => _post('speech', {
+      'text': chunk,
+      'voice': voice,
+    }).then((response) => response.bodyBytes);
+    Future<Uint8List>? next = fetch(chunks.first);
+    try {
+      for (var index = 0; index < chunks.length; index++) {
+        final audio = await next!;
+        next = index + 1 < chunks.length ? fetch(chunks[index + 1]) : null;
+        if (!current()) return;
+        onStatus?.call('Agent speaking');
+        await _channel.invokeMethod<void>('play', {'audio': audio});
+        if (!current()) return;
+      }
+    } finally {
+      next?.ignore();
+    }
   }
 
   void dispose() {
@@ -171,6 +245,50 @@ final class HuddleSpeech {
       _channel.setMethodCallHandler(null);
     }
   }
+}
+
+String _reason(Object error) => error is HuddleSpeechException
+    ? error.message
+    : 'The speech service failed.';
+
+/// Plain spoken text in sentence groups; the first group is short so audio starts early.
+@visibleForTesting
+List<String> speechChunks(String text, {int limit = 300}) {
+  final plain = text
+      .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+      .replaceAllMapped(
+        RegExp(r'!?\[([^\]]*)\]\([^)]*\)'),
+        (match) => match[1] ?? '',
+      )
+      .replaceAll(RegExp(r'https?://\S+'), 'link')
+      .replaceAll(RegExp(r'[`*_#>|~]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final chunks = <String>[];
+  var current = '';
+  for (final sentence in plain.split(RegExp(r'(?<=[.!?])\s+'))) {
+    for (final word in sentence.split(' ')) {
+      if (current.isNotEmpty && current.length + word.length + 1 > limit) {
+        chunks.add(current);
+        current = '';
+      }
+      current = current.isEmpty ? word : '$current $word';
+    }
+    if (chunks.isEmpty || current.length > limit ~/ 2) {
+      if (current.isNotEmpty) chunks.add(current);
+      current = '';
+    }
+  }
+  if (current.isNotEmpty) chunks.add(current);
+  return chunks;
+}
+
+final class HuddleSpeechException implements Exception {
+  final String message;
+  const HuddleSpeechException(this.message);
+
+  @override
+  String toString() => message;
 }
 
 final class HuddleVoice {

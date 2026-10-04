@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 import Flutter
 import UIKit
 
@@ -113,6 +114,9 @@ final class HuddleMediaPlugin {
           },
           onPlaybackFinished: { [weak self] in
             self?.speechChannel.invokeMethod("status", arguments: ["message": "Listening on this device"])
+          },
+          onSpeaking: { [weak self] speaking in
+            self?.speechChannel.invokeMethod("speaking", arguments: ["speaking": speaking])
           }
         )
       }
@@ -132,6 +136,18 @@ final class HuddleMediaPlugin {
         return
       }
       speech.play(audio.data, result: result)
+    case "stopPlayback":
+      speech?.stopPlayback()
+      result(nil)
+    case "microphoneMode":
+      switch AVCaptureDevice.activeMicrophoneMode {
+      case .voiceIsolation: result("voiceIsolation")
+      case .wideSpectrum: result("wideSpectrum")
+      default: result("standard")
+      }
+    case "showMicrophoneModes":
+      AVCaptureDevice.showSystemUserInterface(.microphoneModes)
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -480,6 +496,7 @@ final class HuddleMediaPlugin {
     else { return }
 
     if type == .began {
+      speech?.stopPlayback()
       audioEngine?.setInterrupted(true)
       emitInterruptionChanged(true)
       return
@@ -621,22 +638,29 @@ final class HuddleMediaPlugin {
 }
 
 private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
+  // ponytail: fixed gate for distant talkers; tune from capture diagnostics if close speech is missed.
+  private static let minimumSpeechDb: Float = -45
   private let onAudio: (Data) -> Void
   private let onError: (String) -> Void
   private let onPlaybackFinished: () -> Void
+  private let onSpeaking: (Bool) -> Void
   private var player: AVAudioPlayer?
   private var playbackResult: FlutterResult?
   private var pcm = Data()
   private var sampleRate = 48000
+  private var filters = HuddleSpeechFilters(sampleRate: 48000)
+  private var recentLevels: [(db: Float, samples: Int)] = []
   private var silentSamples = 0
   private var voicedSamples = 0
+  private var holdoffSamples = 0
   private var listening = false
 
   init(onAudio: @escaping (Data) -> Void, onError: @escaping (String) -> Void,
-       onPlaybackFinished: @escaping () -> Void = {}) {
+       onPlaybackFinished: @escaping () -> Void = {}, onSpeaking: @escaping (Bool) -> Void = { _ in }) {
     self.onAudio = onAudio
     self.onError = onError
     self.onPlaybackFinished = onPlaybackFinished
+    self.onSpeaking = onSpeaking
     super.init()
   }
 
@@ -657,33 +681,59 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
 
   func append(_ buffer: AVAudioPCMBuffer) {
     guard listening, player == nil, buffer.frameLength > 0,
-          let samples = buffer.floatChannelData?.pointee else { return }
+          let channel = buffer.floatChannelData?.pointee else { return }
     let rate = Int(buffer.format.sampleRate)
     guard rate > 0 else { return }
-    if rate != sampleRate { clearSegment(); sampleRate = rate }
+    if rate != sampleRate {
+      clearSegment()
+      recentLevels.removeAll()
+      sampleRate = rate
+      filters = HuddleSpeechFilters(sampleRate: rate)
+    }
     let count = Int(buffer.frameLength)
-    let energy = (0..<count).reduce(Float.zero) { $0 + samples[$1] * samples[$1] } / Float(count)
-    if energy > 0.000025 {
+    if holdoffSamples > 0 {
+      holdoffSamples -= count
+      return
+    }
+    let input = Array(UnsafeBufferPointer(start: channel, count: count))
+    let audio = filters?.humCut.apply(input: input) ?? input
+    let level = 10 * log10(max(vDSP.meanSquare(filters?.speechBand.apply(input: audio) ?? audio), 1e-12))
+    let floor = noiseFloor(adding: level, samples: count)
+    if level > max(floor + (voicedSamples > 0 ? 6 : 10), Self.minimumSpeechDb) {
+      if voicedSamples == 0 { onSpeaking(true) }
       voicedSamples += count
       silentSamples = 0
     } else {
       silentSamples += count
     }
-    for index in 0..<count {
-      var sample = Int16(max(-1, min(1, samples[index])) * 32767).littleEndian
-      withUnsafeBytes(of: &sample) { pcm.append(contentsOf: $0) }
+    for sample in audio {
+      var value = Int16(max(-1, min(1, sample)) * 32767).littleEndian
+      withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
     }
     if voicedSamples == 0 {
       let leadingBytes = sampleRate * 2 / 5
       if pcm.count > leadingBytes { pcm.removeFirst(pcm.count - leadingBytes) }
       return
     }
-    if silentSamples >= sampleRate * 3 / 5 || pcm.count >= sampleRate * 2 * 15 {
+    if silentSamples >= sampleRate * 7 / 10 || pcm.count >= sampleRate * 2 * 15 {
       let maximumBytes = sampleRate * 2 * 15
       if pcm.count > maximumBytes { pcm.removeLast(pcm.count - maximumBytes) }
-      if voicedSamples >= sampleRate / 5 { onAudio(wav()) }
+      if voicedSamples >= sampleRate / 4 {
+        voicedSamples = 0
+        onAudio(wav())
+      }
       clearSegment()
     }
+  }
+
+  // ponytail: minimum statistics over 2 s; steady hum or fan noise becomes the floor.
+  private func noiseFloor(adding level: Float, samples: Int) -> Float {
+    recentLevels.append((level, samples))
+    var total = recentLevels.reduce(0) { $0 + $1.samples }
+    while total - recentLevels[0].samples >= sampleRate * 2 {
+      total -= recentLevels.removeFirst().samples
+    }
+    return recentLevels.map(\.db).min() ?? level
   }
 
   func play(_ audio: Data, result: @escaping FlutterResult = { _ in }) {
@@ -708,10 +758,22 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
     }
   }
 
+  func stopPlayback() {
+    guard let player else { return }
+    player.stop()
+    self.player = nil
+    clearSegment()
+    holdoffSamples = sampleRate * 3 / 10
+    playbackResult?(nil)
+    playbackResult = nil
+    onPlaybackFinished()
+  }
+
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
     guard self.player === player else { return }
     self.player = nil
     clearSegment()
+    holdoffSamples = sampleRate * 3 / 10
     playbackResult?(flag ? nil : FlutterError(code: "speech_play_failed", message: "Speech audio stopped before completion.", details: nil))
     playbackResult = nil
     if flag { onPlaybackFinished() }
@@ -730,6 +792,7 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
   }
 
   private func clearSegment() {
+    if voicedSamples > 0 { onSpeaking(false) }
     pcm.removeAll(keepingCapacity: true)
     silentSamples = 0
     voicedSamples = 0
@@ -754,5 +817,32 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
     number(UInt32(pcm.count))
     data.append(pcm)
     return data
+  }
+}
+
+private struct HuddleSpeechFilters {
+  var humCut: vDSP.Biquad<Float>
+  var speechBand: vDSP.Biquad<Float>
+
+  init?(sampleRate: Int) {
+    let rate = Double(sampleRate)
+    guard
+      let humCut = vDSP.Biquad(
+        coefficients: Self.section(highPass: true, 100, 0.5412, rate) + Self.section(highPass: true, 100, 1.3066, rate),
+        channelCount: 1, sectionCount: 2, ofType: Float.self),
+      let speechBand = vDSP.Biquad(
+        coefficients: Self.section(highPass: true, 300, 0.7071, rate) + Self.section(highPass: false, 3400, 0.7071, rate),
+        channelCount: 1, sectionCount: 2, ofType: Float.self)
+    else { return nil }
+    self.humCut = humCut
+    self.speechBand = speechBand
+  }
+
+  private static func section(highPass: Bool, _ frequency: Double, _ q: Double, _ rate: Double) -> [Double] {
+    let omega = 2 * Double.pi * frequency / rate
+    let alpha = sin(omega) / (2 * q)
+    let gain = highPass ? (1 + cos(omega)) / 2 : (1 - cos(omega)) / 2
+    let a0 = 1 + alpha
+    return [gain / a0, (highPass ? -2 : 2) * gain / a0, gain / a0, -2 * cos(omega) / a0, (1 - alpha) / a0]
   }
 }
