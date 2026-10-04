@@ -21,6 +21,16 @@ use super::{api_error, bridge};
 use crate::{nip_fi_http::admit_nip_fi_http_on_state, state::AppState};
 
 static SPEECH_SLOTS: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(2));
+
+async fn speech_slot() -> Result<tokio::sync::SemaphorePermit<'static>, Response> {
+    tokio::time::timeout(Duration::from_secs(10), SPEECH_SLOTS.acquire())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .ok_or_else(|| {
+            api_error(StatusCode::TOO_MANY_REQUESTS, "speech service busy").into_response()
+        })
+}
 static CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock::new(|| {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(60))
@@ -35,7 +45,8 @@ const VOICES: &[&str] = &["am_michael", "af_heart", "bm_george"];
 #[serde(deny_unknown_fields)]
 struct Transcription {
     audio: String,
-    agent_name: Option<String>,
+    #[serde(rename = "agent_name")]
+    _agent_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -133,13 +144,18 @@ fn read_u16(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }
 fn valid_wav(bytes: &[u8]) -> bool {
+    wav_pcm(bytes).is_some()
+}
+
+/// Returns the sample rate and PCM data range of a bounded mono PCM16 WAV.
+fn wav_pcm(bytes: &[u8]) -> Option<(usize, std::ops::Range<usize>)> {
     if bytes.len() < 44
         || bytes.len() > MAX_AUDIO
         || &bytes[..4] != b"RIFF"
         || &bytes[8..12] != b"WAVE"
         || read_u32(bytes, 4) as usize != bytes.len() - 8
     {
-        return false;
+        return None;
     }
     let mut offset = 12;
     let mut rate = None;
@@ -147,12 +163,10 @@ fn valid_wav(bytes: &[u8]) -> bool {
     while offset + 8 <= bytes.len() {
         let size = read_u32(bytes, offset + 4) as usize;
         let start = offset + 8;
-        let Some(end) = start.checked_add(size).filter(|end| *end <= bytes.len()) else {
-            return false;
-        };
+        let end = start.checked_add(size).filter(|end| *end <= bytes.len())?;
         if &bytes[offset..offset + 4] == b"fmt " {
             if size < 16 || rate.is_some() {
-                return false;
+                return None;
             }
             let format = read_u16(bytes, start);
             let channels = read_u16(bytes, start + 2);
@@ -167,20 +181,58 @@ fn valid_wav(bytes: &[u8]) -> bool {
                 || byte_rate != sample_rate * 2
                 || alignment != 2
             {
-                return false;
+                return None;
             }
             rate = Some(sample_rate as usize);
         }
         if &bytes[offset..offset + 4] == b"data" {
             if data.is_some() {
-                return false;
+                return None;
             }
-            data = Some(size);
+            data = Some(start..end);
         }
         offset = end + size % 2;
     }
-    offset == bytes.len()
-        && matches!((rate, data), (Some(rate), Some(size)) if size > 0 && size % 2 == 0 && size <= rate * 2 * 15)
+    match (rate, data) {
+        (Some(rate), Some(data))
+            if offset == bytes.len()
+                && !data.is_empty()
+                && data.len() % 2 == 0
+                && data.len() <= rate * 2 * 15 =>
+        {
+            Some((rate, data))
+        }
+        _ => None,
+    }
+}
+
+const SPEECH_PAD_MS: usize = 200;
+
+/// Keeps only detected speech, padded on both sides, so the recognizer never decodes long noise.
+fn speech_only(audio: &[u8], intervals: &[SpeechTimestamp]) -> Option<Vec<u8>> {
+    let (rate, data) = wav_pcm(audio)?;
+    let pcm = &audio[data];
+    let byte = |ms: usize| (ms * rate / 1000 * 2).min(pcm.len());
+    let mut kept = Vec::new();
+    let mut copied = 0;
+    for interval in intervals {
+        let start = byte((interval.start as usize).saturating_sub(SPEECH_PAD_MS)).max(copied);
+        let end = byte(interval.end as usize + SPEECH_PAD_MS);
+        if start < end {
+            kept.extend_from_slice(&pcm[start..end]);
+            copied = end;
+        }
+    }
+    let mut wav = Vec::with_capacity(44 + kept.len());
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + kept.len() as u32).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt \x10\0\0\0\x01\0\x01\0");
+    wav.extend_from_slice(&(rate as u32).to_le_bytes());
+    wav.extend_from_slice(&(rate as u32 * 2).to_le_bytes());
+    wav.extend_from_slice(b"\x02\0\x10\0data");
+    wav.extend_from_slice(&(kept.len() as u32).to_le_bytes());
+    wav.extend_from_slice(&kept);
+    Some(wav)
 }
 
 async fn upstream_bytes(mut response: reqwest::Response) -> Result<Vec<u8>, Response> {
@@ -257,6 +309,9 @@ async fn transcribe_audio(
     if timestamps.is_empty() {
         return Ok(String::new());
     }
+    let speech = speech_only(audio, &timestamps).ok_or_else(|| {
+        api_error(StatusCode::BAD_REQUEST, "invalid speech audio").into_response()
+    })?;
     let bytes = request_audio(
         client,
         transcription_base,
@@ -267,7 +322,7 @@ async fn transcribe_audio(
             ("language", "en"),
             ("to_language", "en"),
         ],
-        audio,
+        &speech,
     )
     .await?;
     let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
@@ -333,13 +388,6 @@ async fn transcribe_inner(
     let request: Transcription = serde_json::from_slice(&body).map_err(|_| {
         api_error(StatusCode::BAD_REQUEST, "invalid transcription request").into_response()
     })?;
-    if request
-        .agent_name
-        .as_deref()
-        .is_some_and(|name| !["Hermes", "Athene", "Argus"].contains(&name))
-    {
-        return Err(api_error(StatusCode::BAD_REQUEST, "invalid agent name").into_response());
-    }
     let audio = base64::engine::general_purpose::STANDARD
         .decode(request.audio)
         .map_err(|_| {
@@ -352,9 +400,7 @@ async fn transcribe_inner(
         )
         .into_response());
     }
-    let _slot = SPEECH_SLOTS.try_acquire().map_err(|_| {
-        api_error(StatusCode::TOO_MANY_REQUESTS, "speech service busy").into_response()
-    })?;
+    let _slot = speech_slot().await?;
     let vad_base = state.config.speech_base_url.as_deref().ok_or_else(|| {
         api_error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -410,9 +456,7 @@ async fn speech_inner(
             api_error(StatusCode::BAD_REQUEST, "invalid speech text or voice").into_response(),
         );
     }
-    let _slot = SPEECH_SLOTS.try_acquire().map_err(|_| {
-        api_error(StatusCode::TOO_MANY_REQUESTS, "speech service busy").into_response()
-    })?;
+    let _slot = speech_slot().await?;
     let client = CLIENT.as_ref().map_err(|_| {
         api_error(StatusCode::SERVICE_UNAVAILABLE, "speech client unavailable").into_response()
     })?;
@@ -475,6 +519,12 @@ mod tests {
                                 );
                                 (vad_status, vad_body)
                             } else {
+                                let cropped = [
+                                    b"audio/wav\r\n\r\nRIFF".as_slice(),
+                                    &(36u32 + 2_589 * 32).to_le_bytes(),
+                                ]
+                                .concat();
+                                assert!(body.windows(cropped.len()).any(|part| part == cropped));
                                 let body = String::from_utf8_lossy(&body);
                                 assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
                                 assert!(body.contains("name=\"to_language\"\r\n\r\nen\r\n"));
@@ -488,8 +538,14 @@ mod tests {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
             let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-            let result =
-                transcribe_audio(&reqwest::Client::new(), &base, &base, "qwen", b"WAV").await;
+            let result = transcribe_audio(
+                &reqwest::Client::new(),
+                &base,
+                &base,
+                "qwen",
+                &silent_wav(3_000),
+            )
+            .await;
             server.abort();
             assert_eq!(calls.load(Ordering::SeqCst), expected_calls, "{vad_body}");
             match expected_text {
@@ -497,6 +553,64 @@ mod tests {
                 None => assert_eq!(result.unwrap_err().status(), StatusCode::BAD_GATEWAY),
             }
         }
+    }
+
+    fn silent_wav(milliseconds: usize) -> Vec<u8> {
+        speech_only(
+            &[
+                b"RIFF\x26\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x02\x00\x00\x00".as_slice(),
+                &[0, 0],
+            ]
+            .concat(),
+            &[],
+        )
+        .map(|mut wav| {
+            let pcm = vec![0u8; milliseconds * 32];
+            wav.truncate(40);
+            wav.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+            wav.extend_from_slice(&pcm);
+            let length = (wav.len() - 8) as u32;
+            wav[4..8].copy_from_slice(&length.to_le_bytes());
+            wav
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn speech_only_keeps_padded_speech() {
+        let mut wav = silent_wav(3_000);
+        for (index, sample) in wav[44..].chunks_mut(2).enumerate() {
+            sample.copy_from_slice(&(index as u16).to_le_bytes());
+        }
+        let cropped = speech_only(
+            &wav,
+            &[
+                SpeechTimestamp {
+                    start: 100,
+                    end: 400,
+                },
+                SpeechTimestamp {
+                    start: 500,
+                    end: 900,
+                },
+                SpeechTimestamp {
+                    start: 2_800,
+                    end: 2_950,
+                },
+            ],
+        )
+        .unwrap();
+        assert!(valid_wav(&cropped));
+        let samples: Vec<u16> = cropped[44..]
+            .chunks(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        assert_eq!(samples.len(), 16 * 1_100 + 16 * 400);
+        assert_eq!(samples[0], 0);
+        assert_eq!(samples[16 * 1_100 - 1], 16 * 1_100 - 1);
+        assert_eq!(samples[16 * 1_100], 16 * 2_600);
+        assert_eq!(*samples.last().unwrap(), 16 * 3_000 - 1);
+        assert!(speech_only(b"WAV", &[]).is_none());
     }
 
     #[test]
