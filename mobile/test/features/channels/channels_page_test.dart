@@ -1041,9 +1041,7 @@ void main() {
     expect(scrollable.position.pixels, scrollable.position.minScrollExtent);
   });
 
-  testWidgets('Storm colors custom section labels in the channel list', (
-    tester,
-  ) async {
+  testWidgets('Storm uses one color for custom section labels', (tester) async {
     await tester.pumpWidget(
       buildTestable(
         theme: AppTheme.dark(themeName: 'tokyo-night-storm'),
@@ -1066,11 +1064,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<Text>(find.text('Agents')).style?.color,
-      const Color(0xFFB4F9F8),
+      const Color(0xFF7AA2F7),
     );
     expect(
       tester.widget<Text>(find.text('Alerts')).style?.color,
-      const Color(0xFFE0AF68),
+      const Color(0xFF7AA2F7),
     );
   });
 

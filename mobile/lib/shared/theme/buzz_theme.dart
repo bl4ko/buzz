@@ -46,15 +46,9 @@ Color navigationSecondaryForeground(BuildContext context) {
 ///
 /// Section labels need more hierarchy than a placeholder. Buzz therefore uses
 /// a stronger neutral over its gradient.
-Color navigationSectionForeground(BuildContext context, {String label = ''}) {
-  final colors = Theme.of(context).extension<AppColors>()?.sectionColors;
-  if (colors != null && colors.isNotEmpty && label.isNotEmpty) {
-    var index = 0;
-    for (final unit in label.trim().toLowerCase().codeUnits) {
-      index = (index * 31 + unit) % colors.length;
-    }
-    return colors[index];
-  }
+Color navigationSectionForeground(BuildContext context) {
+  final color = Theme.of(context).extension<AppColors>()?.sectionForeground;
+  if (color != null) return color;
   final scheme = Theme.of(context).colorScheme;
   if (!isBuzzThemeContext(context)) return scheme.onSurfaceVariant;
   return navigationPrimaryForeground(context).withValues(alpha: 0.8);
@@ -77,17 +71,11 @@ Color channelNavigationForeground(BuildContext context, {bool unread = false}) {
       : (dark ? const Color(0xFFC7C7C7) : const Color(0xFF404040));
 }
 
-/// Shared desktop section-heading ink. A theme with section colors (Storm)
-/// uses its own section role.
-Color navigationHeadingForeground(BuildContext context, {String label = ''}) {
-  final colors = Theme.of(context).extension<AppColors>()?.sectionColors;
-  if (colors != null && colors.isNotEmpty && label.isNotEmpty) {
-    var index = 0;
-    for (final unit in label.trim().toLowerCase().codeUnits) {
-      index = (index * 31 + unit) % colors.length;
-    }
-    return colors[index];
-  }
+/// Shared desktop section-heading ink. A theme with its own section role
+/// (Storm) uses that color.
+Color navigationHeadingForeground(BuildContext context) {
+  final color = Theme.of(context).extension<AppColors>()?.sectionForeground;
+  if (color != null) return color;
   return Theme.of(context).brightness == Brightness.dark
       ? const Color(0xFFC7C7C7)
       : const Color(0xFF525252);

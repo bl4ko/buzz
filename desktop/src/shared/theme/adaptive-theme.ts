@@ -1,4 +1,4 @@
-import { STORM_SECTION_COLORS } from "./section-colors";
+import { STORM_SECTION_FOREGROUND } from "./section-colors";
 /**
  * Adaptive Theme Engine
  *
@@ -313,12 +313,9 @@ export function createThemeVars(
       "--ring": textFg,
 
       // Sidebar
-      ...Object.fromEntries(
-        STORM_SECTION_COLORS.map((color, index) => [
-          `--sidebar-section-${index}`,
-          storm ? color : "currentColor",
-        ]),
-      ),
+      "--sidebar-section-foreground": storm
+        ? STORM_SECTION_FOREGROUND
+        : "currentColor",
       "--sidebar-background": hexToHsl(chromeColor),
       "--sidebar-foreground": textFg,
       "--sidebar-accent": hexToHsl(primaryBg),

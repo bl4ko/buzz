@@ -453,7 +453,7 @@ export function SidebarSection({
           asChild={canToggle}
           style={
             themeName === "tokyo-night-storm"
-              ? { color: sectionForeground(title) }
+              ? { color: sectionForeground() }
               : undefined
           }
         >
