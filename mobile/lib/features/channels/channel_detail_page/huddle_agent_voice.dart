@@ -278,11 +278,12 @@ class _HuddleAgentVoice extends HookConsumerWidget {
               child: const Text('Huddle chat'),
             ),
           if (agent != null && microphoneMode.value != null)
-            TextButton(
+            OutlinedButton.icon(
               onPressed: () => unawaited(
                 speech.showMicrophoneModes().catchError((Object _) {}),
               ),
-              child: Text(switch (microphoneMode.value) {
+              icon: const Icon(Icons.graphic_eq),
+              label: Text(switch (microphoneMode.value) {
                 'voiceIsolation' => 'Mic mode: Voice Isolation',
                 'wideSpectrum' =>
                   'Mic mode: Wide Spectrum. Use Voice Isolation',

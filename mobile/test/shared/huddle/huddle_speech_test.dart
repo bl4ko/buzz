@@ -302,6 +302,58 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
+  test('room noise that never stops cannot hold speech forever', () async {
+    final calls = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    final transcripts = <String>[];
+    final speech = HuddleSpeech(
+      baseUrl: 'https://buzz.example',
+      nsec: nostr.Keys.generate().nsec,
+      channelId: 'child',
+      turnEnd: Duration.zero,
+      turnHold: const Duration(milliseconds: 300),
+      client: MockClient(
+        (request) async => request.url.path.endsWith('speech')
+            ? http.Response.bytes([1, 2], 200)
+            : http.Response('{"text":"Hello Hermes"}', 200),
+      ),
+    );
+    speech.onTranscript = transcripts.add;
+    await speech.start();
+    Future<void> send(String method, Map<String, Object> arguments) {
+      final delivered = Completer<void>();
+      messenger.handlePlatformMessage(
+        channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, arguments),
+        ),
+        (_) => delivered.complete(),
+      );
+      return delivered.future;
+    }
+
+    await send('audio', {
+      'audio': Uint8List.fromList([1, 2]),
+    });
+    await send('speaking', {'speaking': true});
+    final reply = speech.speak('Hello');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(transcripts, isEmpty);
+    expect(calls, ['start']);
+    await reply;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(transcripts, ['Hello Hermes']);
+    expect(calls, ['start', 'play']);
+    await speech.stop();
+    speech.dispose();
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
   test('replies are spoken as plain sentence groups', () {
     final chunks = speechChunks(
       'Done. See **the report** at https://x.example/r and [notes](https://n). '

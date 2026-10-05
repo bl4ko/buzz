@@ -653,6 +653,7 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
   private var silentSamples = 0
   private var voicedSamples = 0
   private var holdoffSamples = 0
+  private var speakingSent = false
   private var listening = false
 
   init(onAudio: @escaping (Data) -> Void, onError: @escaping (String) -> Void,
@@ -700,9 +701,12 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
     let level = 10 * log10(max(vDSP.meanSquare(filters?.speechBand.apply(input: audio) ?? audio), 1e-12))
     let floor = noiseFloor(adding: level, samples: count)
     if level > max(floor + (voicedSamples > 0 ? 6 : 10), Self.minimumSpeechDb) {
-      if voicedSamples == 0 { onSpeaking(true) }
       voicedSamples += count
       silentSamples = 0
+      if !speakingSent && voicedSamples >= sampleRate / 4 {
+        speakingSent = true
+        onSpeaking(true)
+      }
     } else {
       silentSamples += count
     }
@@ -792,7 +796,8 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
   }
 
   private func clearSegment() {
-    if voicedSamples > 0 { onSpeaking(false) }
+    if speakingSent { onSpeaking(false) }
+    speakingSent = false
     pcm.removeAll(keepingCapacity: true)
     silentSamples = 0
     voicedSamples = 0

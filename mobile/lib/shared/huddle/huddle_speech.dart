@@ -16,6 +16,7 @@ final class HuddleSpeech {
   final String? nsec;
   final String channelId;
   final Duration turnEnd;
+  final Duration turnHold;
   final ValueNotifier<bool> agentSpeaking = ValueNotifier(false);
   void Function(String)? onTranscript;
   void Function(String)? onError;
@@ -24,7 +25,7 @@ final class HuddleSpeech {
   int _playbackGeneration = 0;
   int _replies = 0;
   bool _transcribing = false;
-  bool _userSpeaking = false;
+  DateTime? _speakingSince;
   bool _active = false;
   Timer? _turnTimer;
   String? _agentName;
@@ -36,6 +37,7 @@ final class HuddleSpeech {
     required this.nsec,
     required this.channelId,
     this.turnEnd = const Duration(milliseconds: 500),
+    this.turnHold = const Duration(seconds: 3),
     http.Client? client,
   }) : _client = client ?? http.Client();
 
@@ -43,7 +45,7 @@ final class HuddleSpeech {
     if (!identical(_owner, this)) return;
     final values = call.arguments as Map?;
     if (call.method == 'audio' && values?['audio'] is Uint8List) {
-      _userSpeaking = false;
+      _speakingSince = null;
       if (!_active) return;
       if (_clips.length >= 4) {
         onError?.call('Speech service is busy. Please repeat your sentence.');
@@ -54,7 +56,9 @@ final class HuddleSpeech {
       _turnTimer = Timer(turnEnd, _flush);
       await _drain();
     } else if (call.method == 'speaking' && values?['speaking'] is bool) {
-      _userSpeaking = values!['speaking'] as bool;
+      _speakingSince = values!['speaking'] as bool
+          ? _speakingSince ?? DateTime.now()
+          : null;
       _flush();
     } else if (call.method == 'error') {
       final message = values?['message'];
@@ -136,12 +140,19 @@ final class HuddleSpeech {
     _flush();
   }
 
+  Duration get _held => _speakingSince == null
+      ? Duration.zero
+      : turnHold - DateTime.now().difference(_speakingSince!);
+
   void _flush() {
-    if (_userSpeaking ||
-        _transcribing ||
+    if (_transcribing ||
         _clips.isNotEmpty ||
         _heard.isEmpty ||
         (_turnTimer?.isActive ?? false)) {
+      return;
+    }
+    if (_held > Duration.zero) {
+      _turnTimer = Timer(_held, _flush);
       return;
     }
     final text = _heard;
@@ -153,7 +164,7 @@ final class HuddleSpeech {
     _generation++;
     _clips.clear();
     _heard = '';
-    _userSpeaking = false;
+    _speakingSince = null;
     _agentName = agentName;
     _owner = this;
     _channel.setMethodCallHandler(_handleCall);
@@ -167,7 +178,7 @@ final class HuddleSpeech {
     _turnTimer?.cancel();
     _clips.clear();
     _heard = '';
-    _userSpeaking = false;
+    _speakingSince = null;
     if (!identical(_owner, this)) return Future.value();
     return _channel.invokeMethod<void>('stop');
   }
@@ -233,7 +244,7 @@ final class HuddleSpeech {
       for (var index = 0; index < chunks.length; index++) {
         final audio = await next!;
         next = index + 1 < chunks.length ? fetch(chunks[index + 1]) : null;
-        while (_userSpeaking && current()) {
+        while (_held > Duration.zero && current()) {
           await Future<void>.delayed(const Duration(milliseconds: 100));
         }
         if (!current()) return;
