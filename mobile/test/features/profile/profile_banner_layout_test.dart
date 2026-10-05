@@ -52,6 +52,7 @@ void main() {
       displayName: 'Hermes',
       ownerPubkey: owner,
       bannerUrl: 'https://example.com/banner.png',
+      modelUrl: 'https://example.com/model.glb',
     );
     await tester.pumpWidget(
       ProviderScope(
@@ -73,6 +74,7 @@ void main() {
   ) async {
     await mount(tester, owner);
     expect(find.byType(ProfileMediaEditor), findsNothing);
+    expect(find.text('View 3D model'), findsOneWidget);
     final banner = tester.getRect(find.byType(ProfileBanner));
     final avatar = tester.getRect(
       find.byKey(const ValueKey('selected-profile-avatar')),
