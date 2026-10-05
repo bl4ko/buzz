@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateProfile } from "@/shared/api/tauriProfiles";
-import { profileQueryKey } from "@/features/profile/hooks";
+import {
+  evictUsersBatchEntries,
+  profileQueryKey,
+} from "@/features/profile/hooks";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
 import { useCommunities } from "@/features/communities/useCommunities";
 import * as React from "react";
@@ -106,6 +109,9 @@ export function ProfileMediaEditor({
         ["user-profile", saved.pubkey.toLowerCase()],
         saved,
       );
+      evictUsersBatchEntries(queryClient, [saved.pubkey]);
+      await queryClient.invalidateQueries({ queryKey: ["users-batch"] });
+      await queryClient.invalidateQueries({ queryKey: ["user-search"] });
       void queryClient.invalidateQueries({ queryKey: profileQueryKey });
     },
   });
@@ -114,39 +120,53 @@ export function ProfileMediaEditor({
   const relayUrl = activeCommunity?.relayUrl;
   const [banner, setBanner] = React.useState(profile?.bannerUrl ?? "");
   const [model, setModel] = React.useState(profile?.modelUrl ?? "");
+  const [icon, setIcon] = React.useState(profile?.avatarUrl ?? "");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const bannerInput = React.useRef<HTMLInputElement>(null);
   const modelInput = React.useRef<HTMLInputElement>(null);
+  const iconInput = React.useRef<HTMLInputElement>(null);
   const generation = React.useRef(0);
   React.useEffect(() => {
     generation.current += 1;
     setError(profile?.pubkey && relayUrl ? "" : "Profile is not available.");
     setBanner(profile?.bannerUrl ?? "");
     setModel(profile?.modelUrl ?? "");
+    setIcon(profile?.avatarUrl ?? "");
     setBusy(false);
     return () => {
       generation.current += 1;
     };
-  }, [profile?.pubkey, profile?.bannerUrl, profile?.modelUrl, relayUrl]);
+  }, [
+    profile?.pubkey,
+    profile?.bannerUrl,
+    profile?.modelUrl,
+    profile?.avatarUrl,
+    relayUrl,
+  ]);
 
-  async function upload(file: File | undefined, isModel: boolean) {
+  async function upload(
+    file: File | undefined,
+    kind: "banner" | "model" | "icon",
+  ) {
     if (!file) return;
+    const isModel = kind === "model";
     const current = ++generation.current;
     setBusy(true);
     setError("");
     try {
       if (file.size > (isModel ? 20 : 10) * 1024 * 1024)
         throw new Error(
-          isModel ? "Model limit is 20 MB." : "Banner limit is 10 MB.",
+          isModel ? "Model limit is 20 MB." : "Image limit is 10 MB.",
         );
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (isModel) validateProfileModel(bytes);
       const result = await uploadMediaBytes([...bytes]);
       if (!isModel && !result.type.startsWith("image/"))
-        throw new Error("Choose an image for the banner.");
+        throw new Error("Choose an image for the icon or banner.");
       if (current !== generation.current) return;
       if (isModel) setModel(result.url);
+      else if (kind === "icon") setIcon(result.url);
       else setBanner(result.url);
     } catch (cause) {
       if (current === generation.current)
@@ -161,16 +181,25 @@ export function ProfileMediaEditor({
   const disabled = busy || mutation.isPending || !profile;
   const changed =
     banner !== (profile?.bannerUrl ?? "") ||
-    model !== (profile?.modelUrl ?? "");
+    model !== (profile?.modelUrl ?? "") ||
+    icon !== (profile?.avatarUrl ?? "");
   return (
     <section
-      aria-label="Profile banner and 3D model"
+      aria-label="Profile icon, banner and 3D model"
       className="flex flex-col gap-3 rounded-lg border p-4"
     >
-      <h3 className="font-medium">Banner and 3D model</h3>
+      <h3 className="font-medium">Icon, banner and 3D model</h3>
       <p className="text-sm text-muted-foreground">
-        Upload a banner image (10 MB) or a self-contained GLB model (20 MB).
+        Upload an icon or banner image (10 MB), or a self-contained GLB model
+        (20 MB).
       </p>
+      {icon ? (
+        <img
+          alt="Profile icon preview"
+          className="h-20 w-20 rounded-full object-cover"
+          src={rewriteRelayUrl(icon)}
+        />
+      ) : null}
       <ProfileMedia
         profile={
           profile
@@ -183,12 +212,22 @@ export function ProfileMediaEditor({
         }
       />
       <input
+        ref={iconInput}
+        hidden
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={(event) => {
+          void upload(event.target.files?.[0], "icon");
+          event.target.value = "";
+        }}
+      />
+      <input
         ref={bannerInput}
         type="file"
         accept="image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(event) => {
-          void upload(event.target.files?.[0], false);
+          void upload(event.target.files?.[0], "banner");
           event.target.value = "";
         }}
       />
@@ -198,11 +237,27 @@ export function ProfileMediaEditor({
         accept=".glb,model/gltf-binary"
         className="hidden"
         onChange={(event) => {
-          void upload(event.target.files?.[0], true);
+          void upload(event.target.files?.[0], "model");
           event.target.value = "";
         }}
       />
       <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={disabled}
+          variant="outline"
+          onClick={() => iconInput.current?.click()}
+        >
+          Upload icon
+        </Button>
+        {icon ? (
+          <Button
+            disabled={disabled}
+            variant="ghost"
+            onClick={() => setIcon("")}
+          >
+            Remove icon
+          </Button>
+        ) : null}
         <Button
           disabled={disabled}
           variant="outline"
@@ -240,6 +295,8 @@ export function ProfileMediaEditor({
           onClick={() => {
             void mutation
               .mutateAsync({
+                avatarUrl:
+                  icon !== (profile?.avatarUrl ?? "") ? icon : undefined,
                 bannerUrl:
                   banner !== (profile?.bannerUrl ?? "") ? banner : undefined,
                 modelUrl:

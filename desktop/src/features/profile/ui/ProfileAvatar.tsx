@@ -108,6 +108,7 @@ export function ProfileAvatar({
 
   return (
     <Avatar
+      key={src ?? "fallback"}
       className={cn(
         "shrink-0 text-primary shadow-xs",
         shape === "squircle" && "rounded-squircle",

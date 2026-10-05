@@ -85,6 +85,7 @@ export function UserAvatar({
 
   return (
     <Avatar
+      key={src ?? "fallback"}
       // Animated avatars carry their own backdrop disc and transparent
       // surroundings — any container fill would flatten the pop-out.
       className={cn(
