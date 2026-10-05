@@ -3,6 +3,7 @@ import 'dart:isolate';
 import '../crypto/nip_oa.dart';
 import '../relay/nostr_models.dart';
 import 'user_profile.dart';
+import 'profile_media_overrides.dart';
 
 /// A verified profile together with its NIP-01 replacement order.
 typedef ParsedProfileEvent = ({
@@ -45,6 +46,7 @@ ParsedProfileEvent parseProfileEvent(NostrEvent event) {
       avatarUrl: data.avatarUrl,
       bannerUrl: data.bannerUrl,
       modelUrl: data.modelUrl,
+      agentMedia: parseAgentMedia(event.content),
       about: data.about,
       nip05Handle: data.nip05,
       ownerPubkey: verifiedOaOwnerPubkey(event.tags, event.pubkey),

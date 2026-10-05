@@ -18,6 +18,71 @@ import 'package:pointycastle/digests/sha256.dart';
 
 void main() {
   test(
+    'agent icon patch preserves owner avatar and other agent media',
+    () async {
+      final owner = nostr.Keys.generate();
+      final agent = nostr.Keys.generate();
+      final original = NostrEvent(
+        id: 'owner-profile',
+        pubkey: owner.public,
+        kind: 0,
+        createdAt: 1,
+        sig: '',
+        tags: const [
+          ['custom', 'keep'],
+        ],
+        content: jsonEncode({
+          'picture': 'https://example.com/owner.png',
+          'custom': 'keep',
+          'buzz_agent_media': {
+            agent.public: {
+              'banner': 'https://example.com/banner.png',
+              'buzz_model': 'https://example.com/model.glb',
+            },
+          },
+        }),
+      );
+      final agentProfile = NostrEvent(
+        id: 'agent-profile',
+        pubkey: agent.public,
+        kind: 0,
+        createdAt: 1,
+        sig: '',
+        tags: [_authTag(owner, agent.public)],
+        content: '{}',
+      );
+      final relay = _AgentProfileRelaySession(original, agentProfile);
+      final container = _profileContainer(owner.nsec, relay);
+      addTearDown(container.dispose);
+      await container.read(profileProvider.future);
+      await container
+          .read(profileProvider.notifier)
+          .updateAgentMedia(
+            agentPubkey: agent.public,
+            avatarUrl: 'https://example.com/icon.png',
+          );
+      final saved =
+          jsonDecode(relay.published.single.content) as Map<String, dynamic>;
+      expect(saved['picture'], 'https://example.com/owner.png');
+      expect(saved['custom'], 'keep');
+      expect(saved['buzz_agent_media'][agent.public], {
+        'picture': 'https://example.com/icon.png',
+        'banner': 'https://example.com/banner.png',
+        'buzz_model': 'https://example.com/model.glb',
+      });
+      expect(relay.published.single.tags, original.tags);
+      await container
+          .read(profileProvider.notifier)
+          .updateAgentMedia(agentPubkey: agent.public, avatarUrl: '');
+      final cleared = jsonDecode(relay.published.last.content);
+      expect(cleared['buzz_agent_media'][agent.public]['picture'], '');
+      expect(
+        cleared['buzz_agent_media'][agent.public]['banner'],
+        'https://example.com/banner.png',
+      );
+    },
+  );
+  test(
     'a media patch preserves the other media and unknown metadata',
     () async {
       final keys = nostr.Keys.generate();
@@ -771,6 +836,19 @@ ProviderContainer _profileContainer(
     relaySessionProvider.overrideWith(() => relaySession),
   ],
 );
+
+class _AgentProfileRelaySession extends _ProfileRelaySession {
+  _AgentProfileRelaySession(super.profile, this.agent);
+  final NostrEvent agent;
+
+  @override
+  Future<List<NostrEvent>> fetchHistory(
+    NostrFilter filter, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async => filter.authors?.contains(agent.pubkey) == true
+      ? [agent]
+      : [profile, ...published];
+}
 
 class _ControlledProfileRelaySession extends RelaySessionNotifier {
   _ControlledProfileRelaySession({required this.fetch});

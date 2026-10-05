@@ -8,6 +8,7 @@ import '../push/push_presentation_export_recovery.dart';
 import '../relay/relay.dart';
 import 'user_profile.dart';
 import 'profile_event_parser.dart';
+import 'profile_media_overrides.dart';
 
 /// In-memory cache of user profiles, fetched in batches from the relay.
 ///
@@ -22,6 +23,7 @@ class UserCacheNotifier extends Notifier<Map<String, UserProfile>> {
   final _pushExport = PushPresentationExportRecovery();
   final Map<String, ({int createdAt, String eventId})> _profileEventOrders = {};
   int _generation = 0;
+  final Map<String, UserProfile> _baseProfiles = {};
   bool _flushInFlight = false;
   Future<void> _verificationQueue = Future.value();
   Timer? _batchTimer;
@@ -32,6 +34,7 @@ class UserCacheNotifier extends Notifier<Map<String, UserProfile>> {
     ref.watch(relayConfigProvider);
     _generation++;
     _profileEventOrders.clear();
+    _baseProfiles.clear();
     ref.onDispose(() {
       _generation++;
       _pending.clear();
@@ -54,7 +57,8 @@ class UserCacheNotifier extends Notifier<Map<String, UserProfile>> {
 
   /// Stores a profile that was fetched or updated outside the batch loader.
   void put(UserProfile profile) {
-    state = {...state, profile.pubkey.toLowerCase(): profile};
+    _baseProfiles[profile.pubkey.toLowerCase()] = profile;
+    state = _resolveProfiles();
   }
 
   /// Preload profiles for a list of pubkeys (e.g. channel members).
@@ -215,20 +219,19 @@ class UserCacheNotifier extends Notifier<Map<String, UserProfile>> {
   void _mergeParsedProfiles(List<ParsedProfileEvent> profiles) {
     // Read the current state after the isolate completes: live events and other
     // batches may have installed newer profiles while this batch was parsing.
-    final updated = Map<String, UserProfile>.from(state);
     var changed = false;
     for (final parsed in profiles) {
       if (!_isNewer(parsed.profile.pubkey, parsed.createdAt, parsed.eventId)) {
         continue;
       }
-      updated[parsed.profile.pubkey] = parsed.profile;
+      _baseProfiles[parsed.profile.pubkey] = parsed.profile;
       _profileEventOrders[parsed.profile.pubkey] = (
         createdAt: parsed.createdAt,
         eventId: parsed.eventId,
       );
       changed = true;
     }
-    if (changed) state = updated;
+    if (changed) state = _resolveProfiles();
   }
 
   bool _isNewer(String pubkey, int createdAt, String eventId) {
@@ -243,12 +246,30 @@ class UserCacheNotifier extends Notifier<Map<String, UserProfile>> {
     if (event.kind != 0) return false;
     final pubkey = event.pubkey.toLowerCase();
     if (!_isNewer(pubkey, event.createdAt, event.id)) return false;
-    profiles[pubkey] = parseProfileEvent(event).profile;
+    _baseProfiles[pubkey] = parseProfileEvent(event).profile;
     _profileEventOrders[pubkey] = (
       createdAt: event.createdAt,
       eventId: event.id,
     );
+    profiles
+      ..clear()
+      ..addAll(_resolveProfiles());
     return true;
+  }
+
+  Map<String, UserProfile> _resolveProfiles() {
+    return {
+      for (final entry in _baseProfiles.entries)
+        entry.key: _resolveProfile(entry.value),
+    };
+  }
+
+  UserProfile _resolveProfile(UserProfile profile) {
+    final owner = profile.ownerPubkey;
+    if (owner != null && !_baseProfiles.containsKey(owner)) {
+      _scheduleFetch(owner);
+    }
+    return applyAgentMedia(profile, _baseProfiles[owner]);
   }
 }
 

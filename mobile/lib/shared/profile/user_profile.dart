@@ -9,6 +9,7 @@ class UserProfile {
   final String? avatarUrl;
   final String? bannerUrl;
   final String? modelUrl;
+  final Map<String, Map<String, String>> agentMedia;
   final String? about;
   final String? nip05Handle;
 
@@ -24,6 +25,7 @@ class UserProfile {
     this.avatarUrl,
     this.bannerUrl,
     this.modelUrl,
+    this.agentMedia = const {},
     this.about,
     this.nip05Handle,
     this.ownerPubkey,

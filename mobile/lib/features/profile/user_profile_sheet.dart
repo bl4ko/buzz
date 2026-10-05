@@ -108,6 +108,9 @@ class UserProfileSheet extends HookConsumerWidget {
               NostrFilters.profile(owner),
             );
             if (owners.isEmpty) return data;
+            ref
+                .read(userCacheProvider.notifier)
+                .cacheProfileEvent(owners.first);
             final metadata = jsonDecode(owners.first.content);
             final media = metadata is Map ? metadata['buzz_agent_media'] : null;
             final visual = media is Map ? media[pk] : null;
@@ -115,7 +118,9 @@ class UserProfileSheet extends HookConsumerWidget {
             return ProfileData(
               pubkey: pk,
               displayName: data.displayName,
-              avatarUrl: data.avatarUrl,
+              avatarUrl: visual['picture'] is String
+                  ? visual['picture'] as String
+                  : data.avatarUrl,
               about: data.about,
               nip05: data.nip05,
               bannerUrl: visual['banner'] is String
@@ -155,7 +160,7 @@ class UserProfileSheet extends HookConsumerWidget {
     final displayName =
         (opener != null ? ref.watch(opener) : watchIdentityNames(ref, {pk}))
             .labelFor(pk);
-    final avatarUrl = profile?.avatarUrl;
+    final avatarUrl = aboutSnapshot.data?.avatarUrl ?? profile?.avatarUrl;
     final nip05 = profile?.nip05Handle;
     final initial =
         profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
@@ -269,6 +274,7 @@ class UserProfileSheet extends HookConsumerWidget {
                                           onSaved: () => Navigator.pop(context),
                                           profile: UserProfile(
                                             pubkey: pk,
+                                            avatarUrl: avatarUrl,
                                             bannerUrl: bannerUrl,
                                             modelUrl: modelUrl,
                                           ),

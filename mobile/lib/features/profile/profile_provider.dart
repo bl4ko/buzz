@@ -146,16 +146,21 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
   Future<void> updateAvatarUrl(String avatarUrl) =>
       _publishProfilePatch({'picture': avatarUrl.trim()});
 
-  Future<void> updateMedia({String? bannerUrl, String? modelUrl}) =>
-      _publishProfilePatch({
-        if (bannerUrl != null) 'banner': bannerUrl,
-        if (modelUrl != null) 'buzz_model': modelUrl,
-      });
+  Future<void> updateMedia({
+    String? bannerUrl,
+    String? modelUrl,
+    String? avatarUrl,
+  }) => _publishProfilePatch({
+    'picture': ?avatarUrl,
+    'banner': ?bannerUrl,
+    'buzz_model': ?modelUrl,
+  });
 
   Future<void> updateAgentMedia({
     required String agentPubkey,
     String? bannerUrl,
     String? modelUrl,
+    String? avatarUrl,
   }) async {
     final context = _currentWriteContext();
     final events = await context.session.fetchHistory(
@@ -172,8 +177,9 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
     await _publishProfilePatch({
       '_agent_media_patch': {
         'pubkey': agentPubkey,
-        if (bannerUrl != null) 'banner': bannerUrl,
-        if (modelUrl != null) 'buzz_model': modelUrl,
+        'picture': ?avatarUrl,
+        'banner': ?bannerUrl,
+        'buzz_model': ?modelUrl,
       },
     });
   }
@@ -235,6 +241,7 @@ class ProfileNotifier extends AsyncNotifier<UserProfile?> {
       final priorMedia = agents[target];
       agents[target] = {
         if (priorMedia is Map<String, dynamic>) ...priorMedia,
+        if (mediaPatch.containsKey('picture')) 'picture': mediaPatch['picture'],
         if (mediaPatch.containsKey('banner')) 'banner': mediaPatch['banner'],
         if (mediaPatch.containsKey('buzz_model'))
           'buzz_model': mediaPatch['buzz_model'],

@@ -1,3 +1,6 @@
+use super::profile_media::{
+    apply_agent_media, apply_search_icons, load_agent_icons, validate_profile_media_url,
+};
 use std::collections::HashMap;
 
 use buzz_core_pkg::PresenceStatus;
@@ -54,11 +57,7 @@ pub async fn update_profile(
     let api_base_url = relay_http_base_url(&relay_url);
     let filter = serde_json::json!({"kinds": [0], "authors": [my_pubkey], "limit": 1});
     let agent_profile = if let Some(ref agent_pubkey) = agent_pubkey {
-        if display_name.is_some()
-            || avatar_url.is_some()
-            || about.is_some()
-            || nip05_handle.is_some()
-        {
+        if display_name.is_some() || about.is_some() || nip05_handle.is_some() {
             return Err("agent media update cannot change identity fields".to_string());
         }
         let events = query_relay_at_with_keys(
@@ -94,6 +93,7 @@ pub async fn update_profile(
     let name = current.get("name").and_then(Value::as_str);
     let picture = avatar_url
         .as_deref()
+        .filter(|_| agent_pubkey.is_none())
         .or_else(|| current.get("picture").and_then(Value::as_str));
     let ab = about
         .as_deref()
@@ -115,7 +115,18 @@ pub async fn update_profile(
         }
     }
     let mut media = serde_json::Map::new();
-    for (field, value) in [("banner", banner_url), ("buzz_model", model_url)] {
+    for (field, value) in [
+        ("banner", banner_url),
+        ("buzz_model", model_url),
+        (
+            "picture",
+            if agent_pubkey.is_some() {
+                avatar_url
+            } else {
+                None
+            },
+        ),
+    ] {
         if let Some(value) = value {
             validate_profile_media_url(&value)?;
             media.insert(field.to_string(), Value::String(value));
@@ -305,7 +316,19 @@ pub async fn get_users_batch(
     )
     .await?;
 
-    Ok(nostr_convert::users_batch_from_events(&events, &pubkeys))
+    let mut response = nostr_convert::users_batch_from_events(&events, &pubkeys);
+    let targets = response
+        .profiles
+        .iter()
+        .map(|(pk, p)| (pk.clone(), p.owner_pubkey.clone()))
+        .collect::<Vec<_>>();
+    let icons = load_agent_icons(&state, &targets).await?;
+    for (pk, icon) in icons {
+        if let Some(profile) = response.profiles.get_mut(&pk) {
+            profile.avatar_url = Some(icon);
+        }
+    }
+    Ok(response)
 }
 
 #[tauri::command]
@@ -384,6 +407,7 @@ pub async fn search_users(
         if events.len() >= max {
             response.next_cursor = Some((page + 1).to_string());
         }
+        apply_search_icons(&state, &mut response).await?;
         return Ok(response);
     }
 
@@ -412,6 +436,7 @@ pub async fn search_users(
     if events.len() >= max {
         response.next_cursor = Some((page + 1).to_string());
     }
+    apply_search_icons(&state, &mut response).await?;
     Ok(response)
 }
 
@@ -480,43 +505,6 @@ fn current_pubkey_hex(state: &AppState) -> Result<String, String> {
 
 fn current_pubkey_hex_unwrap(state: &AppState) -> String {
     current_pubkey_hex(state).unwrap_or_default()
-}
-
-fn apply_agent_media(profile: &mut ProfileInfo, owner: &nostr::Event) -> Result<(), String> {
-    if profile.owner_pubkey.as_deref() != Some(owner.pubkey.to_hex().as_str()) {
-        return Err("agent profile owner does not match".to_string());
-    }
-    let metadata: Value =
-        serde_json::from_str(&owner.content).map_err(|error| error.to_string())?;
-    if let Some(media) = metadata
-        .get("buzz_agent_media")
-        .and_then(|agents| agents.get(&profile.pubkey))
-    {
-        if let Some(value) = media.get("banner").and_then(Value::as_str) {
-            profile.banner_url = Some(value.to_string());
-        }
-        if let Some(value) = media.get("buzz_model").and_then(Value::as_str) {
-            profile.model_url = Some(value.to_string());
-        }
-    }
-    Ok(())
-}
-
-fn validate_profile_media_url(value: &str) -> Result<(), String> {
-    if value.is_empty() {
-        return Ok(());
-    }
-    let url = url::Url::parse(value).map_err(|_| "invalid profile media URL".to_string())?;
-    if url.scheme() != "https"
-        && !(url.scheme() == "http"
-            && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")))
-    {
-        return Err("profile media must use HTTPS".to_string());
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err("profile media URL must not contain credentials".to_string());
-    }
-    Ok(())
 }
 
 fn empty_profile_info(pubkey: &str) -> ProfileInfo {

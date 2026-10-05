@@ -52,6 +52,7 @@ pub mod pairing;
 mod personas;
 mod prevent_sleep;
 mod profile;
+mod profile_media;
 mod project_git;
 mod project_git_branches;
 mod project_git_diff;

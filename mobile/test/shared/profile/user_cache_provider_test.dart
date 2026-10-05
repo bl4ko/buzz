@@ -11,6 +11,79 @@ import 'package:nostr/nostr.dart' as nostr;
 import 'package:pointycastle/digests/sha256.dart';
 
 void main() {
+  test(
+    'verified owner icon overrides update and clear cached agent avatars',
+    () {
+      final container = ProviderContainer(
+        overrides: [
+          relaySessionProvider.overrideWith(_FailingProfileSession.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      final cache = container.read(userCacheProvider.notifier);
+      final owner = nostr.Keys.generate();
+      final agent = nostr.Keys.generate();
+      cache.cacheProfileEvent(
+        NostrEvent(
+          id: 'agent-1',
+          pubkey: agent.public,
+          kind: 0,
+          createdAt: 1,
+          sig: '',
+          tags: [_authTag(owner, agent.public)],
+          content: jsonEncode({'picture': 'https://example.com/original.png'}),
+        ),
+      );
+      void publishOwner(int version, Map<String, dynamic> media) =>
+          cache.cacheProfileEvent(
+            NostrEvent(
+              id: 'owner-$version',
+              pubkey: owner.public,
+              kind: 0,
+              createdAt: version,
+              sig: '',
+              tags: const [],
+              content: jsonEncode({
+                'picture': 'https://example.com/owner.png',
+                'buzz_agent_media': {agent.public: media},
+              }),
+            ),
+          );
+      publishOwner(1, {'picture': 'https://example.com/icon.png'});
+      expect(
+        cache.state[agent.public]?.avatarUrl,
+        'https://example.com/icon.png',
+      );
+      expect(
+        cache.state[owner.public]?.avatarUrl,
+        'https://example.com/owner.png',
+      );
+      publishOwner(2, {'picture': ''});
+      expect(cache.state[agent.public]?.avatarUrl, '');
+      publishOwner(3, {});
+      expect(
+        cache.state[agent.public]?.avatarUrl,
+        'https://example.com/original.png',
+      );
+      publishOwner(4, {'picture': 'https://example.com/icon.png'});
+      cache.cacheProfileEvent(
+        NostrEvent(
+          id: 'agent-2',
+          pubkey: agent.public,
+          kind: 0,
+          createdAt: 2,
+          sig: '',
+          tags: const [],
+          content: jsonEncode({'picture': 'https://example.com/original.png'}),
+        ),
+      );
+      expect(
+        cache.state[agent.public]?.avatarUrl,
+        'https://example.com/original.png',
+      );
+      expect(cache.state[agent.public]?.ownerPubkey, isNull);
+    },
+  );
   test('preload reports a profile batch failure', () async {
     final container = ProviderContainer(
       overrides: [
