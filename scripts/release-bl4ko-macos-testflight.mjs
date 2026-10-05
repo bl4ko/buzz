@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { sign, X509Certificate } from "node:crypto";
+import { createHash, sign, X509Certificate } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -25,6 +25,37 @@ export function testflightConfig(build) {
   if (!/^[1-9]\d{0,17}$/.test(build ?? ""))
     throw new Error("Use a positive numeric Mac build number");
   return { bundle: { macOS: { bundleVersion: build } } };
+}
+
+export function validateDistributionProfile(
+  profile,
+  certificate,
+  now = Date.now(),
+) {
+  if (
+    profile.Entitlements?.["com.apple.application-identifier"] !==
+      "55S37D9HA7.com.bl4ko.buzz" ||
+    profile.Entitlements?.["com.apple.developer.team-identifier"] !==
+      "55S37D9HA7" ||
+    !profile.TeamIdentifier?.includes("55S37D9HA7")
+  )
+    throw new Error("Mac provisioning profile identity mismatch");
+  if (!(Date.parse(profile.ExpirationDate) > now))
+    throw new Error("Mac provisioning profile is expired");
+  if (
+    profile.Entitlements["get-task-allow"] === true ||
+    profile.ProvisionedDevices ||
+    profile.ProvisionsAllDevices === true
+  )
+    throw new Error("Use a Mac App Store distribution profile");
+  if (
+    !profile.DeveloperCertificates?.some((value) =>
+      Buffer.from(value, "base64").equals(certificate),
+    )
+  )
+    throw new Error(
+      "Mac provisioning profile does not allow the signing certificate",
+    );
 }
 
 function run(command, args, options = {}) {
@@ -140,12 +171,14 @@ async function release(build, upload) {
         (item) => item.attributes.identifier === identifier,
       );
       if (!bundle) throw new Error("The Buzz Mac App ID is missing");
+      const buildProfileName = `${profileName} ${build}`;
       const profiles = await apple(
-        `profiles?filter[name]=${encodeURIComponent(profileName)}&include=bundleId,certificates`,
+        `profiles?filter[name]=${encodeURIComponent(buildProfileName)}&include=bundleId,certificates`,
       );
       let profile = profiles.data.find(
         (item) =>
           item.attributes.profileState === "ACTIVE" &&
+          Date.parse(item.attributes.expirationDate) > Date.now() &&
           item.attributes.profileType === "MAC_APP_STORE" &&
           item.relationships.bundleId.data.id === bundle.id &&
           item.relationships.certificates.data.some(
@@ -157,7 +190,10 @@ async function release(build, upload) {
           await apple("profiles", {
             data: {
               type: "profiles",
-              attributes: { name: profileName, profileType: "MAC_APP_STORE" },
+              attributes: {
+                name: buildProfileName,
+                profileType: "MAC_APP_STORE",
+              },
               relationships: {
                 bundleId: { data: { type: "bundleIds", id: bundle.id } },
                 certificates: {
@@ -176,6 +212,31 @@ async function release(build, upload) {
       );
       const profilePath = path.join(temporary, "embedded.provisionprofile");
       writeFileSync(profilePath, provisioning);
+      const decodedProfilePath = path.join(temporary, "profile.plist");
+      writeFileSync(
+        decodedProfilePath,
+        output("security", ["cms", "-D", "-i", profilePath]),
+      );
+      const profileField = (key, format = "raw") =>
+        output("plutil", [
+          "-extract",
+          key,
+          format,
+          "-o",
+          "-",
+          decodedProfilePath,
+        ]);
+      const decodedProfile = {
+        Entitlements: JSON.parse(profileField("Entitlements", "json")),
+        TeamIdentifier: JSON.parse(profileField("TeamIdentifier", "json")),
+        ExpirationDate: profileField("ExpirationDate"),
+        DeveloperCertificates: [profileField("DeveloperCertificates.0")],
+        UUID: profileField("UUID"),
+      };
+      validateDistributionProfile(
+        decodedProfile,
+        Buffer.from(appSigning.certificate, "base64"),
+      );
       config.bundle.macOS.files = { "embedded.provisionprofile": profilePath };
       const configPath = path.join(temporary, "tauri.build.json");
       writeFileSync(configPath, JSON.stringify(config));
@@ -251,6 +312,13 @@ async function release(build, upload) {
         const certificate = new X509Certificate(
           Buffer.from(signing.certificate, "base64"),
         );
+        if (
+          !(Date.parse(certificate.validFrom) <= Date.now()) ||
+          !(Date.parse(certificate.validTo) > Date.now())
+        )
+          throw new Error(
+            "Mac signing certificate is outside its validity period",
+          );
         if (!certificate.verify(new X509Certificate(intermediate).publicKey))
           throw new Error("Mac signing certificate authority mismatch");
         const certificatePath = path.join(temporary, `${index}.pem`);
@@ -318,6 +386,32 @@ async function release(build, upload) {
         path.join(temporary, "Buzz-Desktop.pkg"),
       ]);
       renameSync(path.join(temporary, "Buzz-Desktop.pkg"), pkg);
+      writeFileSync(
+        path.join(directory, "release-checks.json"),
+        `${JSON.stringify(
+          {
+            commit,
+            build,
+            version,
+            sha256: createHash("sha256")
+              .update(readFileSync(pkg))
+              .digest("hex"),
+            profileId: profile.id,
+            profileUUID: decodedProfile.UUID,
+            profileExpires: decodedProfile.ExpirationDate,
+            checks: [
+              "fresh build-specific Mac App Store profile",
+              "profile app and team identity",
+              "profile allows signing certificate",
+              "profile and certificate validity periods",
+              "codesign deep strict verification",
+              "installer signature",
+            ],
+          },
+          null,
+          2,
+        )}\n`,
+      );
     }
     if (upload) {
       const privateKeys = path.join(temporary, "private_keys");
