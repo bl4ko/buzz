@@ -332,8 +332,8 @@ class UserProfileSheet extends HookConsumerWidget {
                       ),
 
                     // NIP-05 handle — centered, secondary
+                    ProfileMedia(modelUrl: modelUrl, showBanner: false),
                     if (nip05 != null && nip05.isNotEmpty) ...[
-                      ProfileMedia(modelUrl: modelUrl, showBanner: false),
                       const SizedBox(height: Grid.half),
                       Center(
                         child: Text(
