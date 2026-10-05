@@ -15,6 +15,7 @@ final class HuddleSpeech {
   final String baseUrl;
   final String? nsec;
   final String channelId;
+  final Duration turnEnd;
   final ValueNotifier<bool> agentSpeaking = ValueNotifier(false);
   void Function(String)? onTranscript;
   void Function(String)? onError;
@@ -25,6 +26,7 @@ final class HuddleSpeech {
   bool _transcribing = false;
   bool _userSpeaking = false;
   bool _active = false;
+  Timer? _turnTimer;
   String? _agentName;
   String _heard = '';
   final List<Uint8List> _clips = [];
@@ -33,6 +35,7 @@ final class HuddleSpeech {
     required this.baseUrl,
     required this.nsec,
     required this.channelId,
+    this.turnEnd = const Duration(milliseconds: 500),
     http.Client? client,
   }) : _client = client ?? http.Client();
 
@@ -47,6 +50,8 @@ final class HuddleSpeech {
         return;
       }
       _clips.add(values!['audio'] as Uint8List);
+      _turnTimer?.cancel();
+      _turnTimer = Timer(turnEnd, _flush);
       await _drain();
     } else if (call.method == 'speaking' && values?['speaking'] is bool) {
       _userSpeaking = values!['speaking'] as bool;
@@ -132,7 +137,11 @@ final class HuddleSpeech {
   }
 
   void _flush() {
-    if (_userSpeaking || _transcribing || _clips.isNotEmpty || _heard.isEmpty) {
+    if (_userSpeaking ||
+        _transcribing ||
+        _clips.isNotEmpty ||
+        _heard.isEmpty ||
+        (_turnTimer?.isActive ?? false)) {
       return;
     }
     final text = _heard;
@@ -155,6 +164,7 @@ final class HuddleSpeech {
   Future<void> stop() {
     _generation++;
     _active = false;
+    _turnTimer?.cancel();
     _clips.clear();
     _heard = '';
     _userSpeaking = false;
@@ -223,8 +233,11 @@ final class HuddleSpeech {
       for (var index = 0; index < chunks.length; index++) {
         final audio = await next!;
         next = index + 1 < chunks.length ? fetch(chunks[index + 1]) : null;
+        while (_userSpeaking && current()) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
         if (!current()) return;
-        onStatus?.call('Agent speaking');
+        onStatus?.call('Agent speaking. Tap Stop speaking to talk.');
         await _channel.invokeMethod<void>('play', {'audio': audio});
         if (!current()) return;
       }
@@ -236,6 +249,7 @@ final class HuddleSpeech {
   void dispose() {
     _generation++;
     _active = false;
+    _turnTimer?.cancel();
     onTranscript = null;
     onError = null;
     onStatus = null;

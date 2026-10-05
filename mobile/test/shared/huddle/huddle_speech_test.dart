@@ -23,6 +23,7 @@ void main() {
         baseUrl: 'https://buzz.example',
         nsec: nostr.Keys.generate().nsec,
         channelId: 'child',
+        turnEnd: Duration.zero,
         client: MockClient(
           (_) async => http.Response('{"text":"Hello Hermes"}', 200),
         ),
@@ -41,6 +42,7 @@ void main() {
         (_) => delivered.complete(),
       );
       await delivered.future;
+      await Future<void>.delayed(Duration.zero);
       expect(transcripts, ['Hello Hermes']);
       expect(statuses, ['Recognizing speech', 'Listening on this device']);
       await speech.stop();
@@ -208,12 +210,15 @@ void main() {
     final replies = [
       first.future,
       Future.value(http.Response('{"text":"a table"}', 200)),
+      Future.value(http.Response('{"text":"for two."}', 200)),
+      Future.value(http.Response('{"text":"At eight."}', 200)),
     ];
     final transcripts = <String>[];
     final speech = HuddleSpeech(
       baseUrl: 'https://buzz.example',
       nsec: nostr.Keys.generate().nsec,
       channelId: 'child',
+      turnEnd: const Duration(milliseconds: 100),
       client: MockClient((_) => replies.removeAt(0)),
     );
     speech.onTranscript = transcripts.add;
@@ -239,10 +244,59 @@ void main() {
     await firstClip;
     expect(transcripts, isEmpty);
     await send('audio', audio);
-    expect(transcripts, ['Book a table']);
+    await send('speaking', {'speaking': true});
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    expect(transcripts, isEmpty);
+    await send('audio', audio);
+    expect(transcripts, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    expect(transcripts, ['Book a table for two.']);
     await send('speaking', {'speaking': true});
     await send('speaking', {'speaking': false});
-    expect(transcripts, ['Book a table']);
+    await send('audio', audio);
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    expect(transcripts, ['Book a table for two.', 'At eight.']);
+    await speech.stop();
+    speech.dispose();
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
+  test('agent speech waits until the user stops speaking', () async {
+    final calls = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    final speech = HuddleSpeech(
+      baseUrl: 'https://buzz.example',
+      nsec: nostr.Keys.generate().nsec,
+      channelId: 'child',
+      client: MockClient((_) async => http.Response.bytes([1, 2], 200)),
+    );
+    await speech.start();
+    final delivered = Completer<void>();
+    messenger.handlePlatformMessage(
+      channel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('speaking', {'speaking': true}),
+      ),
+      (_) => delivered.complete(),
+    );
+    await delivered.future;
+    final reply = speech.speak('Hello');
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(calls, ['start']);
+    await messenger.handlePlatformMessage(
+      channel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('speaking', {'speaking': false}),
+      ),
+      null,
+    );
+    await reply;
+    expect(calls, ['start', 'play']);
     await speech.stop();
     speech.dispose();
     messenger.setMockMethodCallHandler(channel, null);
