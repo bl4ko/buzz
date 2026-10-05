@@ -14,19 +14,15 @@ import { validateProfileModel } from "@/features/profile/lib/profileMedia";
 
 export function ProfileMedia({
   profile,
+  showBanner = true,
 }: {
   profile: Profile | null | undefined;
+  showBanner?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   return (
     <>
-      {profile?.bannerUrl ? (
-        <img
-          alt="Profile banner"
-          className="h-32 w-full rounded-lg object-cover"
-          src={rewriteRelayUrl(profile.bannerUrl)}
-        />
-      ) : null}
+      {showBanner ? <ProfileBanner url={profile?.bannerUrl} /> : null}
       {profile?.modelUrl ? (
         <>
           <Button variant="outline" onClick={() => setOpen(true)}>
@@ -42,6 +38,16 @@ export function ProfileMedia({
       ) : null}
     </>
   );
+}
+
+export function ProfileBanner({ url }: { url?: string | null }) {
+  return url ? (
+    <img
+      alt="Profile banner"
+      className="h-32 w-full rounded-t-xl object-cover"
+      src={rewriteRelayUrl(url)}
+    />
+  ) : null;
 }
 
 function ProfileModel({ url }: { url: string }) {
@@ -81,16 +87,21 @@ function ProfileModel({ url }: { url: string }) {
 export function ProfileMediaEditor({
   profile,
   agentPubkey,
+  onSaved,
 }: {
   profile: Profile | null | undefined;
   agentPubkey?: string;
+  onSaved?: () => void;
 }) {
   const selfMutation = useUpdateProfileMutation();
   const queryClient = useQueryClient();
   const agentMutation = useMutation({
     mutationFn: (input: Parameters<typeof updateProfile>[0]) =>
       updateProfile(input),
-    onSuccess: (saved) => {
+    onSuccess: async (saved) => {
+      await queryClient.cancelQueries({
+        queryKey: ["user-profile", saved.pubkey.toLowerCase()],
+      });
       queryClient.setQueryData(
         ["user-profile", saved.pubkey.toLowerCase()],
         saved,
@@ -237,6 +248,7 @@ export function ProfileMediaEditor({
                 relayUrl,
                 agentPubkey,
               })
+              .then(() => onSaved?.())
               .catch(() => {});
           }}
         >

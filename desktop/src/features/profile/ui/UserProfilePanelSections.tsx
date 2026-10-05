@@ -1,9 +1,12 @@
+import { Button } from "@/shared/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import {
+  ProfileBanner,
   ProfileMedia,
   ProfileMediaEditor,
 } from "@/features/profile/ui/ProfileMedia";
 import * as React from "react";
-import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil, Settings2 } from "lucide-react";
 
 import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { useIsOtherSetupAgent } from "@/features/agents/useKnownAgentPubkeys";
@@ -385,6 +388,8 @@ export function ProfileSummaryView({
     stickyTabsElement,
   ]);
 
+  const [mediaSettingsOpen, setMediaSettingsOpen] = React.useState(false);
+
   const primaryActionsMotionClassName = isBot
     ? cn(
         "will-change-[opacity]",
@@ -398,17 +403,24 @@ export function ProfileSummaryView({
       data-testid="user-profile-summary-scroll-layout"
       ref={stickyLayoutRef}
     >
-      {isBot && isOwner && !isSelf && profile?.ownerPubkey ? (
-        <ProfileMediaEditor
-          key={profile.pubkey}
-          profile={profile}
-          agentPubkey={profile.pubkey}
-        />
-      ) : (
-        <ProfileMedia profile={profile} />
-      )}
+      <ProfileBanner url={profile?.bannerUrl} />
+      {mediaSettingsOpen ? (
+        <Dialog open={mediaSettingsOpen} onOpenChange={setMediaSettingsOpen}>
+          <DialogContent>
+            <DialogTitle>Edit {displayName} profile</DialogTitle>
+            <ProfileMediaEditor
+              profile={profile}
+              agentPubkey={isSelf ? undefined : profile?.pubkey}
+              onSaved={() => setMediaSettingsOpen(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : null}
       <div
-        className={cn(isBot && "sticky top-0 z-40 -mx-4 px-4")}
+        className={cn(
+          isBot && "sticky top-0 z-40 -mx-4 px-4",
+          profile?.bannerUrl && "-mt-16",
+        )}
         data-testid={isBot ? "user-profile-sticky-hero" : undefined}
         ref={stickyHeroRef}
       >
@@ -417,11 +429,18 @@ export function ProfileSummaryView({
           notManagedOnDevice={notManagedOnDevice}
           isBot={isBot}
           onEditAgent={canEditAgent ? handleEditAgent : undefined}
+          onEditMedia={
+            isSelf || (isBot && isOwner && profile?.ownerPubkey)
+              ? () => setMediaSettingsOpen(true)
+              : undefined
+          }
           presenceStatus={presenceStatus}
           profile={profile}
           userStatus={userStatus}
         />
       </div>
+
+      <ProfileMedia profile={profile} showBanner={false} />
 
       {canInstantiateAgent ? (
         <ProfilePersonaPrimaryActions
@@ -621,6 +640,7 @@ function ProfileHero({
   displayName,
   isBot,
   onEditAgent,
+  onEditMedia,
   presenceStatus,
   profile,
   userStatus,
@@ -629,6 +649,7 @@ function ProfileHero({
   notManagedOnDevice?: boolean;
   isBot: boolean;
   onEditAgent?: () => void;
+  onEditMedia?: () => void;
   presenceStatus: "online" | "away" | "offline" | undefined;
   profile: ProfileSummaryViewProps["profile"];
   userStatus: ProfileSummaryViewProps["userStatus"];
@@ -644,7 +665,18 @@ function ProfileHero({
   ) : null;
 
   return (
-    <div className="flex flex-col items-center gap-3 text-center">
+    <div className="relative flex flex-col items-center gap-3 text-center">
+      {onEditMedia ? (
+        <Button
+          aria-label="Profile settings"
+          className="absolute top-12 right-0 bg-background"
+          onClick={onEditMedia}
+          size="icon"
+          variant="outline"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
+      ) : null}
       <MaskedAvatarBadgeFrame
         badge={
           presenceStatus ? (
@@ -662,7 +694,7 @@ function ProfileHero({
           ) : null
         }
         badgeBox={PROFILE_HERO_PRESENCE_BADGE.shell}
-        className="h-20 w-20"
+        className="h-20 w-20 rounded-full bg-background ring-4 ring-background"
         curve={STATUS_DOT_MASK_CURVE}
         cutout={PROFILE_HERO_PRESENCE_BADGE.cutout}
         shape={isBot ? "squircle" : "circle"}

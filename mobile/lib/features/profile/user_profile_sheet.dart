@@ -167,6 +167,9 @@ class UserProfileSheet extends HookConsumerWidget {
       [pk, mediaConfig, mediaRevision.value],
     );
     final aboutSnapshot = useFuture(aboutFuture);
+    final bannerUrl = aboutSnapshot.data?.bannerUrl ?? profile?.bannerUrl;
+    final modelUrl = aboutSnapshot.data?.modelUrl ?? profile?.modelUrl;
+    final hasBanner = bannerUrl?.isNotEmpty == true;
     final about = aboutSnapshot.data?.about ?? profile?.about ?? '';
 
     // Ensure presence and status are tracked.
@@ -256,73 +259,87 @@ class UserProfileSheet extends HookConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ProfileMedia(
-                      bannerUrl:
-                          aboutSnapshot.data?.bannerUrl ?? profile?.bannerUrl,
-                      modelUrl:
-                          aboutSnapshot.data?.modelUrl ?? profile?.modelUrl,
-                    ),
-                    if (profile?.ownerPubkey == currentPubkey &&
-                        pk != currentPubkey)
-                      TextButton(
-                        onPressed: () =>
-                            showModalBottomSheet<void>(
-                              context: context,
-                              isScrollControlled: true,
-                              builder: (context) => SingleChildScrollView(
-                                child: SafeArea(
-                                  child: ProfileMediaEditor(
-                                    agentPubkey: pk,
-                                    profile: UserProfile(
-                                      pubkey: pk,
-                                      bannerUrl: aboutSnapshot.data?.bannerUrl,
-                                      modelUrl: aboutSnapshot.data?.modelUrl,
+                    Stack(
+                      children: [
+                        ProfileBanner(url: bannerUrl),
+                        // Center the presence chip on the avatar's lower edge.
+                        Padding(
+                          padding: EdgeInsets.only(
+                            top: hasBanner ? 80 : 0,
+                            bottom: agentPresentation ? 0 : Grid.xl / 2,
+                          ),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Align(
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  width: 96,
+                                  height: 96,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: context.colors.surface,
+                                      borderRadius: BorderRadius.circular(
+                                        agentPresentation ||
+                                                profile?.isAgent == true
+                                            ? 28
+                                            : 999,
+                                      ),
+                                    ),
+                                    child: _ProfileAvatar(
+                                      avatarUrl: avatarUrl,
+                                      initial: initial,
+                                      isAgent:
+                                          agentPresentation ||
+                                          profile?.isAgent == true,
                                     ),
                                   ),
                                 ),
                               ),
-                            ).then((_) {
-                              if (context.mounted) mediaRevision.value++;
-                            }),
-                        child: const Text('Edit profile media'),
-                      ),
-                    // Center the presence chip on the avatar's lower edge.
-                    Padding(
-                      padding: EdgeInsets.only(
-                        bottom: agentPresentation ? 0 : Grid.xl / 2,
-                      ),
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Align(
-                            alignment: Alignment.center,
-                            child: agentPresentation
-                                ? SizedBox(
-                                    width: Grid.xxl * 2,
-                                    child: _ProfileAvatar(
-                                      avatarUrl: avatarUrl,
-                                      initial: initial,
-                                      isAgent: true,
-                                    ),
-                                  )
-                                : FractionallySizedBox(
-                                    widthFactor: 0.5,
-                                    child: _ProfileAvatar(
-                                      avatarUrl: avatarUrl,
-                                      initial: initial,
-                                      isAgent: profile?.isAgent == true,
-                                    ),
+                              if (!agentPresentation)
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: -(Grid.xl / 2),
+                                  child: _ProfilePresenceChip(
+                                    presence: presence,
                                   ),
+                                ),
+                            ],
                           ),
-                          if (!agentPresentation)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: -(Grid.xl / 2),
-                              child: _ProfilePresenceChip(presence: presence),
+                        ),
+                        if (profile?.ownerPubkey == currentPubkey &&
+                            pk != currentPubkey)
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: IconButton(
+                              tooltip: 'Profile settings',
+                              onPressed: () =>
+                                  showModalBottomSheet<void>(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    builder: (context) => SingleChildScrollView(
+                                      child: SafeArea(
+                                        child: ProfileMediaEditor(
+                                          agentPubkey: pk,
+                                          onSaved: () => Navigator.pop(context),
+                                          profile: UserProfile(
+                                            pubkey: pk,
+                                            bannerUrl: bannerUrl,
+                                            modelUrl: modelUrl,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ).then((_) {
+                                    if (context.mounted) mediaRevision.value++;
+                                  }),
+                              icon: const Icon(Icons.settings_outlined),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
                     SizedBox(height: agentPresentation ? Grid.xs : Grid.half),
 
@@ -428,6 +445,7 @@ class UserProfileSheet extends HookConsumerWidget {
 
                     // NIP-05 handle — centered, secondary
                     if (nip05 != null && nip05.isNotEmpty) ...[
+                      ProfileMedia(modelUrl: modelUrl, showBanner: false),
                       const SizedBox(height: Grid.half),
                       Center(
                         child: Text(

@@ -10,8 +10,14 @@ import 'profile_model_viewer.dart';
 import 'profile_model_validation.dart';
 
 class ProfileMedia extends StatelessWidget {
-  const ProfileMedia({super.key, this.bannerUrl, this.modelUrl});
+  const ProfileMedia({
+    super.key,
+    this.bannerUrl,
+    this.modelUrl,
+    this.showBanner = true,
+  });
 
+  final bool showBanner;
   final String? bannerUrl;
   final String? modelUrl;
 
@@ -19,17 +25,7 @@ class ProfileMedia extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (bannerUrl?.isNotEmpty == true)
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: MediaImage(
-            url: bannerUrl!,
-            height: 120,
-            fit: BoxFit.cover,
-            semanticLabel: 'Profile banner',
-            errorBuilder: (_, _, _) => const Text('Banner could not load.'),
-          ),
-        ),
+      if (showBanner) ProfileBanner(url: bannerUrl),
       if (modelUrl?.isNotEmpty == true)
         TextButton(
           onPressed: () => showDialog<void>(
@@ -60,15 +56,41 @@ class ProfileMedia extends StatelessWidget {
   );
 }
 
+class ProfileBanner extends StatelessWidget {
+  const ProfileBanner({super.key, this.url});
+
+  final String? url;
+
+  @override
+  Widget build(BuildContext context) => url?.isNotEmpty == true
+      ? ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 120,
+            child: MediaImage(
+              url: url!,
+              fit: BoxFit.cover,
+              semanticLabel: 'Profile banner',
+              errorBuilder: (_, _, _) =>
+                  const Center(child: Text('Banner could not load.')),
+            ),
+          ),
+        )
+      : const SizedBox.shrink();
+}
+
 class ProfileMediaEditor extends HookConsumerWidget {
   const ProfileMediaEditor({
     super.key,
     required this.profile,
     this.agentPubkey,
+    this.onSaved,
   });
 
   final UserProfile? profile;
   final String? agentPubkey;
+  final VoidCallback? onSaved;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -206,6 +228,7 @@ class ProfileMediaEditor extends HookConsumerWidget {
                             if (context.mounted &&
                                 current == generation.value) {
                               saved.value = (banner.value, model.value);
+                              onSaved?.call();
                             }
                           } catch (cause) {
                             if (context.mounted &&
