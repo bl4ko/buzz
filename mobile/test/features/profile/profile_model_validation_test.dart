@@ -56,4 +56,16 @@ void main() {
       throwsFormatException,
     );
   });
+  test('accepts 50 MB and rejects a larger model', () {
+    final bytes = Uint8List(50 * 1024 * 1024 + 1);
+    bytes.setRange(0, model(metadata).length, model(metadata));
+    ByteData.sublistView(bytes).setUint32(8, 50 * 1024 * 1024, Endian.little);
+    expect(
+      () => validateProfileModel(
+        Uint8List.sublistView(bytes, 0, 50 * 1024 * 1024),
+      ),
+      returnsNormally,
+    );
+    expect(() => validateProfileModel(bytes), throwsFormatException);
+  });
 }

@@ -49,8 +49,8 @@ class ProfileModelViewer extends HookConsumerWidget {
             const Duration(seconds: 30),
           )) {
             if (disposed) throw StateError('Model viewer closed.');
-            if (bytes.length + chunk.length > 20 * 1024 * 1024) {
-              throw const FormatException('Model limit is 20 MB.');
+            if (bytes.length + chunk.length > 50 * 1024 * 1024) {
+              throw const FormatException('Model limit is 50 MB.');
             }
             bytes.add(chunk);
           }

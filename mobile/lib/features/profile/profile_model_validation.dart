@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 void validateProfileModel(Uint8List bytes) {
-  if (bytes.length < 20 || bytes.length > 20 * 1024 * 1024) {
-    throw const FormatException('Choose a GLB model up to 20 MB.');
+  if (bytes.length < 20 || bytes.length > 50 * 1024 * 1024) {
+    throw const FormatException('Choose a GLB model up to 50 MB.');
   }
   final data = ByteData.sublistView(bytes);
   if (data.getUint32(0, Endian.little) != 0x46546c67 ||

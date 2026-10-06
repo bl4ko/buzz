@@ -7,13 +7,19 @@ function glb(document) {
   const length = Math.ceil(json.length / 4) * 4;
   const bytes = new Uint8Array(20 + length).fill(32);
   const view = new DataView(bytes.buffer);
-  [0x46546c67, 2, bytes.length, length, 0x4e4f534a].forEach((v, i) => view.setUint32(i * 4, v, true));
+  [0x46546c67, 2, bytes.length, length, 0x4e4f534a].forEach((v, i) => {
+    view.setUint32(i * 4, v, true);
+  });
   bytes.set(json, 20);
   return bytes;
 }
 const model = { asset: { version: "2.0" }, meshes: [{ primitives: [] }] };
 test("profile models accept embedded GLB resources", () => {
-  assert.doesNotThrow(() => validateProfileModel(glb({ ...model, images: [{ uri: "data:image/png;base64,aA==" }] })));
+  assert.doesNotThrow(() =>
+    validateProfileModel(
+      glb({ ...model, images: [{ uri: "data:image/png;base64,aA==" }] }),
+    ),
+  );
 });
 test("profile models reject external resources and decoder downloads", () => {
   for (const document of [
@@ -21,12 +27,23 @@ test("profile models reject external resources and decoder downloads", () => {
     { ...model, images: [{ uri: "../texture.png" }] },
     { ...model, extensionsUsed: ["KHR_draco_mesh_compression"] },
     { ...model, extensionsRequired: ["KHR_draco_mesh_compression"] },
-  ]) assert.throws(() => validateProfileModel(glb(document)));
+  ])
+    assert.throws(() => validateProfileModel(glb(document)));
 });
 test("profile models reject corrupt headers and incomplete payloads", () => {
   const bytes = glb(model);
   bytes[0] = 0;
   assert.throws(() => validateProfileModel(bytes));
   assert.throws(() => validateProfileModel(glb(model).subarray(0, 20)));
-  assert.throws(() => validateProfileModel(new Uint8Array(20 * 1024 * 1024 + 1)));
+  assert.throws(
+    () => validateProfileModel(new Uint8Array(50 * 1024 * 1024 + 1)),
+    /50 MB/,
+  );
+});
+test("profile models accept the 50 MB boundary", () => {
+  const small = glb(model);
+  const bytes = new Uint8Array(50 * 1024 * 1024);
+  bytes.set(small);
+  new DataView(bytes.buffer).setUint32(8, bytes.length, true);
+  assert.doesNotThrow(() => validateProfileModel(bytes));
 });
