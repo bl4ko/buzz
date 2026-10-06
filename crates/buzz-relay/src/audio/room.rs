@@ -921,6 +921,15 @@ impl AudioRoomManager {
         Some(room)
     }
 
+    /// Community-local channels whose rooms currently hold peers.
+    pub fn occupied_channels(&self) -> Vec<(CommunityId, Uuid)> {
+        self.rooms
+            .iter()
+            .filter(|entry| !entry.value().is_empty())
+            .map(|entry| *entry.key())
+            .collect()
+    }
+
     /// Remove the room if it has no peers. Returns `true` if the room was removed.
     pub fn cleanup_if_empty(&self, community_id: CommunityId, channel_id: Uuid) -> bool {
         self.rooms
