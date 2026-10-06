@@ -744,7 +744,7 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
       withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
     }
     if voicedSamples == 0 {
-      let leadingBytes = sampleRate * 2 / 5
+      let leadingBytes = sampleRate * 2 * 3 / 5
       if pcm.count > leadingBytes { pcm.removeFirst(pcm.count - leadingBytes) }
       return
     }
