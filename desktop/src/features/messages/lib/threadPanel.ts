@@ -3,6 +3,7 @@ import type { ChannelWindowThreadSummary } from "@/features/messages/lib/channel
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { isBroadcastReply } from "@/features/messages/lib/threading";
 import { truncateNpub } from "@/shared/lib/pubkey";
+import { parseHuddleStartContent } from "@/features/huddle/lib/huddleThread";
 import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
 
 type ThreadPanelData = {
@@ -466,7 +467,8 @@ export function buildMainTimelineEntries(
       return {
         message,
         summary:
-          message.kind === KIND_HUDDLE_STARTED
+          message.kind === KIND_HUDDLE_STARTED &&
+          !parseHuddleStartContent(message.body).threadChat
             ? null
             : mergeThreadSummaries(
                 buildSummaryForDirectReplies(

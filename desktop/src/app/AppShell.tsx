@@ -120,6 +120,8 @@ export function AppShell() {
     handleHuddleVisibilityChange,
     handleSidebarChannelSelect,
     huddleBackingChannelIds,
+    huddleNotificationQuiet,
+    revealedHuddleChannelIds,
     isHuddleCompanionOpen,
     isHuddleDrawerOpen,
     isHuddleRoom,
@@ -273,8 +275,15 @@ export function AppShell() {
     [channels],
   );
   const sidebarChannels = React.useMemo(
-    () => memberChannels.filter(shouldShowSidebarChannel),
-    [memberChannels],
+    () =>
+      memberChannels.filter((channel) =>
+        shouldShowSidebarChannel(
+          channel,
+          huddleBackingChannelIds,
+          revealedHuddleChannelIds,
+        ),
+      ),
+    [huddleBackingChannelIds, memberChannels, revealedHuddleChannelIds],
   );
   const hasRestoredCommunityDestinationRef = React.useRef(false);
   React.useEffect(() => {
@@ -403,6 +412,7 @@ export function AppShell() {
       onLiveMention: refetchHomeFeedFromLiveSignal,
       onThreadReplyDesktopNotification: handleThreadReplyDesktopNotification,
       followedRootIds,
+      ...huddleNotificationQuiet,
     },
   );
 

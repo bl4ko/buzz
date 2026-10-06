@@ -61,6 +61,18 @@ export function buildHuddleTtsLiveFilter(
   };
 }
 
+export function buildHuddleThreadTtsLiveFilter(
+  parentChannelId: string,
+  since: number,
+): RelaySubscriptionFilter {
+  return {
+    kinds: [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_EDIT],
+    "#h": [parentChannelId],
+    since,
+    limit: 50,
+  };
+}
+
 /**
  * History filter for cold-load and scrollback: message kinds *only*, so the
  * `limit` budget buys visible message depth. Auxiliary events (reactions,

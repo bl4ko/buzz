@@ -1,5 +1,7 @@
+import { getThreadReference } from "@/features/messages/lib/threading";
 import {
   KIND_STREAM_MESSAGE,
+  KIND_STREAM_MESSAGE_EDIT,
   KIND_STREAM_MESSAGE_V2,
 } from "../../../shared/constants/kinds.ts";
 
@@ -20,13 +22,54 @@ export type LiveTtsEligibility =
         | "h_tag_mismatch"
         | "author_not_agent"
         | "self_authored"
+        | "not_final"
+        | "outside_thread"
         | "empty_or_system";
     };
 
 export type LiveTtsRouteResult =
   | "queued"
   | "disabled"
+  | "already_spoken"
   | Exclude<LiveTtsEligibility, { text: string }>["reason"];
+
+export type LiveTtsThread = {
+  rootId: string;
+  messageIds: Set<string>;
+  spokenMessageIds: Set<string>;
+};
+
+const MAX_TRACKED_THREAD_IDS = 5000;
+
+export function createLiveTtsThread(rootId: string): LiveTtsThread {
+  return { rootId, messageIds: new Set(), spokenMessageIds: new Set() };
+}
+
+function rememberBounded(ids: Set<string>, id: string) {
+  ids.delete(id);
+  ids.add(id);
+  if (ids.size > MAX_TRACKED_THREAD_IDS) {
+    const oldest = ids.values().next().value;
+    if (oldest !== undefined) ids.delete(oldest);
+  }
+}
+
+function editTargetId(event: LiveTtsEvent): string | null {
+  return event.tags.find((tag) => tag[0] === "e")?.[1] ?? null;
+}
+
+/** Track thread membership on arrival so later final edits can be matched. */
+export function observeLiveTtsThreadEvent(
+  thread: LiveTtsThread,
+  event: LiveTtsEvent,
+) {
+  if (
+    event.kind === KIND_STREAM_MESSAGE &&
+    getThreadReference(event.tags).rootId === thread.rootId
+  ) {
+    rememberBounded(thread.messageIds, event.id);
+  }
+}
 
 function textWithoutAttachments(event: LiveTtsEvent): string {
   const urls = new Set(
@@ -57,11 +100,12 @@ export function classifySpeakableAgentText(
   agentPubkeys: ReadonlySet<string>,
   selfPubkey: string | null,
   channelId: string,
+  thread: LiveTtsThread | null = null,
 ): LiveTtsEligibility {
-  if (
-    event.kind !== KIND_STREAM_MESSAGE &&
-    event.kind !== KIND_STREAM_MESSAGE_V2
-  )
+  const speakableKinds = thread
+    ? [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_EDIT]
+    : [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2];
+  if (!speakableKinds.includes(event.kind))
     return { text: null, reason: "unsupported_kind" };
   if (!event.tags.some((tag) => tag[0] === "h" && tag[1] === channelId))
     return { text: null, reason: "h_tag_mismatch" };
@@ -69,6 +113,15 @@ export function classifySpeakableAgentText(
     return { text: null, reason: "author_not_agent" };
   if (event.pubkey === selfPubkey)
     return { text: null, reason: "self_authored" };
+  if (thread) {
+    if (!event.tags.some((tag) => tag[0] === "voice" && tag[1] === "final"))
+      return { text: null, reason: "not_final" };
+    const inThread =
+      event.kind === KIND_STREAM_MESSAGE_EDIT
+        ? thread.messageIds.has(editTargetId(event) ?? "")
+        : getThreadReference(event.tags).rootId === thread.rootId;
+    if (!inThread) return { text: null, reason: "outside_thread" };
+  }
   const content = textWithoutAttachments(event).trim();
   if (content.length === 0 || content.startsWith("[System]"))
     return { text: null, reason: "empty_or_system" };
@@ -83,15 +136,25 @@ export function routeLiveAgentText(
   channelId: string,
   routeId: number,
   enqueue: (text: string, routeId: number) => "queued" | "disabled",
+  thread: LiveTtsThread | null = null,
 ): LiveTtsRouteResult {
   const eligibility = classifySpeakableAgentText(
     event,
     agentPubkeys,
     selfPubkey,
     channelId,
+    thread,
   );
   if (eligibility.text === null) return eligibility.reason;
-  return enqueue(eligibility.text, routeId);
+  if (!thread) return enqueue(eligibility.text, routeId);
+  const messageId =
+    event.kind === KIND_STREAM_MESSAGE_EDIT
+      ? (editTargetId(event) ?? event.id)
+      : event.id;
+  if (thread.spokenMessageIds.has(messageId)) return "already_spoken";
+  const result = enqueue(eligibility.text, routeId);
+  if (result === "queued") rememberBounded(thread.spokenMessageIds, messageId);
+  return result;
 }
 
 /**

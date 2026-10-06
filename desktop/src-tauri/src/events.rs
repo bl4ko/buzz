@@ -503,7 +503,13 @@ pub fn build_huddle_started(
     parent_channel_id: &str,
     ephemeral_channel_id: &str,
 ) -> Result<EventBuilder, String> {
-    build_huddle_event(48100, parent_channel_id, ephemeral_channel_id, &[], None)
+    build_huddle_event(
+        48100,
+        parent_channel_id,
+        ephemeral_channel_id,
+        &[("chat", "thread")],
+        None,
+    )
 }
 
 /// Kind 48103 — huddle ended, posted to the parent channel.
@@ -798,6 +804,22 @@ mod tests {
                 vec!["e".to_string(), target.to_hex()]
             ]
         );
+    }
+    #[test]
+    fn huddle_start_marks_parent_thread_chat() {
+        let parent = Uuid::new_v4().to_string();
+        let ephemeral = Uuid::new_v4().to_string();
+        let event = build_huddle_started(&parent, &ephemeral)
+            .unwrap()
+            .sign_with_keys(&Keys::generate())
+            .unwrap();
+        let content: serde_json::Value = serde_json::from_str(&event.content).unwrap();
+        assert_eq!(
+            content,
+            serde_json::json!({"ephemeral_channel_id": ephemeral, "chat": "thread"})
+        );
+        let tags: Vec<Vec<String>> = event.tags.iter().map(|t| t.as_slice().to_vec()).collect();
+        assert_eq!(tags, vec![vec!["h".to_string(), parent]]);
     }
     #[test]
     fn channel_builders_reject_hash_only_names() {

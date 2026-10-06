@@ -3,6 +3,7 @@ import { Headphones, MessageSquareText } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import type { TimelineMessage } from "@/features/messages/types";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
@@ -25,6 +26,8 @@ import {
 import { useHuddle } from "../HuddleContext";
 import { isHuddleStartStale } from "../lib/huddleCardState";
 import { formatHuddleActionError } from "../lib/huddleError";
+import { parseHuddleStartContent } from "../lib/huddleThread";
+import { huddleWindowChannelId } from "../lib/huddleWindow";
 
 type HuddleAttachmentProps = {
   channelId: string | null;
@@ -118,10 +121,11 @@ export function HuddleAttachment({
   className,
   message,
 }: HuddleAttachmentProps) {
-  const ephemeralChannelId = React.useMemo(
-    () => parseEphemeralChannelId(message.body),
+  const { ephemeralChannelId, threadChat } = React.useMemo(
+    () => parseHuddleStartContent(message.body),
     [message.body],
   );
+  const { goChannel } = useAppNavigation();
   const {
     activeEphemeralChannelId,
     isStarting,
@@ -207,7 +211,8 @@ export function HuddleAttachment({
   const isEnded = lifecycleState.ended;
   const isCurrentHuddle =
     Boolean(ephemeralChannelId) &&
-    activeEphemeralChannelId === ephemeralChannelId;
+    (activeEphemeralChannelId === ephemeralChannelId ||
+      huddleWindowChannelId() === ephemeralChannelId);
   const isStaleUnconfirmedHuddle =
     !isCurrentHuddle && isHuddleStartStale(message.createdAt);
   const canJoin = Boolean(
@@ -292,6 +297,10 @@ export function HuddleAttachment({
           <AttachmentAction
             aria-label="View huddle"
             onClick={() => {
+              if (threadChat && channelId) {
+                void goChannel(channelId, { thread: message.id });
+                return;
+              }
               if (isCurrentHuddle) {
                 showHuddleInMainApp(ephemeralChannelId);
                 return;
