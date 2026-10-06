@@ -1193,6 +1193,8 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         });
     }
 
+    tokio::spawn(buzz_relay::audio::ttl_keepalive::run(Arc::clone(&state)));
+
     // NIP-PL matcher and worker are enabled as one unit behind the explicit
     // deployment opt-in. The gateway URL alone never enables push.
     if state.config.push_enabled {

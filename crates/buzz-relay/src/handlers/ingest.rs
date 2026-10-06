@@ -74,7 +74,7 @@ fn map_huddle_backing_channel_error(error: buzz_db::DbError) -> IngestError {
     }
 }
 
-fn expected_huddle_backing_ttl(ephemeral_ttl_override: Option<i32>) -> i32 {
+pub(crate) fn expected_huddle_backing_ttl(ephemeral_ttl_override: Option<i32>) -> i32 {
     ephemeral_ttl_override.unwrap_or(3600)
 }
 
@@ -7031,5 +7031,113 @@ mod postgres_tests {
         let _ = sqlx::raw_sql(sqlx::AssertSqlSafe(format!("DROP SCHEMA {schema} CASCADE")))
             .execute(&admin)
             .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn huddle_thread_reply_in_parent_channel_is_threaded_under_the_start() {
+        use buzz_db::channel::{ChannelType, ChannelVisibility};
+        use nostr::Tag;
+
+        let state = ingest_state().await;
+        let host = format!("huddle-thread-{}.test", Uuid::new_v4().simple());
+        let community = state
+            .db
+            .ensure_configured_community(&host)
+            .await
+            .expect("ensure community")
+            .id;
+        let tenant = TenantContext::resolved(community, &host);
+        let (creator, agent) = (nostr::Keys::generate(), nostr::Keys::generate());
+        let creator_bytes = creator.public_key().to_bytes();
+        let (parent, child) = (Uuid::new_v4(), Uuid::new_v4());
+        for (channel, visibility, ttl) in [
+            (parent, ChannelVisibility::Open, None),
+            (
+                child,
+                ChannelVisibility::Private,
+                Some(expected_huddle_backing_ttl(
+                    state.config.ephemeral_ttl_override,
+                )),
+            ),
+        ] {
+            state
+                .db
+                .create_channel_with_id(
+                    community,
+                    channel,
+                    &format!("huddle-thread-{}", channel.simple()),
+                    ChannelType::Stream,
+                    visibility,
+                    None,
+                    creator_bytes.as_slice(),
+                    ttl,
+                )
+                .await
+                .expect("create channel");
+        }
+        let auth = || IngestAuth::Http {
+            pubkey: creator.public_key(),
+            scopes: vec![Scope::ChannelsWrite, Scope::MessagesWrite],
+            auth_method: HttpAuthMethod::Nip98,
+        };
+        let parent_tag = Tag::parse(["h", &parent.to_string()]).expect("h tag");
+
+        let start = EventBuilder::new(
+            Kind::Custom(KIND_HUDDLE_STARTED as u16),
+            serde_json::json!({"ephemeral_channel_id": child.to_string(), "chat": "thread"})
+                .to_string(),
+        )
+        .tags([parent_tag.clone()])
+        .sign_with_keys(&creator)
+        .expect("sign huddle start");
+        let start_id = start.id;
+        let started = ingest_event(&state, &tenant, start, auth())
+            .await
+            .expect("thread-chat huddle start is accepted");
+        assert!(started.accepted, "{}", started.message);
+        assert!(state
+            .db
+            .huddle_started_link_exists(community, parent, child, &creator_bytes)
+            .await
+            .expect("link lookup"));
+
+        let reply = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "status?")
+            .tags([
+                parent_tag,
+                Tag::parse(["e", &start_id.to_hex(), "", "reply"]).expect("e tag"),
+                Tag::public_key(agent.public_key()),
+            ])
+            .sign_with_keys(&creator)
+            .expect("sign thread reply");
+        let reply_id = reply.id;
+        let replied = ingest_event(&state, &tenant, reply, auth())
+            .await
+            .expect("thread reply is accepted");
+        assert!(replied.accepted, "{}", replied.message);
+
+        let meta = state
+            .db
+            .get_thread_metadata_by_event(community, reply_id.as_bytes())
+            .await
+            .expect("thread metadata lookup")
+            .expect("reply has thread metadata");
+        assert_eq!(meta.channel_id, parent);
+        assert_eq!(
+            meta.root_event_id.as_deref(),
+            Some(start_id.as_bytes().as_slice())
+        );
+        assert_eq!(
+            meta.parent_event_id.as_deref(),
+            Some(start_id.as_bytes().as_slice())
+        );
+        assert_eq!(meta.depth, 1);
+        let root = state
+            .db
+            .get_thread_metadata_by_event(community, start_id.as_bytes())
+            .await
+            .expect("root metadata lookup")
+            .expect("start is a thread root");
+        assert_eq!(root.reply_count, 1);
     }
 }

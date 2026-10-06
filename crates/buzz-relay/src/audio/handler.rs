@@ -2971,7 +2971,8 @@ impl From<buzz_db::DbError> for JoinCommitError {
 ///    (IMPORTANT 4 residual: third carried fact, alongside archive + parent.)
 ///    d. Re-read child membership — skip auto-add insert if a concurrent
 ///    legitimate add is already present (concurrent-add preservation).
-/// 5. Insert kind `48101` in the same transaction (uncommitted).
+/// 5. Refresh the room channel's TTL and insert kind `48101` in the same
+///    transaction (uncommitted).
 /// 6. Acquire a session effect permit (or rollback + return `Err(Expired)`).
 /// 7. Commit the transaction while holding the permit.
 /// 8. While the same permit is held: mark the event locally, fan out to local
@@ -3174,6 +3175,8 @@ async fn commit_participant_join(
         }
         // If not still_absent: concurrent add observed — membership preserved.
     }
+
+    buzz_db::channel::refresh_channel_ttl_in_transaction(&mut tx, channel_id).await?;
 
     // 5. Insert kind `48101` uncommitted.
     let (stored, was_inserted) =
@@ -9997,6 +10000,86 @@ mod tests {
             assert!(
                 parsed["admission_id"].is_string(),
                 "F1: content must carry `admission_id`"
+            );
+        }
+
+        #[tokio::test]
+        #[ignore = "requires Postgres — runs in postgres-ci nextest lane"]
+        async fn committed_join_refreshes_the_huddle_channel_ttl() {
+            use chrono::{Duration, Utc};
+            use uuid::Uuid;
+
+            let state = audio_test_state_real_db().await.expect(
+                "PostgreSQL must be available — set BUZZ_TEST_DATABASE_URL or start local postgres",
+            );
+            let pool = state.db.pool().clone();
+            let (tenant, parent_channel_id, member_key) = seed_audio_fixture(&pool).await;
+            let community_id = tenant.community();
+            let member_bytes = member_key.public_key().to_bytes().to_vec();
+
+            let child_channel_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO channels \
+                 (id, community_id, name, channel_type, visibility, created_by, ttl_seconds, ttl_deadline) \
+                 VALUES ($1, $2, 'ttl-join-child', 'stream', 'private', $3, 3600, NOW() - interval '1 second')",
+            )
+            .bind(child_channel_id)
+            .bind(community_id.as_uuid())
+            .bind(&member_bytes)
+            .execute(&pool)
+            .await
+            .expect("seed expired child channel");
+            sqlx::query(
+                "INSERT INTO channel_members (community_id, channel_id, pubkey, role, invited_by) \
+                 VALUES ($1, $2, $3, 'owner', $3)",
+            )
+            .bind(community_id.as_uuid())
+            .bind(child_channel_id)
+            .bind(&member_bytes)
+            .execute(&pool)
+            .await
+            .expect("seed child membership");
+
+            let gate = crate::nip_fi_gate::SessionAdmissionGate::new(
+                Utc::now() + Duration::hours(1),
+                tokio_util::sync::CancellationToken::new(),
+            );
+            let room = std::sync::Arc::new(crate::audio::room::Room::new(
+                community_id,
+                child_channel_id,
+            ));
+            let result = commit_participant_join(
+                &state,
+                &tenant,
+                child_channel_id,
+                parent_channel_id,
+                &member_key.public_key().to_hex(),
+                &member_bytes,
+                Uuid::new_v4(),
+                0u8,
+                0u8,
+                1,
+                "1",
+                &MembershipAdmission::Existing { parent_channel_id },
+                &gate,
+                &room,
+                None,
+                None,
+            )
+            .await;
+            assert!(result.is_ok(), "join must commit; got {result:?}");
+
+            let deadline: chrono::DateTime<Utc> = sqlx::query_scalar(
+                "SELECT ttl_deadline FROM channels WHERE community_id = $1 AND id = $2",
+            )
+            .bind(community_id.as_uuid())
+            .bind(child_channel_id)
+            .fetch_one(&pool)
+            .await
+            .expect("load child deadline");
+            assert!(
+                deadline > Utc::now() + Duration::seconds(3500),
+                "a committed join must push the huddle channel deadline a full TTL ahead; got {deadline}"
             );
         }
 

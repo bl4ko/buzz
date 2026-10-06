@@ -3839,6 +3839,13 @@ mod postgres_tests {
         .to_string();
         assert!(huddle_started_content_links(&matching, channel_id));
 
+        let thread_chat = serde_json::json!({
+            "ephemeral_channel_id": channel_id.to_string(),
+            "chat": "thread",
+        })
+        .to_string();
+        assert!(huddle_started_content_links(&thread_chat, channel_id));
+
         let wrong_field = serde_json::json!({
             "other": channel_id.to_string(),
         })

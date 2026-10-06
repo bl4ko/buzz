@@ -9,7 +9,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::{DbError, Result};
-use crate::Db;
+use crate::{AdmittedTx, Db};
 use buzz_core::CommunityId;
 use buzz_datastore_tracing::datastore_span;
 
@@ -773,6 +773,38 @@ pub async fn soft_delete_channel(
     Ok(result.rows_affected() > 0)
 }
 
+/// Extends an active ephemeral channel's TTL deadline to `now + ttl_seconds`.
+///
+/// Returns `false` and changes nothing for permanent, archived, or deleted
+/// channels.
+pub async fn refresh_channel_ttl<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    community_id: CommunityId,
+    channel_id: Uuid,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE channels \
+         SET ttl_deadline = clock_timestamp() + make_interval(secs => ttl_seconds) \
+         WHERE community_id = $1 AND id = $2 AND ttl_seconds IS NOT NULL \
+           AND archived_at IS NULL AND deleted_at IS NULL",
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .execute(executor)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// [`refresh_channel_ttl`] inside an admitted event-write transaction.
+pub async fn refresh_channel_ttl_in_transaction(
+    tx: &mut AdmittedTx,
+    channel_id: Uuid,
+) -> Result<bool> {
+    let community_id = tx.community();
+    refresh_channel_ttl(tx.conn(), community_id, channel_id).await
+}
+
 /// Archive ephemeral channels whose TTL deadline has passed.
 ///
 /// Returns the `(community_id, host, channel_id)` list that was archived. Idempotent — the
@@ -1005,6 +1037,21 @@ impl Db {
         soft_delete_channel(&self.pool, community_id, channel_id).await
     }
 
+    /// Extends an active ephemeral channel's TTL deadline.
+    #[datastore_span(name = "refresh_channel_ttl", system = "postgresql")]
+    pub async fn refresh_channel_ttl(
+        &self,
+        community_id: CommunityId,
+        channel_id: Uuid,
+    ) -> Result<bool> {
+        let mut connection = crate::observability::acquire_writer(
+            &self.pool,
+            crate::observability::WriterOperation::Maintenance,
+        )
+        .await?;
+        refresh_channel_ttl(&mut *connection, community_id, channel_id).await
+    }
+
     /// Archive ephemeral channels whose TTL deadline has passed.
     #[datastore_span(name = "reap_expired_ephemeral_channels", system = "postgresql")]
     pub async fn reap_expired_ephemeral_channels(&self) -> Result<Vec<ReapedEphemeralChannel>> {
@@ -1220,6 +1267,89 @@ mod postgres_tests {
                 .any(|row| row.community_id == community && row.channel_id == channel.id),
             "reaper should not immediately rearchive renewed channel"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn refresh_channel_ttl_extends_only_active_ephemeral_channels() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let owner_pk = random_pubkey();
+        ensure_user(&pool, community, &owner_pk)
+            .await
+            .expect("ensure owner");
+        let mut channels = Vec::new();
+        for (name, ttl) in [
+            ("refresh-ttl-live", Some(3600)),
+            ("refresh-ttl-archived", Some(3600)),
+            ("refresh-ttl-permanent", None),
+        ] {
+            let channel = create_test_channel(
+                &pool,
+                community_id,
+                name,
+                ChannelType::Stream,
+                ChannelVisibility::Private,
+                None,
+                &owner_pk,
+                ttl,
+            )
+            .await
+            .expect("create channel");
+            channels.push(channel.id);
+        }
+        let [live, archived, permanent]: [Uuid; 3] = channels.try_into().expect("three channels");
+        sqlx::query(
+            "UPDATE channels SET ttl_deadline = NOW() - interval '1 second' \
+             WHERE community_id = $1 AND id = ANY($2)",
+        )
+        .bind(community_id)
+        .bind(vec![live, archived])
+        .execute(&pool)
+        .await
+        .expect("expire channels");
+        sqlx::query("UPDATE channels SET archived_at = NOW() WHERE community_id = $1 AND id = $2")
+            .bind(community_id)
+            .bind(archived)
+            .execute(&pool)
+            .await
+            .expect("archive channel");
+
+        assert!(refresh_channel_ttl(&pool, community, live)
+            .await
+            .expect("refresh live"));
+        assert!(!refresh_channel_ttl(&pool, community, archived)
+            .await
+            .expect("refresh archived"));
+        assert!(!refresh_channel_ttl(&pool, community, permanent)
+            .await
+            .expect("refresh permanent"));
+
+        let live_deadline = get_channel(&pool, community, live)
+            .await
+            .expect("reload live")
+            .ttl_deadline
+            .expect("live deadline");
+        assert!(live_deadline > Utc::now() + chrono::Duration::seconds(3500));
+        let archived_deadline = get_channel(&pool, community, archived)
+            .await
+            .expect("reload archived")
+            .ttl_deadline
+            .expect("archived deadline");
+        assert!(archived_deadline < Utc::now());
+        assert!(get_channel(&pool, community, permanent)
+            .await
+            .expect("reload permanent")
+            .ttl_deadline
+            .is_none());
+
+        let reaped = reap_expired_ephemeral_channels(&pool)
+            .await
+            .expect("run reaper");
+        assert!(!reaped
+            .iter()
+            .any(|row| row.community_id == community && row.channel_id == live));
     }
 
     #[tokio::test]
