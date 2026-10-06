@@ -168,6 +168,17 @@ pub enum AdmissionError {
     },
 }
 
+/// Outcome of [`Room::end_if_idle`] for one empty-room grace window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleEnd {
+    /// Nobody came back; the room is now ended.
+    Ended,
+    /// An admission is still pending; check again shortly.
+    Busy,
+    /// A peer rejoined, a newer window opened, or the room already ended.
+    Cancelled,
+}
+
 /// Peer index allocator + room lifecycle gate.
 ///
 /// The `ended` flag and peer admission are synchronized under the same mutex.
@@ -211,6 +222,8 @@ struct AdmissionGuard {
     /// this behavior.
     pinned_version: Option<u8>,
     roster_revision: u64,
+    idle: Option<u64>,
+    idle_windows: u64,
 }
 
 impl AdmissionGuard {
@@ -222,6 +235,8 @@ impl AdmissionGuard {
             ended: false,
             pinned_version: None,
             roster_revision: 0,
+            idle: None,
+            idle_windows: 0,
         }
     }
 
@@ -358,6 +373,7 @@ impl Room {
                 committed: false, // marked true by mark_committed after tx commit
             },
         );
+        g.idle = None;
         g.roster_revision = g.roster_revision.wrapping_add(1);
         let revision = g.roster_revision;
         let delta = RosterDelta {
@@ -424,6 +440,7 @@ impl Room {
                 committed: false, // marked true by mark_committed after tx commit
             },
         );
+        g.idle = None;
         g.roster_revision = g.roster_revision.wrapping_add(1);
         let revision = g.roster_revision;
         let delta = RosterDelta {
@@ -648,6 +665,7 @@ impl Room {
         let epoch = entry.epoch;
         let pubkey = entry.pubkey.clone();
         drop(entry); // release DashMap write guard before lock scope ends
+        g.idle = None;
         g.roster_revision = g.roster_revision.wrapping_add(1);
         let revision = g.roster_revision;
         let delta = RosterDelta {
@@ -689,7 +707,7 @@ impl Room {
         // Only the first task to see empty + !ended wins the auto-end.
         // This prevents duplicate archive/48103 when two peers disconnect
         // simultaneously and both see is_empty() == true.
-        let should_end = if !g.ended && self.peers.is_empty() {
+        let should_end = if !g.ended && g.idle.is_none() && self.peers.is_empty() {
             g.ended = true;
             true
         } else {
@@ -698,6 +716,55 @@ impl Room {
         let _ = self.roster_tx.send(delta.clone());
         drop(g);
         Some((delta, should_end))
+    }
+
+    /// Remove a committed peer. When it was the last one, keep the room open
+    /// for a rejoin and return the ticket [`Self::end_if_idle`] needs.
+    pub fn remove_peer_and_open_grace(&self, peer_id: Uuid) -> Option<(RosterDelta, Option<u64>)> {
+        let mut g = self.guard.lock().ok()?;
+        let (_, peer) = self.peers.remove(&peer_id)?;
+        g.active_indices.remove(&peer.peer_index);
+        g.roster_revision = g.roster_revision.wrapping_add(1);
+        let delta = RosterDelta {
+            revision: g.roster_revision,
+            joined: None,
+            left: Some(RosterPeer {
+                pubkey: peer.pubkey,
+                peer_index: peer.peer_index,
+                epoch: peer.epoch,
+            }),
+        };
+        let ticket = if !g.ended && self.peers.is_empty() {
+            g.idle_windows = g.idle_windows.wrapping_add(1);
+            g.idle = Some(g.idle_windows);
+            g.idle
+        } else {
+            None
+        };
+        let _ = self.roster_tx.send(delta.clone());
+        drop(g);
+        Some((delta, ticket))
+    }
+
+    /// End the room when grace window `ticket` is still open and empty.
+    pub fn end_if_idle(&self, ticket: u64) -> IdleEnd {
+        let Ok(mut g) = self.guard.lock() else {
+            return IdleEnd::Cancelled;
+        };
+        if g.ended || g.idle != Some(ticket) {
+            return IdleEnd::Cancelled;
+        }
+        if !self.peers.is_empty() {
+            return IdleEnd::Busy;
+        }
+        g.idle = None;
+        g.ended = true;
+        IdleEnd::Ended
+    }
+
+    /// True while an emptied room waits for a rejoin.
+    pub fn is_idle(&self) -> bool {
+        self.guard.lock().is_ok_and(|g| g.idle.is_some())
     }
 
     /// Like [`Self::remove_peer_silent`] but also atomically checks if the
@@ -717,7 +784,7 @@ impl Room {
         };
         g.active_indices.remove(&peer.peer_index);
         // No revision bump, no delta.
-        let should_end = if !g.ended && self.peers.is_empty() {
+        let should_end = if !g.ended && g.idle.is_none() && self.peers.is_empty() {
             g.ended = true;
             true
         } else {
@@ -930,10 +997,13 @@ impl AudioRoomManager {
             .collect()
     }
 
-    /// Remove the room if it has no peers. Returns `true` if the room was removed.
+    /// Remove the room if it has no peers and is not waiting for a rejoin.
+    /// Returns `true` if the room was removed.
     pub fn cleanup_if_empty(&self, community_id: CommunityId, channel_id: Uuid) -> bool {
         self.rooms
-            .remove_if(&(community_id, channel_id), |_, room| room.is_empty())
+            .remove_if(&(community_id, channel_id), |_, room| {
+                room.is_empty() && !room.is_idle()
+            })
             .is_some()
     }
 }
@@ -1536,5 +1606,76 @@ mod tests {
         );
         // And the room state must be unchanged.
         assert_eq!(room.peers.len(), MAX_PEERS_PER_ROOM);
+    }
+
+    #[test]
+    fn last_departure_keeps_the_room_open_for_a_rejoin() {
+        let manager = AudioRoomManager::new();
+        let community_id = CommunityId::from_uuid(Uuid::new_v4());
+        let channel_id = Uuid::new_v4();
+        let room = manager.get_or_create(community_id, channel_id);
+        let (alice, ..) = room.add_peer("alice".into(), 3).unwrap();
+
+        let (_, ticket) = room.remove_peer_and_open_grace(alice).unwrap();
+        let ticket = ticket.expect("last departure opens a grace window");
+        assert!(!manager.cleanup_if_empty(community_id, channel_id));
+
+        let (pending, ..) = room.add_peer_pending("alice".into(), 3).unwrap();
+        assert_eq!(room.end_if_idle(ticket), IdleEnd::Busy);
+        room.commit_peer(pending).unwrap();
+        assert_eq!(room.end_if_idle(ticket), IdleEnd::Cancelled);
+        assert!(Arc::ptr_eq(
+            &room,
+            &manager.get_or_create(community_id, channel_id)
+        ));
+    }
+
+    #[test]
+    fn idle_room_ends_when_nobody_returns() {
+        let manager = AudioRoomManager::new();
+        let community_id = CommunityId::from_uuid(Uuid::new_v4());
+        let channel_id = Uuid::new_v4();
+        let room = manager.get_or_create(community_id, channel_id);
+        let (alice, ..) = room.add_peer("alice".into(), 3).unwrap();
+        let (_, ticket) = room.remove_peer_and_open_grace(alice).unwrap();
+        let ticket = ticket.unwrap();
+
+        let (pending, ..) = room.add_peer_pending("bob".into(), 3).unwrap();
+        assert!(room.remove_peer_silent(pending));
+        assert_eq!(room.end_if_idle(ticket), IdleEnd::Ended);
+        assert_eq!(room.end_if_idle(ticket), IdleEnd::Cancelled);
+        assert!(matches!(
+            room.add_peer("carol".into(), 3),
+            Err(AdmissionError::Ended)
+        ));
+        assert!(manager.cleanup_if_empty(community_id, channel_id));
+    }
+
+    #[test]
+    fn a_newer_grace_window_supersedes_an_older_one() {
+        let room = fresh_room();
+        let (alice, ..) = room.add_peer("alice".into(), 3).unwrap();
+        let first = room.remove_peer_and_open_grace(alice).unwrap().1.unwrap();
+        let (alice, ..) = room.add_peer("alice".into(), 3).unwrap();
+        let second = room.remove_peer_and_open_grace(alice).unwrap().1.unwrap();
+
+        assert_eq!(room.end_if_idle(first), IdleEnd::Cancelled);
+        assert_eq!(room.end_if_idle(second), IdleEnd::Ended);
+    }
+
+    #[test]
+    fn remote_pending_rollback_leaves_an_idle_room_to_its_grace_window() {
+        let room = fresh_room();
+        let (alice, ..) = room.add_peer("alice".into(), 3).unwrap();
+        let ticket = room.remove_peer_and_open_grace(alice).unwrap().1.unwrap();
+        let (pending, ..) = room
+            .add_peer_at_index_pending("remote".into(), 3, 9)
+            .unwrap();
+
+        assert_eq!(
+            room.remove_peer_silent_and_check_ended(pending),
+            (true, false)
+        );
+        assert_eq!(room.end_if_idle(ticket), IdleEnd::Ended);
     }
 }
