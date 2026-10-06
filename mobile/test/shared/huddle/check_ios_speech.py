@@ -79,13 +79,18 @@ let afterTone = clips.count
 feed(800, 0.1, gate: { $0 % 12 < 7 })
 assert(clips.count == afterTone + 1)
 assert(clips[afterTone].count == 44 + 48000 * 2 * 15)
+feed(50)
+let beforePlay = clips.count
+feed(25, 0.1)
+speech.play(Data())
+assert(clips.count == beforePlay + 1)
 speech.stop()
 feed(100, 0.1, gate: { $0 % 2 == 0 })
-assert(clips.count == afterTone + 1)
+assert(clips.count == beforePlay + 1)
 speech.start(agentName: nil) { _ in }
 speech.play(clips[0])
 feed(100, 0.1, gate: { $0 % 2 == 0 })
-assert(clips.count == afterTone + 1)
+assert(clips.count == beforePlay + 1)
 print("iOS speech capture checks passed")
 '''
 with tempfile.TemporaryDirectory() as directory:
