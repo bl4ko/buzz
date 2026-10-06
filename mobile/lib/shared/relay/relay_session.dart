@@ -128,6 +128,7 @@ class RelaySessionNotifier extends Notifier<SessionState> {
   int _contextGeneration = 0;
   final Map<Object, String> _visibleChannelsByOwner = {};
   final Map<Object, Future<void> Function()> _beforePauseCallbacks = {};
+  final Set<Object> _backgroundHolds = {};
   bool _socketConnected = false;
   bool _closedRetryReplayScheduled = false;
 
@@ -430,9 +431,25 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     return () => _beforePauseCallbacks.remove(owner);
   }
 
+  /// Keeps the socket open in the background until the returned callback runs.
+  void Function() holdInBackground() {
+    final owner = Object();
+    _backgroundHolds.add(owner);
+    return () {
+      if (!_backgroundHolds.remove(owner) || _backgroundHolds.isNotEmpty) {
+        return;
+      }
+      if (_backgroundedAt != null && !_paused) _scheduleBackgroundPause();
+    };
+  }
+
   /// Called by the app lifecycle provider when the app goes to background.
   void onAppPaused() {
     _backgroundedAt = _now();
+    _scheduleBackgroundPause();
+  }
+
+  void _scheduleBackgroundPause() {
     _backgroundGraceTimer?.cancel();
     _backgroundGraceTimer = Timer(_backgroundGraceDuration, () {
       unawaited(_pauseAfterCallbacks());
@@ -440,13 +457,14 @@ class RelaySessionNotifier extends Notifier<SessionState> {
   }
 
   Future<void> _pauseAfterCallbacks() async {
+    if (_backgroundHolds.isNotEmpty) return;
     final callbacks = _beforePauseCallbacks.values.toList();
     try {
       await Future.wait(callbacks.map((callback) => callback()));
     } catch (error) {
       debugPrint('Background cleanup failed: $error');
     }
-    if (_backgroundedAt != null) _pauseNow();
+    if (_backgroundedAt != null && _backgroundHolds.isEmpty) _pauseNow();
   }
 
   void _pauseNow() {

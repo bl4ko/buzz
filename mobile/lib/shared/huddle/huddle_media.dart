@@ -68,6 +68,7 @@ final class HuddleMediaCapabilities {
   final bool supportsPlayback;
   final bool supportsOpusEncoding;
   final bool supportsOpusDecoding;
+  final bool supportsBackgroundAudio;
 
   const HuddleMediaCapabilities({
     required this.platform,
@@ -77,6 +78,7 @@ final class HuddleMediaCapabilities {
     required this.supportsPlayback,
     required this.supportsOpusEncoding,
     required this.supportsOpusDecoding,
+    this.supportsBackgroundAudio = false,
   });
 
   static const unavailable = HuddleMediaCapabilities(
@@ -104,6 +106,7 @@ final class HuddleMediaCapabilities {
         supportsPlayback: value['playback'] == true,
         supportsOpusEncoding: value['opusEncoding'] == true,
         supportsOpusDecoding: value['opusDecoding'] == true,
+        supportsBackgroundAudio: value['backgroundAudio'] == true,
       );
 }
 

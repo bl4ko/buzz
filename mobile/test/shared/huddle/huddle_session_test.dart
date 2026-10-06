@@ -355,6 +355,68 @@ void main() {
       expect(container.read(huddleSessionProvider).wasAdmitted, isTrue);
     },
   );
+
+  test('a relay rejection ends reconnecting with the ended Huddle', () async {
+    final media = _FakeMedia();
+    final transport = _FakeTransport(
+      connectError: (call) => call > 1
+          ? const HuddleTransportError(
+              code: HuddleTransportErrorCode.relayRejected,
+              message: 'not a member',
+            )
+          : null,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        huddleMediaFactoryProvider.overrideWithValue(() => media),
+        huddleTransportFactoryProvider.overrideWithValue((_) => transport),
+        huddleReconnectDelaysProvider.overrideWithValue(
+          List.filled(5, Duration.zero),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(huddleSessionProvider.notifier).join(_parameters());
+    transport.emitUnexpectedFailure();
+    await _waitUntil(
+      () =>
+          container.read(huddleSessionProvider).phase ==
+          HuddleSessionPhase.failed,
+    );
+
+    expect(transport.connectCalls, 2);
+    expect(container.read(huddleSessionProvider).error, 'not a member');
+  });
+
+  test('reconnectNow retries a dropped connection without backoff', () async {
+    final media = _FakeMedia(backgroundAudio: true);
+    final transport = _FakeTransport();
+    final container = ProviderContainer(
+      overrides: [
+        huddleMediaFactoryProvider.overrideWithValue(() => media),
+        huddleTransportFactoryProvider.overrideWithValue((_) => transport),
+        huddleReconnectDelaysProvider.overrideWithValue(const [
+          Duration(hours: 1),
+        ]),
+      ],
+    );
+    addTearDown(container.dispose);
+    final controller = container.read(huddleSessionProvider.notifier);
+
+    await controller.join(_parameters());
+    expect(container.read(huddleSessionProvider).runsInBackground, isTrue);
+    transport.emitUnexpectedFailure();
+    expect(
+      container.read(huddleSessionProvider).phase,
+      HuddleSessionPhase.reconnecting,
+    );
+
+    controller.reconnectNow();
+    await _waitUntil(() => container.read(huddleSessionProvider).isConnected);
+    expect(transport.connectCalls, 2);
+    expect(media.startCalls, 1);
+  });
 }
 
 HuddleRemoteAudioFrame _remoteFrame({
@@ -385,9 +447,11 @@ final class _FakeMedia implements HuddleMedia {
     this.permission = HuddleMicrophonePermission.granted,
     this.blockPlayback = false,
     this.disposeGate,
+    this.backgroundAudio = false,
   });
 
   final HuddleMicrophonePermission permission;
+  final bool backgroundAudio;
   final bool blockPlayback;
   final Future<void>? disposeGate;
   final _states = StreamController<HuddleMediaState>.broadcast(sync: true);
@@ -439,7 +503,7 @@ final class _FakeMedia implements HuddleMedia {
 
   @override
   Future<HuddleMediaCapabilities> discoverCapabilities() async {
-    const capabilities = HuddleMediaCapabilities(
+    final capabilities = HuddleMediaCapabilities(
       platform: 'test',
       supportsAudioSession: true,
       supportsMicrophonePermission: true,
@@ -447,8 +511,9 @@ final class _FakeMedia implements HuddleMedia {
       supportsPlayback: true,
       supportsOpusEncoding: true,
       supportsOpusDecoding: true,
+      supportsBackgroundAudio: backgroundAudio,
     );
-    _state = const HuddleMediaState(
+    _state = HuddleMediaState(
       phase: HuddleMediaPhase.idle,
       capabilities: capabilities,
     );
@@ -543,6 +608,9 @@ final class _FakeMedia implements HuddleMedia {
 }
 
 final class _FakeTransport implements HuddleTransportClient {
+  _FakeTransport({this.connectError});
+
+  final HuddleTransportError? Function(int call)? connectError;
   final _states = StreamController<HuddleTransportState>.broadcast(sync: true);
   final _remoteFrames = StreamController<HuddleRemoteAudioFrame>.broadcast(
     sync: true,
@@ -596,6 +664,7 @@ final class _FakeTransport implements HuddleTransportClient {
   @override
   Future<void> connect() async {
     connectCalls += 1;
+    if (connectError?.call(connectCalls) case final error?) throw error;
     _state = HuddleTransportState(
       phase: HuddleTransportPhase.connected,
       localPeerIndex: 2,

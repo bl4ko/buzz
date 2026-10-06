@@ -367,7 +367,7 @@ class _HuddleJoinSurface extends ConsumerWidget {
                   Text(
                     isThisSession && session.isConnected
                         ? '${session.participantCount} connected'
-                        : 'Foreground voice Huddle',
+                        : 'Voice Huddle',
                     style: context.textTheme.bodySmall?.copyWith(
                       color: context.colors.onSurfaceVariant,
                     ),
@@ -602,6 +602,45 @@ class _MobileHuddleCallPage extends ConsumerWidget {
         session.phase == HuddleSessionPhase.failed &&
         !unavailable &&
         session.microphonePermissionRequired;
+    final ended =
+        ref.watch(
+          channelMessagesProvider(invite.parentChannelId).select(
+            (messages) => _huddleEndEventFor(
+              messages.value ?? const [],
+              invite.ephemeralChannelId,
+            ),
+          ),
+        ) ||
+        _huddleEndEventFor(
+          ref.watch(huddleLifecycleProvider(invite.parentChannelId)).value ??
+              const [],
+          invite.ephemeralChannelId,
+        );
+    final leftHuddle =
+        ModalRoute.isCurrentOf(context) != false &&
+        (session.ephemeralChannelId != invite.ephemeralChannelId ||
+            session.phase == HuddleSessionPhase.idle);
+    final callError = switch (session.phase) {
+      _ when leftHuddle && ended => 'This Huddle has ended.',
+      _ when leftHuddle => 'You are no longer in this Huddle.',
+      HuddleSessionPhase.failed when unavailable || ended =>
+        'This Huddle is no longer available.',
+      HuddleSessionPhase.failed => session.error ?? 'Huddle audio failed.',
+      _ => null,
+    };
+    void rejoin() {
+      presentationController.showFullScreen();
+      unawaited(
+        lifecycleController.join(
+          parentChannelId: invite.parentChannelId,
+          ephemeralChannelId: invite.ephemeralChannelId,
+          startedBy: invite.startedBy,
+          startedEventId: invite.startedEventId,
+          threadRootId: invite.threadRootId,
+        ),
+      );
+    }
+
     final localPubkey = session.currentPubkey?.toLowerCase();
     final chatAgent = ref.watch(_huddleChatAgentProvider);
     final chat = HuddleChatScope(
@@ -662,7 +701,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
     );
 
     final (retryTooltip, retryIcon, onRetry) = switch (true) {
-      _ when unavailable => (
+      _ when unavailable || ended => (
         'Start a new Huddle',
         BuzzIcons.headphones,
         () => unawaited(
@@ -673,24 +712,13 @@ class _MobileHuddleCallPage extends ConsumerWidget {
           ),
         ),
       ),
+      _ when leftHuddle => ('Rejoin', BuzzIcons.refreshCcw, rejoin),
       _ when needsMicrophoneSettings => (
         'Open Settings',
         BuzzIcons.settings,
         () => unawaited(sessionController.openMicrophoneSettings()),
       ),
-      _ => (
-        'Try again',
-        BuzzIcons.refreshCw,
-        () => unawaited(
-          lifecycleController.join(
-            parentChannelId: invite.parentChannelId,
-            ephemeralChannelId: invite.ephemeralChannelId,
-            startedBy: invite.startedBy,
-            startedEventId: invite.startedEventId,
-            threadRootId: invite.threadRootId,
-          ),
-        ),
-      ),
+      _ => ('Try again', BuzzIcons.refreshCw, rejoin),
     };
 
     return PopScope<void>(
@@ -734,11 +762,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
                   flex: 6,
                   child: _HuddleCallParticipants(
                     connected: connected,
-                    error: session.phase == HuddleSessionPhase.failed
-                        ? unavailable
-                              ? 'This Huddle is no longer available.'
-                              : session.error ?? 'Huddle audio failed.'
-                        : null,
+                    error: callError,
                     profiles: profiles,
                     fallbackLabels: directoryDisplayNames,
                     contextualLabels: huddleLabels,
@@ -923,4 +947,17 @@ String _huddleActionError(Object error) {
 }
 
 bool _isUnavailableHuddleError(String? error) =>
-    error?.trim().toLowerCase() == 'not a member';
+    switch (error?.trim().toLowerCase()) {
+      'not a member' || 'huddle has ended' => true,
+      _ => false,
+    };
+
+bool _huddleEndEventFor(
+  Iterable<NostrEvent> events,
+  String ephemeralChannelId,
+) => events.any(
+  (event) =>
+      event.kind == EventKind.huddleEnded &&
+      SystemEvent.fromHuddleEvent(event)?.ephemeralChannelId ==
+          ephemeralChannelId,
+);
