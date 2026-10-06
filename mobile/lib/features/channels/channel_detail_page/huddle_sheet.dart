@@ -590,6 +590,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
         !unavailable &&
         session.microphonePermissionRequired;
     final localPubkey = session.currentPubkey?.toLowerCase();
+    final chatAgent = ref.watch(_huddleChatAgentProvider);
     // Audio peers remain authoritative for humans after admission. Agents are
     // logical Huddle participants as soon as their bot membership is published,
     // before their send-only audio connection starts speaking.
@@ -748,6 +749,16 @@ class _MobileHuddleCallPage extends ConsumerWidget {
                   ),
                 if (connected)
                   _HuddleCallControls(
+                    onChat: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      builder: (_) => _HuddleAgentChat(
+                        channelId: invite.ephemeralChannelId,
+                        agentPubkey: chatAgent?.pubkey,
+                        agentName: chatAgent?.name ?? 'huddle',
+                      ),
+                    ),
                     isMuted: session.isMuted,
                     isSpeakerEnabled: session.isSpeakerEnabled,
                     onToggleMute: () =>

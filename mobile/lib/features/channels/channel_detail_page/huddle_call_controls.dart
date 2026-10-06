@@ -7,6 +7,7 @@ class _HuddleCallControls extends StatelessWidget {
     required this.onToggleMute,
     required this.onToggleSpeaker,
     required this.onReact,
+    required this.onChat,
   });
 
   final bool isMuted;
@@ -14,6 +15,7 @@ class _HuddleCallControls extends StatelessWidget {
   final VoidCallback onToggleMute;
   final VoidCallback onToggleSpeaker;
   final VoidCallback onReact;
+  final VoidCallback onChat;
 
   @override
   Widget build(BuildContext context) {
@@ -33,12 +35,12 @@ class _HuddleCallControls extends StatelessWidget {
             backgroundColor: isSpeakerEnabled
                 ? context.colors.primary
                 : context.colors.surfaceContainerHighest,
-            dimension: 80,
+            dimension: 68,
             toggled: isSpeakerEnabled,
             useHapticFeedback: true,
             onPressed: onToggleSpeaker,
           ),
-          const SizedBox(width: Grid.sm),
+          const SizedBox(width: Grid.xs),
           _HuddleRoundControl(
             key: const ValueKey('huddle-mute-toggle'),
             tooltip: isMuted ? 'Unmute' : 'Mute',
@@ -49,21 +51,32 @@ class _HuddleCallControls extends StatelessWidget {
             backgroundColor: isMuted
                 ? context.colors.surfaceContainerHighest
                 : context.colors.primary,
-            dimension: 80,
+            dimension: 68,
             toggled: isMuted,
             useHapticFeedback: true,
             onPressed: onToggleMute,
           ),
-          const SizedBox(width: Grid.sm),
+          const SizedBox(width: Grid.xs),
           _HuddleRoundControl(
             key: const ValueKey('huddle-emoji-reactions'),
             tooltip: 'Emoji reactions',
             icon: BuzzIcons.smilePlus,
             foregroundColor: context.colors.onSurface,
             backgroundColor: context.colors.surfaceContainerHighest,
-            dimension: 80,
+            dimension: 68,
             useHapticFeedback: true,
             onPressed: onReact,
+          ),
+          const SizedBox(width: Grid.xs),
+          _HuddleRoundControl(
+            key: const ValueKey('huddle-chat'),
+            tooltip: 'Huddle chat',
+            icon: BuzzIcons.messageSquare,
+            foregroundColor: context.colors.onSurface,
+            backgroundColor: context.colors.surfaceContainerHighest,
+            dimension: 68,
+            useHapticFeedback: true,
+            onPressed: onChat,
           ),
         ],
       ),

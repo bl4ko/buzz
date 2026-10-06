@@ -6718,18 +6718,17 @@ void main() {
           tester.getSize(find.byKey(const ValueKey('huddle-leave'))),
           const Size.square(64),
         );
-        expect(
-          tester.getSize(find.byKey(const ValueKey('huddle-speaker-toggle'))),
-          const Size.square(80),
-        );
-        expect(
-          tester.getSize(find.byKey(const ValueKey('huddle-mute-toggle'))),
-          const Size.square(80),
-        );
-        expect(
-          tester.getSize(find.byKey(const ValueKey('huddle-emoji-reactions'))),
-          const Size.square(80),
-        );
+        for (final key in [
+          'huddle-speaker-toggle',
+          'huddle-mute-toggle',
+          'huddle-emoji-reactions',
+          'huddle-chat',
+        ]) {
+          expect(
+            tester.getSize(find.byKey(ValueKey(key))),
+            const Size.square(68),
+          );
+        }
         expect(
           (tester
                       .widget<Padding>(
@@ -6749,12 +6748,23 @@ void main() {
         final emojiCenter = tester.getCenter(
           find.byKey(const ValueKey('huddle-emoji-reactions')),
         );
+        final chatCenter = tester.getCenter(
+          find.byKey(const ValueKey('huddle-chat')),
+        );
         expect(speakerCenter.dy, closeTo(muteCenter.dy, 0.01));
         expect(emojiCenter.dy, closeTo(muteCenter.dy, 0.01));
+        expect(chatCenter.dy, closeTo(muteCenter.dy, 0.01));
         expect(
-          (speakerCenter.dx + emojiCenter.dx) / 2,
-          closeTo(muteCenter.dx, 0.01),
+          (speakerCenter.dx + chatCenter.dx) / 2,
+          closeTo((muteCenter.dx + emojiCenter.dx) / 2, 0.01),
         );
+        await tester.tap(find.byKey(const ValueKey('huddle-chat')));
+        await tester.pumpAndSettle();
+        expect(find.text('Huddle chat'), findsOneWidget);
+        await tester.tapAt(const Offset(200, 40));
+        await tester.pumpAndSettle();
+        expect(find.text('Huddle chat'), findsNothing);
+        hapticCalls.clear();
         expect(find.text('Miles'), findsNothing);
         expect(find.text('Pollen'), findsNothing);
         expect(find.text('You'), findsNothing);

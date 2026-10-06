@@ -354,6 +354,40 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
+  test('a slow agent gets spoken cues until its reply arrives', () async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    final spoken = <String>[];
+    final speech = HuddleSpeech(
+      baseUrl: 'https://buzz.example',
+      nsec: nostr.Keys.generate().nsec,
+      channelId: 'child',
+      firstCue: const Duration(milliseconds: 50),
+      nextCue: const Duration(milliseconds: 100),
+      client: MockClient((request) async {
+        spoken.add(jsonDecode(request.body)['text'] as String);
+        return http.Response.bytes([1, 2], 200);
+      }),
+    );
+    await speech.start();
+    speech.awaitReply();
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(spoken, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(spoken, ['One moment.', 'Still working.']);
+    await speech.speak('Answer.');
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(spoken, ['One moment.', 'Still working.', 'Answer.']);
+    speech.awaitReply();
+    await speech.stopSpeaking();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(spoken.length, 3);
+    await speech.stop();
+    speech.dispose();
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
   test('replies are spoken as plain sentence groups', () {
     final chunks = speechChunks(
       'Done. See **the report** at https://x.example/r and [notes](https://n). '
