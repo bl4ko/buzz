@@ -28,5 +28,12 @@ test("profile models reject corrupt headers and incomplete payloads", () => {
   bytes[0] = 0;
   assert.throws(() => validateProfileModel(bytes));
   assert.throws(() => validateProfileModel(glb(model).subarray(0, 20)));
-  assert.throws(() => validateProfileModel(new Uint8Array(20 * 1024 * 1024 + 1)));
+  assert.throws(() => validateProfileModel(new Uint8Array(50 * 1024 * 1024 + 1)), /50 MB/);
+});
+test("profile models accept the 50 MB boundary", () => {
+  const small = glb(model);
+  const bytes = new Uint8Array(50 * 1024 * 1024);
+  bytes.set(small);
+  new DataView(bytes.buffer).setUint32(8, bytes.length, true);
+  assert.doesNotThrow(() => validateProfileModel(bytes));
 });

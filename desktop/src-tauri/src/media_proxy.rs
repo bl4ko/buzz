@@ -18,7 +18,7 @@ use crate::relay;
 /// Range requests (≤16 MiB from server) always fit. Full GETs for huge videos
 /// get a clear 413 instead of OOM — the <video> element always uses range
 /// requests for seeking, so this only catches edge cases.
-const MAX_PROXY_RESPONSE: u64 = 20 * 1024 * 1024;
+const MAX_PROXY_RESPONSE: u64 = 50 * 1024 * 1024;
 
 #[derive(Clone)]
 struct ProxyState {
@@ -146,7 +146,6 @@ async fn proxy_handler(AxumState(state): AxumState<ProxyState>, req: Request) ->
         }
     }
 
-    // OOM guard for non-range full GETs (same 20 MB cap as the protocol handler).
     if !has_range {
         if let Some(cl) = headers.get("content-length") {
             if let Ok(len) = cl.to_str().unwrap_or("0").parse::<u64>() {

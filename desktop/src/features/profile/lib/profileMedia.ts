@@ -2,13 +2,13 @@ export function validateProfileModel(bytes: Uint8Array): void {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (
     bytes.length < 20 ||
-    bytes.length > 20 * 1024 * 1024 ||
+    bytes.length > 50 * 1024 * 1024 ||
     view.getUint32(0, true) !== 0x46546c67 ||
     view.getUint32(4, true) !== 2 ||
     view.getUint32(8, true) !== bytes.length ||
     view.getUint32(16, true) !== 0x4e4f534a
   ) {
-    throw new Error("Choose a valid GLB 2.0 model (up to 20 MB).");
+    throw new Error("Choose a valid GLB 2.0 model (up to 50 MB).");
   }
   const length = view.getUint32(12, true);
   if (length % 4 !== 0 || length > bytes.length - 20)

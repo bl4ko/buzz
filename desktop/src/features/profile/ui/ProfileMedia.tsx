@@ -155,9 +155,9 @@ export function ProfileMediaEditor({
     setBusy(true);
     setError("");
     try {
-      if (file.size > (isModel ? 20 : 10) * 1024 * 1024)
+      if (file.size > (isModel ? 50 : 10) * 1024 * 1024)
         throw new Error(
-          isModel ? "Model limit is 20 MB." : "Image limit is 10 MB.",
+          isModel ? "Model limit is 50 MB." : "Image limit is 10 MB.",
         );
       const bytes = new Uint8Array(await file.arrayBuffer());
       if (isModel) validateProfileModel(bytes);
@@ -191,7 +191,7 @@ export function ProfileMediaEditor({
       <h3 className="font-medium">Icon, banner and 3D model</h3>
       <p className="text-sm text-muted-foreground">
         Upload an icon or banner image (10 MB), or a self-contained GLB model
-        (20 MB).
+        (50 MB).
       </p>
       {icon ? (
         <img

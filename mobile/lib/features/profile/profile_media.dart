@@ -152,9 +152,9 @@ class ProfileMediaEditor extends HookConsumerWidget {
           ],
         );
         if (file == null) return;
-        if (await file.length() > (isModel ? 20 : 10) * 1024 * 1024) {
+        if (await file.length() > (isModel ? 50 : 10) * 1024 * 1024) {
           throw FormatException(
-            isModel ? 'Model limit is 20 MB.' : 'Image limit is 10 MB.',
+            isModel ? 'Model limit is 50 MB.' : 'Image limit is 10 MB.',
           );
         }
         if (isModel) {
@@ -196,7 +196,7 @@ class ProfileMediaEditor extends HookConsumerWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const Text(
-              'Icon or banner image: 10 MB. Self-contained GLB model: 20 MB.',
+              'Icon or banner image: 10 MB. Self-contained GLB model: 50 MB.',
             ),
             if (icon.value.isNotEmpty)
               Align(
