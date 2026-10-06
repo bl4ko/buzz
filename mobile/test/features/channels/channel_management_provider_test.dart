@@ -558,7 +558,10 @@ void main() {
         expect(start.tags, [
           ['h', _channelId],
         ]);
-        expect(start.content, '{"ephemeral_channel_id":"$backingChannelId"}');
+        expect(
+          start.content,
+          '{"ephemeral_channel_id":"$backingChannelId","chat":"thread"}',
+        );
         expect(started.id, start.id);
       },
     );

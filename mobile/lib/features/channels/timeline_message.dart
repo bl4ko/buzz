@@ -30,6 +30,7 @@ class SystemEvent {
   final String? topic;
   final String? purpose;
   final String? ephemeralChannelId;
+  final bool chatInThread;
 
   const SystemEvent({
     required this.type,
@@ -38,6 +39,7 @@ class SystemEvent {
     this.topic,
     this.purpose,
     this.ephemeralChannelId,
+    this.chatInThread = false,
   });
 
   /// Parse a system event from the JSON content of a kind-40099 event.
@@ -86,12 +88,14 @@ class SystemEvent {
     if (type == null) return null;
 
     String? ephemeralChannelId;
+    var chatInThread = false;
     try {
       final content = jsonDecode(event.content);
       if (content is Map) {
         ephemeralChannelId = _canonicalHuddleRoomId(
           content['ephemeral_channel_id'],
         );
+        chatInThread = content['chat'] == 'thread';
       }
     } catch (_) {
       // The row still renders, but joining requires the validated room ID.
@@ -101,6 +105,7 @@ class SystemEvent {
       type: type,
       actorPubkey: event.pubkey,
       ephemeralChannelId: ephemeralChannelId,
+      chatInThread: chatInThread,
     );
   }
 

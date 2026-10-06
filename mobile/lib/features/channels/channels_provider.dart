@@ -15,6 +15,7 @@ import 'channel_management_provider.dart'
     show ChannelMember, channelDetailsProvider;
 import 'channel_mutes/channel_mutes_provider.dart';
 import 'huddle_channel_filter.dart';
+import 'mobile_huddle_controller.dart' show activeHuddleThreadProvider;
 import '../../shared/read_state/read_state_provider.dart';
 import '../../shared/read_state/read_state_time.dart';
 import '../../shared/profile/user_cache_provider.dart';
@@ -868,6 +869,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
 
     final myPk = ref.read(myPubkeyProvider);
     final mutedChannelIds = _mutedChannelIds();
+    final huddleThread = ref.read(activeHuddleThreadProvider);
 
     state = state.whenData((channels) {
       final idx = channels.indexWhere((c) => c.id == channelId);
@@ -890,6 +892,8 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
             followedRootIds: _followedRootIds(),
             authoredRootIds: _authoredRootIds,
             mutedChannelIds: mutedChannelIds,
+            quietRootIds: {?huddleThread?.rootId},
+            quietAuthorPubkeys: huddleThread?.agentPubkeys ?? const {},
             channelId: channel.id,
           ) &&
           _recordUnreadEvent(channel, event, myPk)) {
@@ -906,6 +910,9 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
       return updated;
     });
   }
+
+  ({String rootId, Set<String> agentPubkeys})? _activeHuddleThread() =>
+      ref.read(activeHuddleThreadProvider);
 
   Set<String> _mutedChannelIds() => {
     for (final entry in ref.read(channelMutesProvider).store.channels.entries)

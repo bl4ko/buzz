@@ -33,6 +33,7 @@ final class HuddleSessionState {
   final String? parentChannelId;
   final String? ephemeralChannelId;
   final String? startedEventId;
+  final String? threadRootId;
   final String? currentPubkey;
   final bool isCreator;
 
@@ -61,6 +62,7 @@ final class HuddleSessionState {
     this.parentChannelId,
     this.ephemeralChannelId,
     this.startedEventId,
+    this.threadRootId,
     this.currentPubkey,
     this.isCreator = false,
     this.wasAdmitted = false,
@@ -99,6 +101,7 @@ final class HuddleSessionState {
     Object? parentChannelId = _notProvided,
     Object? ephemeralChannelId = _notProvided,
     Object? startedEventId = _notProvided,
+    Object? threadRootId = _notProvided,
     Object? currentPubkey = _notProvided,
     bool? isCreator,
     bool? wasAdmitted,
@@ -125,6 +128,9 @@ final class HuddleSessionState {
     startedEventId: startedEventId == _notProvided
         ? this.startedEventId
         : startedEventId as String?,
+    threadRootId: threadRootId == _notProvided
+        ? this.threadRootId
+        : threadRootId as String?,
     currentPubkey: currentPubkey == _notProvided
         ? this.currentPubkey
         : currentPubkey as String?,
@@ -223,6 +229,7 @@ final class HuddleSessionNotifier extends Notifier<HuddleSessionState> {
     String? currentPubkey,
     bool isCreator = false,
     String? startedEventId,
+    String? threadRootId,
   }) async {
     if (_ageRestricted) {
       throw StateError('Huddle unavailable while age-restricted');
@@ -248,6 +255,7 @@ final class HuddleSessionNotifier extends Notifier<HuddleSessionState> {
       parentChannelId: parameters.parentChannelId,
       ephemeralChannelId: parameters.ephemeralChannelId,
       startedEventId: startedEventId,
+      threadRootId: threadRootId,
       currentPubkey: currentPubkey?.toLowerCase(),
       isCreator: isCreator,
     );

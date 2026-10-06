@@ -68,6 +68,7 @@ import 'package:buzz/features/channels/mobile_huddle_controller.dart';
 import 'package:buzz/features/channels/reaction_row.dart';
 import 'package:buzz/features/channels/mentions/mention_candidates_provider.dart';
 import 'package:buzz/features/channels/message_mention_pill.dart';
+import 'package:buzz/features/channels/send_message_provider.dart';
 import 'package:buzz/features/channels/thread_detail_page.dart';
 import 'package:buzz/features/channels/thread_replies_provider.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
@@ -112,6 +113,7 @@ part 'channel_detail_page_test/message_width_tests.dart';
 part 'channel_detail_page_test/author_visibility_tests.dart';
 part 'channel_detail_page_test/swipe_reply_tests.dart';
 part 'channel_detail_page_test/review_avatar_tests.dart';
+part 'channel_detail_page_test/huddle_thread_tests.dart';
 
 const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
@@ -180,6 +182,7 @@ NostrEvent _huddleMsg({
   String pubkey = 'alice',
   int createdAt = 1000,
   String ephemeralChannelId = _huddleChannelId,
+  bool chatInThread = false,
 }) => NostrEvent(
   id: id,
   pubkey: pubkey,
@@ -188,7 +191,10 @@ NostrEvent _huddleMsg({
   tags: [
     ['h', _channelId],
   ],
-  content: jsonEncode({'ephemeral_channel_id': ephemeralChannelId}),
+  content: jsonEncode({
+    'ephemeral_channel_id': ephemeralChannelId,
+    if (chatInThread) 'chat': 'thread',
+  }),
   sig: '',
 );
 
@@ -306,6 +312,7 @@ Widget _buildTestable({
   HuddleHumanCountLoader? huddleHumanCountLoader,
   List<NostrEvent> huddleLifecycle = const [],
   String? huddleCurrentPubkey,
+  SendMessage? sendMessage,
   http.Client? mediaClient,
   VideoPreviewFrameLoader? videoPreviewLoader,
   Widget? home,
@@ -495,6 +502,8 @@ Widget _buildTestable({
       ).overrideWith((ref) async => huddleLifecycle),
       if (huddleCurrentPubkey != null)
         currentPubkeyProvider.overrideWith((ref) => huddleCurrentPubkey),
+      if (sendMessage != null)
+        sendMessageProvider.overrideWithValue(sendMessage),
       appLifecycleProvider.overrideWith(_TestAppLifecycleNotifier.new),
       // Compose bar drafts persist through SharedPreferences.
       savedPrefsProvider.overrideWithValue(_testPrefs),
@@ -963,6 +972,7 @@ void main() {
   messageWidthTests();
   swipeReplyTests();
   reviewAvatarTests();
+  huddleThreadTests();
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _testPrefs = await SharedPreferences.getInstance();

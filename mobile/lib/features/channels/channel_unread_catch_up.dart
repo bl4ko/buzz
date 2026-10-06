@@ -124,6 +124,7 @@ extension _UnreadCatchUp on ChannelsNotifier {
       final recordedAtByChannel = <String, int>{};
       final windowSizeByChannel = <String, int>{};
       final oldestQuietByChannel = <String, NostrEvent>{};
+      final huddleThread = _activeHuddleThread();
       for (final event in events) {
         if (!EventKind.channelMessageEventKinds.contains(event.kind)) continue;
         final channelId = event.channelId;
@@ -146,6 +147,8 @@ extension _UnreadCatchUp on ChannelsNotifier {
           followedRootIds: _followedRootIds(),
           authoredRootIds: _authoredRootIds,
           mutedChannelIds: mutedChannelIds,
+          quietRootIds: {?huddleThread?.rootId},
+          quietAuthorPubkeys: huddleThread?.agentPubkeys ?? const {},
           channelId: channel.id,
         )) {
           continue;

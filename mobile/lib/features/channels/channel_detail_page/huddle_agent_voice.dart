@@ -1,13 +1,62 @@
 part of '../channel_detail_page.dart';
 
-class _HuddleAgentVoice extends HookConsumerWidget {
-  const _HuddleAgentVoice({
+@immutable
+class HuddleChatScope {
+  const HuddleChatScope({
     required this.parentChannelId,
     required this.ephemeralChannelId,
+    this.threadRootId,
   });
 
   final String parentChannelId;
   final String ephemeralChannelId;
+  final String? threadRootId;
+
+  String get channelId =>
+      threadRootId == null ? ephemeralChannelId : parentChannelId;
+
+  Future<void> send(
+    SendMessage sendMessage,
+    String content, {
+    String? agentPubkey,
+  }) => sendMessage.call(
+    channelId: channelId,
+    content: content,
+    parentEventId: threadRootId,
+    mentionPubkeys: [?agentPubkey],
+  );
+
+  List<NostrEvent> events(Iterable<NostrEvent> channelEvents) {
+    final rootId = threadRootId;
+    if (rootId == null) return channelEvents.toList();
+    final threadIds = {
+      for (final event in channelEvents)
+        if (EventKind.channelTimelineContentKinds.contains(event.kind) &&
+            event.threadReference.rootId == rootId)
+          event.id,
+    };
+    return [
+      for (final event in channelEvents)
+        if (threadIds.contains(event.id) ||
+            (EventKind.channelAuxEventKinds.contains(event.kind) &&
+                threadIds.contains(_lastEventReference(event))))
+          event,
+    ];
+  }
+}
+
+String? _lastEventReference(NostrEvent event) {
+  String? target;
+  for (final tag in event.tags) {
+    if (tag.length >= 2 && tag[0] == 'e') target = tag[1];
+  }
+  return target;
+}
+
+class _HuddleAgentVoice extends HookConsumerWidget {
+  const _HuddleAgentVoice({required this.chat});
+
+  final HuddleChatScope chat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -15,6 +64,8 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final parentChannelId = chat.parentChannelId;
+    final ephemeralChannelId = chat.ephemeralChannelId;
     final config = ref.watch(relayConfigProvider);
     final speech = useMemoized(
       () => HuddleSpeech(
@@ -154,13 +205,8 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       status.value = 'Sending speech';
       heardText.value = text;
       unawaited(
-        ref
-            .read(sendMessageProvider)
-            .call(
-              channelId: ephemeralChannelId,
-              content: text,
-              mentionPubkeys: [agent],
-            )
+        chat
+            .send(ref.read(sendMessageProvider), text, agentPubkey: agent)
             .then((_) {
               if (!context.mounted) return;
               status.value = 'Waiting for agent';
@@ -184,14 +230,18 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       if (context.mounted) status.value = message;
     };
 
-    ref.listen(channelMessagesProvider(ephemeralChannelId), (previous, next) {
+    ref.listen(channelMessagesProvider(chat.channelId), (previous, next) {
       final agent = selected.value;
       if (agent == null) return;
       NostrEvent? progress;
-      for (final event in next.asData?.value ?? const <NostrEvent>[]) {
+      for (final event in chat.events(
+        next.asData?.value ?? const <NostrEvent>[],
+      )) {
         final since = waitingSince.value;
         if (since != null &&
             event.pubkey.toLowerCase() == agent &&
+            (event.kind == EventKind.streamMessage ||
+                event.kind == EventKind.streamMessageEdit) &&
             event.createdAt >= since &&
             event.getTagValue('voice') != 'final' &&
             event.createdAt >= (progress?.createdAt ?? 0)) {
@@ -231,9 +281,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         .map((entry) => entry.displayName ?? entry.pubkey.substring(0, 8))
         .firstOrNull;
     useEffect(() {
-      final chat = ref.read(_huddleChatAgentProvider.notifier);
+      final chatAgent = ref.read(_huddleChatAgentProvider.notifier);
       Future.microtask(
-        () => chat.select(
+        () => chatAgent.select(
           agent == null ? null : (pubkey: agent, name: selectedName ?? 'Agent'),
         ),
       );
@@ -378,12 +428,12 @@ final class _HuddleChatAgent extends Notifier<({String pubkey, String name})?> {
 
 class _HuddleAgentChat extends HookConsumerWidget {
   const _HuddleAgentChat({
-    required this.channelId,
+    required this.chat,
     required this.agentPubkey,
     required this.agentName,
   });
 
-  final String channelId;
+  final HuddleChatScope chat;
   final String? agentPubkey;
   final String agentName;
 
@@ -395,11 +445,30 @@ class _HuddleAgentChat extends HookConsumerWidget {
     final currentPubkey = ref.watch(
       huddleSessionProvider.select((session) => session.currentPubkey),
     );
+    final rootId = chat.threadRootId;
+    final replies = rootId == null
+        ? const <NostrEvent>[]
+        : ref
+                  .watch(
+                    threadRepliesWithLocalProvider(
+                      ThreadRepliesArgs(
+                        channelId: chat.channelId,
+                        rootId: rootId,
+                      ),
+                    ),
+                  )
+                  .value ??
+              const <NostrEvent>[];
+    final live =
+        ref.watch(channelMessagesProvider(chat.channelId)).asData?.value ??
+        const <NostrEvent>[];
+    final profiles = ref.watch(userCacheProvider);
     final messages = [
-      for (final event
-          in ref.watch(channelMessagesProvider(channelId)).asData?.value ??
-              const <NostrEvent>[])
-        if (event.kind == EventKind.streamMessage) event,
+      for (final message in formatTimeline(
+        mergeThreadEvents(replies, chat.events(live)),
+        currentPubkey: currentPubkey,
+      ))
+        if (!message.isSystem) message,
     ];
 
     Future<void> send() async {
@@ -408,13 +477,11 @@ class _HuddleAgentChat extends HookConsumerWidget {
       sending.value = true;
       error.value = null;
       try {
-        await ref
-            .read(sendMessageProvider)
-            .call(
-              channelId: channelId,
-              content: text,
-              mentionPubkeys: [?agentPubkey],
-            );
+        await chat.send(
+          ref.read(sendMessageProvider),
+          text,
+          agentPubkey: agentPubkey,
+        );
         input.clear();
       } catch (failure) {
         error.value = 'Could not send message: $failure';
@@ -438,16 +505,17 @@ class _HuddleAgentChat extends HookConsumerWidget {
                 reverse: true,
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
-                  final event = messages[messages.length - 1 - index];
-                  final name = event.pubkey.toLowerCase() == agentPubkey
+                  final message = messages[messages.length - 1 - index];
+                  final pubkey = message.pubkey.toLowerCase();
+                  final name = pubkey == agentPubkey
                       ? agentName
-                      : event.pubkey.toLowerCase() ==
-                            currentPubkey?.toLowerCase()
+                      : pubkey == currentPubkey?.toLowerCase()
                       ? 'You'
-                      : event.pubkey.substring(0, 8);
+                      : profiles[pubkey]?.displayName ?? shortPubkey(pubkey);
                   return ListTile(
+                    key: ValueKey('huddle-chat-message-${message.id}'),
                     title: Text(name),
-                    subtitle: Text(event.content),
+                    subtitle: Text(message.content),
                   );
                 },
               ),

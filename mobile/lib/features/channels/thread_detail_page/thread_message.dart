@@ -52,11 +52,13 @@ class _ThreadMessage extends HookConsumerWidget {
     final isAgent =
         ref.watch(agentMentionPubkeysProvider(channelId)).contains(pk) ||
         profile?.ownerPubkey != null;
+    final systemEvent = message.isSystem ? message.systemEvent : null;
     final canManageMessage =
-        currentPubkey?.toLowerCase() == pk ||
-        (profile?.ownerPubkey != null &&
-            profile?.ownerPubkey?.toLowerCase() ==
-                currentPubkey?.toLowerCase());
+        systemEvent == null &&
+        (currentPubkey?.toLowerCase() == pk ||
+            (profile?.ownerPubkey != null &&
+                profile?.ownerPubkey?.toLowerCase() ==
+                    currentPubkey?.toLowerCase()));
 
     final userCache = ref.watch(userCacheProvider);
     final knownAgentPubkeys = agentPubkeysWithProfileOwners(
@@ -325,82 +327,94 @@ class _ThreadMessage extends HookConsumerWidget {
                                           ],
                                         ),
                                       ),
-                                    MessageContent(
-                                      key: swipeContentKey,
-                                      content: message.content,
-                                      bubble: true,
-                                      hasReactions:
-                                          message.reactions.isNotEmpty,
-                                      bubbleEnd: showAvatar,
-                                      bubbleStart: showAuthor,
-                                      ownMessage: ownMessage,
-                                      trimTrailingSpacing: true,
-                                      mentionNames: resolvedMentionNames,
-                                      mentionLabels: mentionLabels,
-                                      agentMentionPubkeys: agentMentionPubkeys,
-                                      channelNames: channelNames,
-                                      tags: message.tags,
-                                      baseStyle: messageBodyTextStyle.copyWith(
-                                        color: context.colors.onSurface,
-                                      ),
-                                      scaleEmojiOnly: true,
-                                      mediaCarouselTrailingOverflow:
-                                          Grid.gutter,
-                                      onMediaReply: allMessages == null
-                                          ? null
-                                          : () {
-                                              if (!context.mounted) return;
-                                              Navigator.of(context).push(
-                                                MaterialPageRoute<void>(
-                                                  builder: (_) =>
-                                                      ThreadDetailPage(
-                                                        threadHead: message,
-                                                        allMessages:
-                                                            allMessages!,
-                                                        channelId: channelId,
-                                                        currentPubkey:
-                                                            currentPubkey,
-                                                        isMember: isMember,
-                                                        isArchived: isArchived,
-                                                      ),
-                                                ),
-                                              );
-                                            },
-                                      onMediaMore: (viewerContext, imageUrl) =>
-                                          showImageActions(
-                                            context: viewerContext,
-                                            ref: ref,
-                                            message: message,
-                                            channelId: channelId,
-                                            imageUrl: imageUrl,
-                                            canManageMessage: canManageMessage,
-                                            onDeleted: () {
-                                              if (viewerContext.mounted) {
-                                                Navigator.of(
-                                                  viewerContext,
-                                                ).maybePop();
-                                              }
-                                            },
-                                          ),
-                                      onChannelTap: (targetChannelId) {
-                                        unawaited(
-                                          openChannelLink(
-                                            context: context,
-                                            ref: ref,
-                                            channelId: targetChannelId,
-                                            currentChannelId: channelId,
-                                          ),
-                                        );
-                                      },
-                                      onMentionTap: (pubkey) =>
-                                          showUserProfileSheet(
-                                            context,
-                                            pubkey,
-                                            names: channelIdentityNamesProvider(
-                                              channelId,
+                                    if (systemEvent != null)
+                                      _ThreadSystemContent(
+                                        event: systemEvent,
+                                        actorLabel: displayName,
+                                      )
+                                    else
+                                      MessageContent(
+                                        key: swipeContentKey,
+                                        content: message.content,
+                                        bubble: true,
+                                        hasReactions:
+                                            message.reactions.isNotEmpty,
+                                        bubbleEnd: showAvatar,
+                                        bubbleStart: showAuthor,
+                                        ownMessage: ownMessage,
+                                        trimTrailingSpacing: true,
+                                        mentionNames: resolvedMentionNames,
+                                        mentionLabels: mentionLabels,
+                                        agentMentionPubkeys:
+                                            agentMentionPubkeys,
+                                        channelNames: channelNames,
+                                        tags: message.tags,
+                                        baseStyle: messageBodyTextStyle
+                                            .copyWith(
+                                              color: context.colors.onSurface,
                                             ),
-                                          ),
-                                    ),
+                                        scaleEmojiOnly: true,
+                                        mediaCarouselTrailingOverflow:
+                                            Grid.gutter,
+                                        onMediaReply: allMessages == null
+                                            ? null
+                                            : () {
+                                                if (!context.mounted) return;
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute<void>(
+                                                    builder: (_) =>
+                                                        ThreadDetailPage(
+                                                          threadHead: message,
+                                                          allMessages:
+                                                              allMessages!,
+                                                          channelId: channelId,
+                                                          currentPubkey:
+                                                              currentPubkey,
+                                                          isMember: isMember,
+                                                          isArchived:
+                                                              isArchived,
+                                                        ),
+                                                  ),
+                                                );
+                                              },
+                                        onMediaMore:
+                                            (viewerContext, imageUrl) =>
+                                                showImageActions(
+                                                  context: viewerContext,
+                                                  ref: ref,
+                                                  message: message,
+                                                  channelId: channelId,
+                                                  imageUrl: imageUrl,
+                                                  canManageMessage:
+                                                      canManageMessage,
+                                                  onDeleted: () {
+                                                    if (viewerContext.mounted) {
+                                                      Navigator.of(
+                                                        viewerContext,
+                                                      ).maybePop();
+                                                    }
+                                                  },
+                                                ),
+                                        onChannelTap: (targetChannelId) {
+                                          unawaited(
+                                            openChannelLink(
+                                              context: context,
+                                              ref: ref,
+                                              channelId: targetChannelId,
+                                              currentChannelId: channelId,
+                                            ),
+                                          );
+                                        },
+                                        onMentionTap: (pubkey) =>
+                                            showUserProfileSheet(
+                                              context,
+                                              pubkey,
+                                              names:
+                                                  channelIdentityNamesProvider(
+                                                    channelId,
+                                                  ),
+                                            ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -481,6 +495,35 @@ class _ThreadMessage extends HookConsumerWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _ThreadSystemContent extends StatelessWidget {
+  const _ThreadSystemContent({required this.event, required this.actorLabel});
+
+  final SystemEvent event;
+  final String actorLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final huddle = event.type == SystemEventType.huddleStarted;
+    return Row(
+      key: const ValueKey('thread-system-head'),
+      children: [
+        if (huddle) ...[
+          Icon(BuzzIcons.headphones, size: 18, color: context.colors.primary),
+          const SizedBox(width: Grid.xxs),
+        ],
+        Flexible(
+          child: Text(
+            huddle ? 'Started a huddle' : event.describe((_) => actorLabel),
+            style: messageBodyTextStyle.copyWith(
+              color: context.colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
