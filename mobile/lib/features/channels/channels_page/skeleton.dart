@@ -10,7 +10,12 @@ class _ChannelsSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final visibleChannels =
         channels
-            ?.where((channel) => channel.isMember && !channel.isArchived)
+            ?.where(
+              (channel) =>
+                  channel.isMember &&
+                  !channel.isArchived &&
+                  !channel.isHuddleBackingChannel,
+            )
             .take(8)
             .toList() ??
         const <Channel>[];

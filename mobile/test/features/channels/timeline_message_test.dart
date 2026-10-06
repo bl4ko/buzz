@@ -578,6 +578,31 @@ void main() {
       );
     });
 
+    test('huddle starts mark chat in thread only for chat=thread', () {
+      for (final (content, chatInThread) in [
+        ({'ephemeral_channel_id': 'child', 'chat': 'thread'}, true),
+        ({'ephemeral_channel_id': 'child'}, false),
+        ({'ephemeral_channel_id': 'child', 'chat': 'channel'}, false),
+        ({'ephemeral_channel_id': 'child', 'chat': true}, false),
+      ]) {
+        final event = SystemEvent.fromHuddleEvent(
+          NostrEvent(
+            id: 'h1',
+            pubkey: 'pk1',
+            createdAt: 1000,
+            kind: EventKind.huddleStarted,
+            tags: const [
+              ['h', 'ch1'],
+            ],
+            content: jsonEncode(content),
+            sig: '',
+          ),
+        );
+        expect(event!.chatInThread, chatInThread, reason: '$content');
+        expect(event.ephemeralChannelId, 'child');
+      }
+    });
+
     test('huddle participant events are lifecycle metadata only', () {
       final result = formatTimeline([
         _huddleEvent(id: 'h1', kind: EventKind.huddleParticipantJoined),

@@ -39,7 +39,10 @@ extension HuddleChannelActions on ChannelActions {
     NostrEvent? signed;
     await _signedEventRelay.submit(
       kind: EventKind.huddleStarted,
-      content: jsonEncode({'ephemeral_channel_id': ephemeralChannelId}),
+      content: jsonEncode({
+        'ephemeral_channel_id': ephemeralChannelId,
+        'chat': 'thread',
+      }),
       tags: [
         ['h', parentChannelId],
       ],

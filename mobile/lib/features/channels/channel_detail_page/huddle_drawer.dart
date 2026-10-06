@@ -171,6 +171,7 @@ class _MobileHuddleDrawer extends ConsumerWidget {
                 ephemeralChannelId: ephemeralChannelId,
                 startedBy: session.isCreator ? session.currentPubkey ?? '' : '',
                 startedEventId: session.startedEventId ?? '',
+                threadRootId: session.threadRootId,
               ),
             ),
           );

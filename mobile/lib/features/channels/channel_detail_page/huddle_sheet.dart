@@ -163,12 +163,14 @@ class _HuddleInvite {
   final String ephemeralChannelId;
   final String startedBy;
   final String startedEventId;
+  final String? threadRootId;
 
   const _HuddleInvite({
     required this.parentChannelId,
     required this.ephemeralChannelId,
     required this.startedBy,
     required this.startedEventId,
+    this.threadRootId,
   });
 }
 
@@ -231,6 +233,7 @@ IosNavigationAction _huddleNavigationAction(
                       ? session.currentPubkey ?? ''
                       : '',
                   startedEventId: session.startedEventId ?? '',
+                  threadRootId: session.threadRootId,
                 ),
               );
               return;
@@ -259,6 +262,7 @@ IosNavigationAction _huddleNavigationAction(
                   ephemeralChannelId: ephemeralChannelId,
                   startedBy: started.currentPubkey ?? '',
                   startedEventId: started.startedEventId ?? '',
+                  threadRootId: started.threadRootId,
                 ),
               );
             } catch (error) {
@@ -393,6 +397,10 @@ class _HuddleJoinSurface extends ConsumerWidget {
                               ephemeralChannelId: ephemeralChannelId,
                               startedBy: message.pubkey,
                               startedEventId: message.id,
+                              threadRootId:
+                                  message.systemEvent?.chatInThread == true
+                                  ? message.id
+                                  : null,
                             ),
                           )
                   : null,
@@ -440,6 +448,7 @@ Future<void> _startMobileHuddleFromChannel({
         ephemeralChannelId: ephemeralChannelId,
         startedBy: session.currentPubkey ?? '',
         startedEventId: session.startedEventId ?? '',
+        threadRootId: session.threadRootId,
       ),
     );
   } catch (error) {
@@ -477,6 +486,7 @@ void _openMobileHuddle({
             ephemeralChannelId: invite.ephemeralChannelId,
             startedBy: invite.startedBy,
             startedEventId: invite.startedEventId,
+            threadRootId: invite.threadRootId,
           ),
     );
   }
@@ -552,6 +562,7 @@ Future<void> _startReplacementHuddle({
           ephemeralChannelId: ephemeralChannelId,
           startedBy: session.currentPubkey ?? '',
           startedEventId: session.startedEventId ?? '',
+          threadRootId: session.threadRootId,
         ),
       ),
     );
@@ -591,6 +602,11 @@ class _MobileHuddleCallPage extends ConsumerWidget {
         session.microphonePermissionRequired;
     final localPubkey = session.currentPubkey?.toLowerCase();
     final chatAgent = ref.watch(_huddleChatAgentProvider);
+    final chat = HuddleChatScope(
+      parentChannelId: invite.parentChannelId,
+      ephemeralChannelId: invite.ephemeralChannelId,
+      threadRootId: invite.threadRootId,
+    );
     // Audio peers remain authoritative for humans after admission. Agents are
     // logical Huddle participants as soon as their bot membership is published,
     // before their send-only audio connection starts speaking.
@@ -612,9 +628,12 @@ class _MobileHuddleCallPage extends ConsumerWidget {
     final huddleLabels = {
       for (final pubkey in remotePubkeys) pubkey: huddleNames.labelFor(pubkey),
     };
-    final huddleTypingEntries = ref.watch(
-      channelTypingProvider(invite.ephemeralChannelId),
-    );
+    final huddleTypingEntries = [
+      for (final entry in ref.watch(channelTypingProvider(chat.channelId)))
+        if (chat.threadRootId == null ||
+            entry.threadHeadId == chat.threadRootId)
+          entry,
+    ];
     final parentAgentPubkeys = ref.watch(
       agentMentionPubkeysProvider(invite.parentChannelId),
     );
@@ -666,6 +685,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
             ephemeralChannelId: invite.ephemeralChannelId,
             startedBy: invite.startedBy,
             startedEventId: invite.startedEventId,
+            threadRootId: invite.threadRootId,
           ),
         ),
       ),
@@ -742,11 +762,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (connected)
-                  _HuddleAgentVoice(
-                    parentChannelId: invite.parentChannelId,
-                    ephemeralChannelId: invite.ephemeralChannelId,
-                  ),
+                if (connected) _HuddleAgentVoice(chat: chat),
                 if (connected)
                   _HuddleCallControls(
                     onChat: () => showModalBottomSheet<void>(
@@ -754,7 +770,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
                       isScrollControlled: true,
                       useSafeArea: true,
                       builder: (_) => _HuddleAgentChat(
-                        channelId: invite.ephemeralChannelId,
+                        chat: chat,
                         agentPubkey: chatAgent?.pubkey,
                         agentName: chatAgent?.name ?? 'huddle',
                       ),
@@ -889,6 +905,7 @@ _HuddleInvite? _activeHuddleStart(List<NostrEvent> events) {
       ephemeralChannelId: ephemeralChannelId,
       startedBy: event.pubkey,
       startedEventId: event.id,
+      threadRootId: parsed?.chatInThread == true ? event.id : null,
     );
   }
   return null;

@@ -8,6 +8,8 @@ bool shouldNotifyForEvent(
   Set<String> authoredRootIds = const {},
   Set<String> mutedRootIds = const {},
   Set<String> mutedChannelIds = const {},
+  Set<String> quietRootIds = const {},
+  Set<String> quietAuthorPubkeys = const {},
   String? channelId,
 }) {
   if (!EventKind.channelMessageEventKinds.contains(event.kind)) return false;
@@ -15,6 +17,18 @@ bool shouldNotifyForEvent(
   if (event.pubkey.toLowerCase() == myPubkey.toLowerCase()) return false;
 
   final ref = event.threadReference;
+  final normalizedPk = myPubkey.toLowerCase();
+  final mentionsMe = event.tags.any(
+    (tag) =>
+        tag.length >= 2 &&
+        tag[0] == 'p' &&
+        tag[1].toLowerCase() == normalizedPk,
+  );
+
+  if (ref.rootId != null && quietRootIds.contains(ref.rootId)) {
+    return mentionsMe &&
+        !quietAuthorPubkeys.contains(event.pubkey.toLowerCase());
+  }
 
   for (final tag in event.tags) {
     if (tag.length >= 2 && tag[0] == 'broadcast' && tag[1] == '1') {
@@ -22,14 +36,7 @@ bool shouldNotifyForEvent(
     }
   }
 
-  final normalizedPk = myPubkey.toLowerCase();
-  for (final tag in event.tags) {
-    if (tag.length >= 2 &&
-        tag[0] == 'p' &&
-        tag[1].toLowerCase() == normalizedPk) {
-      return true;
-    }
-  }
+  if (mentionsMe) return true;
 
   final eventChannelId = channelId ?? event.channelId;
   if (eventChannelId != null && mutedChannelIds.contains(eventChannelId)) {

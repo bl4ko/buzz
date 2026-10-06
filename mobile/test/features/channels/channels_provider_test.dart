@@ -4,8 +4,10 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:hooks_riverpod/misc.dart' show Override;
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
+import 'package:buzz/features/channels/mobile_huddle_controller.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
 
@@ -1702,6 +1704,57 @@ void main() {
     expect(channels.single.lastMessageAt?.millisecondsSinceEpoch, 20 * 1000);
   });
 
+  test(
+    'an active huddle thread stays quiet except for mentions by people',
+    () async {
+      final session = _FakeRelaySession(
+        memberships: [_membership(_channelA, myPk)],
+        metadata: [_meta(id: _channelA, name: 'general', createdAt: 10)],
+      );
+      final container = _buildContainer(
+        session: session,
+        overrides: [
+          activeHuddleThreadProvider.overrideWithValue((
+            rootId: 'huddle-root',
+            agentPubkeys: {'agent'},
+          )),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(channelsProvider.future);
+      await _settle();
+
+      NostrEvent reply(String id, String pubkey, {bool mention = false}) =>
+          NostrEvent(
+            id: id,
+            pubkey: pubkey,
+            createdAt: 20,
+            kind: EventKind.streamMessage,
+            tags: [
+              const ['h', _channelA],
+              const ['e', 'huddle-root', '', 'reply'],
+              if (mention) const ['p', myPk],
+            ],
+            content: 'reply',
+            sig: 'sig',
+          );
+      session
+        ..emit(reply('own-transcript', myPk))
+        ..emit(reply('agent-answer', 'agent', mention: true))
+        ..emit(reply('person-chat', 'alice'))
+        ..emit(reply('person-mention', 'alice', mention: true));
+      await _settle();
+
+      expect(
+        container
+            .read(channelsProvider.notifier)
+            .observedUnreadEventsByChannel[_channelA]
+            ?.keys,
+        ['person-mention'],
+      );
+    },
+  );
+
   group('latest-message batch failure', () {
     Future<List<NostrFilter>> fallbackFilters(Object error) async {
       final session = _FakeRelaySession(
@@ -2428,10 +2481,14 @@ NostrEvent _meta({
   sig: 'sig',
 );
 
-ProviderContainer _buildContainer({required _FakeRelaySession session}) {
+ProviderContainer _buildContainer({
+  required _FakeRelaySession session,
+  List<Override> overrides = const [],
+}) {
   return ProviderContainer(
     retry: (_, _) => null,
     overrides: [
+      ...overrides,
       appLifecycleProvider.overrideWith(() => _FakeAppLifecycleNotifier()),
       relaySessionProvider.overrideWith(() => session),
       // Route the pubkey through a mutable notifier so tests can switch the

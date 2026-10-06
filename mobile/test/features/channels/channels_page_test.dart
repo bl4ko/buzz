@@ -3332,63 +3332,74 @@ void main() {
     );
   });
 
-  testWidgets(
-    'shows joined huddle channels and hides unjoined or archived channels',
-    (tester) async {
-      final channels = [
-        ...testChannels,
-        Channel(
-          id: 'huddle',
-          name: 'huddle-22222222',
-          description: '',
-          memberCount: 2,
-          channelType: 'stream',
-          visibility: 'private',
-          createdBy: 'abc',
-          createdAt: DateTime(2025),
-          isMember: true,
-          ttlSeconds: 3600,
-        ),
-        Channel(
-          id: '4',
-          name: 'open-stream',
-          channelType: 'stream',
-          visibility: 'open',
-          description: 'Available to join',
-          createdBy: 'abc',
-          createdAt: DateTime(2025),
-          memberCount: 8,
-          isMember: false,
-        ),
-        Channel(
-          id: '5',
-          name: 'archived-stream',
-          channelType: 'stream',
-          visibility: 'open',
-          description: 'Archived channel',
-          createdBy: 'abc',
-          createdAt: DateTime(2025),
-          memberCount: 4,
-          isMember: true,
-          archivedAt: DateTime(2025, 1, 2),
-        ),
-      ];
+  testWidgets('hides huddle backing, unjoined, and archived channels', (
+    tester,
+  ) async {
+    final channels = [
+      ...testChannels,
+      Channel(
+        id: 'huddle',
+        name: 'huddle-22222222',
+        description: '',
+        memberCount: 2,
+        channelType: 'stream',
+        visibility: 'private',
+        createdBy: 'abc',
+        createdAt: DateTime(2025),
+        isMember: true,
+        ttlSeconds: 3600,
+      ),
+      Channel(
+        id: 'huddle-named',
+        name: 'huddle-33333333',
+        description: '',
+        memberCount: 2,
+        channelType: 'stream',
+        visibility: 'private',
+        createdBy: 'abc',
+        createdAt: DateTime(2025),
+        isMember: true,
+      ),
+      Channel(
+        id: '4',
+        name: 'open-stream',
+        channelType: 'stream',
+        visibility: 'open',
+        description: 'Available to join',
+        createdBy: 'abc',
+        createdAt: DateTime(2025),
+        memberCount: 8,
+        isMember: false,
+      ),
+      Channel(
+        id: '5',
+        name: 'archived-stream',
+        channelType: 'stream',
+        visibility: 'open',
+        description: 'Archived channel',
+        createdBy: 'abc',
+        createdAt: DateTime(2025),
+        memberCount: 4,
+        isMember: true,
+        archivedAt: DateTime(2025, 1, 2),
+      ),
+    ];
 
-      await tester.pumpWidget(
-        buildTestable(
-          overrides: [
-            channelsProvider.overrideWith(() => _FakeNotifier(channels)),
-          ],
-        ),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      buildTestable(
+        overrides: [
+          channelsProvider.overrideWith(() => _FakeNotifier(channels)),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('general'), findsOneWidget);
-      expect(find.text('huddle-22222222'), findsOneWidget);
-      expect(find.text('open-stream'), findsNothing);
-      expect(find.text('archived-stream'), findsNothing);
-    },
-  );
+    expect(find.text('general'), findsOneWidget);
+    expect(find.text('huddle-22222222'), findsNothing);
+    expect(find.text('huddle-33333333'), findsOneWidget);
+    expect(find.text('open-stream'), findsNothing);
+    expect(find.text('archived-stream'), findsNothing);
+  });
 
   testWidgets('empty state does not preview unjoined channels', (tester) async {
     final discoveredChannel = Channel(

@@ -833,7 +833,7 @@ class _MessageList extends HookConsumerWidget {
                             dayTimestamp: message.createdAt,
                             stickyDayTimestamp: stickyDayTimestamp,
                           ),
-                        if (message.isSystem)
+                        if (message.isSystem) ...[
                           _SystemMessageRow(
                             message: message,
                             groupedMessages: entryGroup.length > 1
@@ -846,8 +846,18 @@ class _MessageList extends HookConsumerWidget {
                             allMessages: allMessages,
                             isMember: isMember,
                             isArchived: isArchived,
-                          )
-                        else ...[
+                          ),
+                          if (entry.summary != null && entryGroup.length == 1)
+                            _ThreadSummaryRow(
+                              summary: entry.summary!,
+                              message: message,
+                              allMessages: allMessages,
+                              channelId: channelId,
+                              currentPubkey: currentPubkey,
+                              isMember: isMember,
+                              isArchived: isArchived,
+                            ),
+                        ] else ...[
                           _MessageBubble(
                             message: message,
                             showAuthor: showAuthor,

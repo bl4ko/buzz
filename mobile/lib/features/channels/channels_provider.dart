@@ -16,6 +16,7 @@ import 'channel.dart';
 import 'channel_management_provider.dart'
     show ChannelMember, channelDetailsProvider;
 import 'channel_mutes/channel_mutes_provider.dart';
+import 'mobile_huddle_controller.dart' show activeHuddleThreadProvider;
 import '../../shared/read_state/read_state_provider.dart';
 import 'thread_follows/thread_follows_provider.dart';
 import 'unread_badge/is_high_priority_event.dart';
@@ -633,6 +634,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
         }
       }
 
+      final huddleThread = ref.read(activeHuddleThreadProvider);
       final recordedAtByChannel = <String, int>{};
       for (final event in events) {
         final channelId = event.channelId;
@@ -649,6 +651,8 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
           followedRootIds: _followedRootIds(),
           authoredRootIds: _authoredRootIds,
           mutedChannelIds: mutedChannelIds,
+          quietRootIds: {?huddleThread?.rootId},
+          quietAuthorPubkeys: huddleThread?.agentPubkeys ?? const {},
           channelId: channel.id,
         )) {
           continue;
@@ -704,6 +708,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
 
     final myPk = ref.read(myPubkeyProvider);
     final mutedChannelIds = _mutedChannelIds();
+    final huddleThread = ref.read(activeHuddleThreadProvider);
 
     state = state.whenData((channels) {
       final idx = channels.indexWhere((c) => c.id == channelId);
@@ -726,6 +731,8 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
             followedRootIds: _followedRootIds(),
             authoredRootIds: _authoredRootIds,
             mutedChannelIds: mutedChannelIds,
+            quietRootIds: {?huddleThread?.rootId},
+            quietAuthorPubkeys: huddleThread?.agentPubkeys ?? const {},
             channelId: channel.id,
           )) {
         _recordUnreadEvent(channel, event, myPk);

@@ -83,6 +83,34 @@ final huddleLifecycleProvider = FutureProvider.family<List<NostrEvent>, String>(
   },
 );
 
+final activeHuddleThreadProvider =
+    Provider<({String rootId, Set<String> agentPubkeys})?>((ref) {
+      final session = ref.watch(
+        huddleSessionProvider.select(
+          (state) => (
+            inSession: state.isInSession,
+            rootId: state.threadRootId,
+            backingChannelId: state.ephemeralChannelId,
+          ),
+        ),
+      );
+      final rootId = session.rootId;
+      final backingChannelId = session.backingChannelId;
+      if (!session.inSession || rootId == null || backingChannelId == null) {
+        return null;
+      }
+      final members =
+          ref.watch(channelMembersProvider(backingChannelId)).value ??
+          const <ChannelMember>[];
+      return (
+        rootId: rootId,
+        agentPubkeys: {
+          for (final member in members)
+            if (member.isBot) member.pubkey.toLowerCase(),
+        },
+      );
+    });
+
 /// One successful relay admission. Its epoch changes only when a newer join or
 /// start attempt begins, so duplicate teardown calls cannot invalidate the
 /// cleanup already in flight for the same admission.
@@ -169,6 +197,7 @@ final class MobileHuddleController extends Notifier<bool> {
             currentPubkey: ref.read(currentPubkeyProvider),
             isCreator: true,
             startedEventId: start.id,
+            threadRootId: start.id,
           );
       _ensureCurrent(generation);
       final session = ref.read(huddleSessionProvider);
@@ -208,6 +237,7 @@ final class MobileHuddleController extends Notifier<bool> {
     required String ephemeralChannelId,
     required String startedBy,
     required String startedEventId,
+    String? threadRootId,
   }) async {
     ++_generation;
     final admissionEpoch = ++_admissionEpoch;
@@ -226,6 +256,7 @@ final class MobileHuddleController extends Notifier<bool> {
                 currentPubkey != null &&
                 currentPubkey.toLowerCase() == startedBy.toLowerCase(),
             startedEventId: startedEventId,
+            threadRootId: threadRootId,
           );
     } catch (_) {
       if (admissionEpoch == _admissionEpoch) {
