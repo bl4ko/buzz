@@ -297,14 +297,13 @@ pub(crate) async fn maybe_start_stt_pipeline(
     }
     let model_dir = models::stt_model_dir().ok_or("STT model directory not found")?;
 
-    let channel_uuid = parse_channel_uuid(ephemeral_channel_id)?;
-
     // Atomically claim construction and grab shared state under one lock.
     // If replacing an existing pipeline, bump generation first so the old
     // transcription task's next POST sees a stale generation and exits.
     // Take the old pipeline OUT of the lock before dropping — Drop joins
     // the worker thread (~200ms) and must not block under the mutex.
     let (
+        transcript_target,
         agent_pubkeys_arc,
         session_gen,
         expected_generation,
@@ -319,6 +318,7 @@ pub(crate) async fn maybe_start_stt_pipeline(
         if !hs.is_current_huddle(ephemeral_channel_id, huddle_generation) {
             return Ok(false);
         }
+        let transcript_target = transcript_target(&hs, ephemeral_channel_id)?;
         if hs.stt_starting.swap(true, Ordering::AcqRel) {
             return Ok(false);
         }
@@ -342,6 +342,7 @@ pub(crate) async fn maybe_start_stt_pipeline(
             None
         };
         (
+            transcript_target,
             Arc::clone(&hs.agent_pubkeys),
             Arc::clone(&hs.session_generation),
             hs.session_generation.load(Ordering::Acquire),
@@ -400,7 +401,13 @@ pub(crate) async fn maybe_start_stt_pipeline(
         hs.set_stt_pipeline(Arc::clone(&pipeline));
     }
 
-    spawn_transcription_task(text_rx, channel_uuid, agent_pubkeys_arc, session_gen, state);
+    spawn_transcription_task(
+        text_rx,
+        transcript_target,
+        agent_pubkeys_arc,
+        session_gen,
+        state,
+    );
     Ok(true)
 }
 
@@ -619,6 +626,61 @@ pub(crate) fn sign_and_guard_stt_body(
     Ok(body_bytes)
 }
 
+pub(crate) struct TranscriptTarget {
+    channel: Uuid,
+    thread_root: Option<nostr::EventId>,
+}
+
+pub(crate) fn transcript_target(
+    hs: &HuddleState,
+    ephemeral_channel_id: &str,
+) -> Result<TranscriptTarget, String> {
+    if !hs.thread_chat {
+        return Ok(TranscriptTarget {
+            channel: parse_channel_uuid(ephemeral_channel_id)?,
+            thread_root: None,
+        });
+    }
+    let parent = hs
+        .parent_channel_id
+        .as_deref()
+        .ok_or("huddle thread has no parent channel")?;
+    let root = hs
+        .huddle_thread_event_id
+        .as_deref()
+        .ok_or("huddle thread has no root event")?;
+    Ok(TranscriptTarget {
+        channel: parse_channel_uuid(parent)?,
+        thread_root: Some(
+            nostr::EventId::from_hex(root)
+                .map_err(|e| format!("invalid huddle thread root: {e}"))?,
+        ),
+    })
+}
+
+pub(crate) fn build_transcript_message(
+    target: &TranscriptTarget,
+    text: &str,
+    mentions: &[&str],
+) -> Result<nostr::EventBuilder, String> {
+    let thread_ref = target.thread_root.map(|root| events::ThreadRef {
+        root_event_id: root,
+        parent_event_id: root,
+    });
+    events::build_message(
+        target.channel,
+        text,
+        thread_ref.as_ref(),
+        mentions,
+        &[],
+        &[],
+        &[],
+        &[],
+        None,
+        &crate::relay::relay_api_base_url(),
+    )
+}
+
 /// Spawn a tokio task that reads text_rx and posts kind:9 events.
 ///
 /// Fix 1: `agent_pubkeys_arc` is an `Arc<Mutex<Vec<String>>>` cloned from
@@ -629,7 +691,7 @@ pub(crate) fn sign_and_guard_stt_body(
 ///        never blocks a Tokio worker thread (unlike std `recv_timeout`).
 pub(crate) fn spawn_transcription_task(
     mut text_rx: tokio::sync::mpsc::Receiver<String>,
-    channel_uuid: Uuid,
+    target: TranscriptTarget,
     agent_pubkeys_arc: Arc<Mutex<Vec<String>>>,
     session_generation: Arc<AtomicU64>,
     state: &AppState,
@@ -665,18 +727,7 @@ pub(crate) fn spawn_transcription_task(
                 .clone();
 
             let p_tags: Vec<&str> = agent_pubkeys.iter().map(|s| s.as_str()).collect();
-            let builder = match events::build_message(
-                channel_uuid,
-                &t,
-                None,
-                &p_tags,
-                &[],
-                &[],
-                &[],
-                &[],
-                None,
-                &crate::relay::relay_api_base_url(),
-            ) {
+            let builder = match build_transcript_message(&target, &t, &p_tags) {
                 Ok(b) => b,
                 Err(e) => {
                     eprintln!("buzz-desktop: STT build_message: {e}");
@@ -877,5 +928,69 @@ mod tts_start_race_tests {
             .expect("huddle state")
             .tts_starting
             .load(Ordering::Acquire));
+    }
+}
+
+#[cfg(test)]
+mod transcript_target_tests {
+    use nostr::Keys;
+
+    use super::{build_transcript_message, transcript_target, HuddleState};
+
+    const PARENT: &str = "36411e44-0e2d-4cfe-bd6e-567eb169db9f";
+    const EPHEMERAL: &str = "8d764100-fd8f-44cf-9c98-6d8fbd739b8c";
+    const AGENT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn root() -> String {
+        "b".repeat(64)
+    }
+
+    fn huddle(thread_chat: bool, root: Option<String>) -> HuddleState {
+        HuddleState {
+            parent_channel_id: Some(PARENT.to_owned()),
+            ephemeral_channel_id: Some(EPHEMERAL.to_owned()),
+            huddle_thread_event_id: root,
+            thread_chat,
+            ..HuddleState::default()
+        }
+    }
+
+    fn transcript_tags(hs: &HuddleState) -> Vec<Vec<String>> {
+        let target = transcript_target(hs, EPHEMERAL).expect("target");
+        let event = build_transcript_message(&target, "hello agent", &[AGENT])
+            .expect("builder")
+            .sign_with_keys(&Keys::generate())
+            .expect("signed");
+        assert_eq!(event.kind, nostr::Kind::Custom(9));
+        event.tags.iter().map(|t| t.as_slice().to_vec()).collect()
+    }
+
+    #[test]
+    fn thread_chat_transcripts_reply_to_the_huddle_root_in_the_parent() {
+        assert_eq!(
+            transcript_tags(&huddle(true, Some(root()))),
+            vec![
+                vec!["h".to_owned(), PARENT.to_owned()],
+                vec!["e".to_owned(), root(), String::new(), "reply".to_owned()],
+                vec!["p".to_owned(), AGENT.to_owned()],
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_huddle_transcripts_stay_in_the_ephemeral_channel() {
+        assert_eq!(
+            transcript_tags(&huddle(false, Some(root()))),
+            vec![
+                vec!["h".to_owned(), EPHEMERAL.to_owned()],
+                vec!["p".to_owned(), AGENT.to_owned()],
+            ]
+        );
+    }
+
+    #[test]
+    fn thread_chat_without_a_root_does_not_fall_back_to_the_ephemeral_channel() {
+        assert!(transcript_target(&huddle(true, None), EPHEMERAL).is_err());
+        assert!(transcript_target(&huddle(true, Some("bad".to_owned())), EPHEMERAL).is_err());
     }
 }

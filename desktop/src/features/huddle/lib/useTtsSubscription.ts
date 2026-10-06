@@ -6,12 +6,18 @@ import {
   isDocumentVisible,
   subscribeDocumentVisibility,
 } from "@/shared/lib/useDocumentVisible";
-import { buildHuddleTtsLiveFilter } from "@/shared/api/relayChannelFilters";
+import {
+  buildHuddleThreadTtsLiveFilter,
+  buildHuddleTtsLiveFilter,
+} from "@/shared/api/relayChannelFilters";
 import { relayClient } from "@/shared/api/relayClient";
+import type { HuddleTtsScope } from "./huddleThread";
 import {
   createInitialTtsReadinessGate,
   createLatestStateGate,
+  createLiveTtsThread,
   createOrderedSpeaker,
+  observeLiveTtsThreadEvent,
   routeLiveAgentText,
 } from "./ttsLiveMessages";
 
@@ -28,17 +34,21 @@ function allocateTtsRouteId(): number {
 }
 
 /**
- * Subscribe to agent TTS messages on the ephemeral huddle channel.
+ * Subscribe to agent TTS messages in the huddle chat: the parent-channel
+ * thread, or the ephemeral channel for huddles started before thread chat.
  * Pipes new agent message events to `speak_agent_message` on the Rust backend.
  *
  * Extracted from HuddleContext to keep file sizes manageable.
  */
 export function useTtsSubscription(
-  ephemeralChannelId: string | null,
+  scope: HuddleTtsScope | null,
   selfPubkeyRef: React.RefObject<string | null>,
 ) {
+  const channelId = scope?.channelId ?? null;
+  const threadRootId = scope?.threadRootId ?? null;
   React.useEffect(() => {
-    if (!ephemeralChannelId) return;
+    if (!channelId) return;
+    const thread = threadRootId ? createLiveTtsThread(threadRootId) : null;
 
     let disposed = false;
     let cleanup: (() => void) | null = null;
@@ -149,10 +159,11 @@ export function useTtsSubscription(
         event,
         agentPubkeys,
         selfPubkeyRef.current,
-        ephemeralChannelId,
+        channelId,
         routeId,
         (text, queuedRouteId) =>
           speakInOrder.enqueue(text, queuedRouteId, event.pubkey),
+        thread,
       );
       if (result === "queued") {
         console.debug(
@@ -286,7 +297,9 @@ export function useTtsSubscription(
     const MAX_SEEN_EVENTS = 5000;
     relayClient
       .subscribeInteractive(
-        buildHuddleTtsLiveFilter(ephemeralChannelId, replaySince),
+        thread
+          ? buildHuddleThreadTtsLiveFilter(channelId, replaySince)
+          : buildHuddleTtsLiveFilter(channelId, replaySince),
         (event) => {
           if (disposed) return;
           // Dedup by event ID if a relay repeats live fan-out.
@@ -297,6 +310,7 @@ export function useTtsSubscription(
             const oldest = seenOrder.shift();
             if (oldest !== undefined) seenEventIds.delete(oldest);
           }
+          if (thread) observeLiveTtsThreadEvent(thread, event);
 
           // Preserve arrival order until initial membership and TTS state are
           // both known. A failed readiness check clears this buffer fail-closed.
@@ -332,5 +346,5 @@ export function useTtsSubscription(
       }
       pendingAgentVerification.clear();
     };
-  }, [ephemeralChannelId, selfPubkeyRef]);
+  }, [channelId, selfPubkeyRef, threadRootId]);
 }

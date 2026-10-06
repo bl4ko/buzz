@@ -305,6 +305,7 @@ pub async fn start_huddle(
                     hs.is_creator = true;
                     hs.ephemeral_channel_id = Some(ephemeral_channel_id.clone());
                     hs.huddle_thread_event_id = Some(huddle_thread_event_id);
+                    hs.thread_chat = true;
                     *hs.agent_pubkeys.lock().unwrap_or_else(|e| e.into_inner()) =
                         successful_agents.clone();
                     hs.maybe_auto_enable_transcription_for_agents();
@@ -399,8 +400,9 @@ pub async fn start_huddle(
 ///
 /// Steps:
 /// 1. Transition to Connecting.
-/// 2. Store state and return join info.
-/// 3. Post-connect setup (audio relay WS, pipelines, model hydration).
+/// 2. Load the kind 48100 start to learn the chat thread root and mode.
+/// 3. Store state and return join info.
+/// 4. Post-connect setup (audio relay WS, pipelines, model hydration).
 ///
 /// The relay emits kind:48101 (participant joined) when the audio WS authenticates.
 #[tauri::command]
@@ -423,8 +425,36 @@ pub async fn join_huddle(
         hs.phase = HuddlePhase::Connecting;
         hs.parent_channel_id = Some(parent_channel_id.clone());
         hs.ephemeral_channel_id = Some(ephemeral_channel_id.clone());
-        hs.huddle_thread_event_id = huddle_thread_event_id;
+        hs.huddle_thread_event_id = huddle_thread_event_id.clone();
         generation
+    };
+
+    let start = match relay_api::fetch_huddle_start(
+        &parent_channel_id,
+        &ephemeral_channel_id,
+        huddle_thread_event_id.as_deref(),
+        &state,
+    )
+    .await
+    {
+        Ok(start) => start,
+        Err(e) => {
+            let reset = state
+                .huddle_state
+                .lock()
+                .map(|mut hs| {
+                    let owned = hs.owns_huddle_lifetime(huddle_generation, HuddlePhase::Connecting);
+                    if owned {
+                        hs.reset_preserving_generation();
+                    }
+                    owned
+                })
+                .unwrap_or(false);
+            if reset {
+                state.emit_huddle_state_changed();
+            }
+            return Err(format!("could not load the huddle start event: {e}"));
+        }
     };
 
     // Seed participant list with own pubkey as a fallback until relay responds.
@@ -440,6 +470,10 @@ pub async fn join_huddle(
             false
         } else {
             hs.phase = HuddlePhase::Connected;
+            if let Some(start) = start {
+                hs.huddle_thread_event_id = Some(start.event_id);
+                hs.thread_chat = start.thread_chat;
+            }
             if !own_pubkey.is_empty() {
                 hs.participants = vec![own_pubkey];
             }

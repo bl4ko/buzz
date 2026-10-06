@@ -9,12 +9,19 @@ import {
 import { useThreadRepliesForRoots } from "@/features/messages/useThreadReplies";
 import type { Channel, RelayEvent } from "@/shared/api/types";
 
+/** A huddle backing channel opened as chat: the pre-thread-chat transcript. */
 export function useIsHuddleTranscript(activeChannelId: string | null) {
   const { activeEphemeralChannelId } = useHuddle();
   return (
-    huddleWindowChannelId() !== null ||
-    (activeChannelId !== null && activeChannelId === activeEphemeralChannelId)
+    activeChannelId !== null &&
+    (activeChannelId === huddleWindowChannelId() ||
+      activeChannelId === activeEphemeralChannelId)
   );
+}
+
+/** The huddle window shows its parent-channel chat thread as a single panel. */
+export function isHuddleWindowThread(isHuddleTranscript: boolean): boolean {
+  return huddleWindowChannelId() !== null && !isHuddleTranscript;
 }
 
 type HuddleChannelMessagesOptions = {

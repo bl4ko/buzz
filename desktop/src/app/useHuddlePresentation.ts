@@ -9,6 +9,14 @@ import {
 } from "@/app/huddleBackingChannelStorage";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { channelsQueryKey } from "@/features/channels/hooks";
+import {
+  huddleChatDestination,
+  type HuddleNotificationQuiet,
+  huddleNotificationQuiet,
+  huddleThread,
+  NO_HUDDLE_NOTIFICATION_QUIET,
+  sameHuddleNotificationQuiet,
+} from "@/features/huddle/lib/huddleThread";
 import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import {
   channelMessagesKey,
@@ -26,6 +34,8 @@ type HuddleTranscriptRouteState = {
   parent_channel_id: string | null;
   ephemeral_channel_id: string | null;
   huddle_thread_event_id: string | null;
+  thread_chat?: boolean;
+  agent_pubkeys?: string[];
 };
 
 export function useHuddlePresentation() {
@@ -49,6 +59,11 @@ export function useHuddlePresentation() {
     null,
   );
   const activeHuddleParentChannelIdRef = React.useRef<string | null>(null);
+  const activeHuddleStateRef = React.useRef<HuddleTranscriptRouteState | null>(
+    null,
+  );
+  const [huddleNotificationQuietState, setHuddleNotificationQuietState] =
+    React.useState<HuddleNotificationQuiet>(NO_HUDDLE_NOTIFICATION_QUIET);
   const [huddleTranscriptRoute, setHuddleTranscriptRoute] =
     React.useState<HuddleTranscriptRouteState | null>(null);
   const location = useLocation();
@@ -91,11 +106,14 @@ export function useHuddlePresentation() {
   }, [huddleRoomChannelId, isHuddleRoom]);
 
   const huddleRouteResolved = huddleTranscriptRoute !== null;
-  const huddleRouteEphemeralChannelId =
-    huddleTranscriptRoute?.ephemeral_channel_id ?? null;
   const huddleRouteIsActive = huddleTranscriptRoute?.phase === "active";
+  const huddleRouteDestination = huddleChatDestination(
+    huddleTranscriptRoute,
+    huddleRoomChannelId,
+  );
   const huddleRouteDestinationChannelId =
-    huddleRouteEphemeralChannelId ?? huddleRoomChannelId;
+    huddleRouteDestination?.channelId ?? null;
+  const huddleRouteThreadRootId = huddleRouteDestination?.threadRootId ?? null;
   const huddleRouteMatchesLocation = Boolean(
     huddleRouteDestinationChannelId &&
       location.pathname === `/channels/${huddleRouteDestinationChannelId}`,
@@ -107,12 +125,17 @@ export function useHuddlePresentation() {
       !huddleRouteMatchesLocation);
 
   React.useEffect(() => {
-    if (!huddleRoomChannelId || !huddleRouteResolved || !huddleRouteIsActive) {
+    if (
+      !huddleRoomChannelId ||
+      !huddleRouteResolved ||
+      !huddleRouteIsActive ||
+      !huddleRouteDestinationChannelId
+    ) {
       return;
     }
 
     let cancelled = false;
-    const channelId = huddleRouteEphemeralChannelId ?? huddleRoomChannelId;
+    const channelId = huddleRouteDestinationChannelId;
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
       queryClient.invalidateQueries({
@@ -120,7 +143,11 @@ export function useHuddlePresentation() {
       }),
       queryClient.invalidateQueries({ queryKey: channelWindowKey(channelId) }),
     ]).then(() => {
-      if (!cancelled) void goChannel(channelId, { replace: true });
+      if (cancelled) return;
+      void goChannel(channelId, {
+        replace: true,
+        thread: huddleRouteThreadRootId ?? undefined,
+      });
     });
 
     return () => {
@@ -129,9 +156,10 @@ export function useHuddlePresentation() {
   }, [
     goChannel,
     huddleRoomChannelId,
-    huddleRouteEphemeralChannelId,
+    huddleRouteDestinationChannelId,
     huddleRouteIsActive,
     huddleRouteResolved,
+    huddleRouteThreadRootId,
     queryClient,
   ]);
 
@@ -302,13 +330,40 @@ export function useHuddlePresentation() {
     },
     [goChannel, queryClient, revealHuddleChannel],
   );
+  const rememberActiveHuddle = React.useCallback(
+    (state: HuddleTranscriptRouteState) => {
+      const ended = state.phase === "idle" || state.phase === "leaving";
+      activeHuddleStateRef.current = ended ? null : state;
+      const quiet = huddleNotificationQuiet(state);
+      setHuddleNotificationQuietState((current) =>
+        sameHuddleNotificationQuiet(current, quiet) ? current : quiet,
+      );
+      if (state.ephemeral_channel_id) {
+        activeHuddleChannelIdRef.current = state.ephemeral_channel_id;
+        trackHuddleBackingChannel(state.ephemeral_channel_id);
+      }
+      if (state.parent_channel_id) {
+        activeHuddleParentChannelIdRef.current = state.parent_channel_id;
+      }
+    },
+    [trackHuddleBackingChannel],
+  );
   const showHuddleInMainApp = React.useCallback(
     (ephemeralChannelId: string) => {
       activeHuddleChannelIdRef.current = ephemeralChannelId;
       trackHuddleBackingChannel(ephemeralChannelId);
+      const activeState = activeHuddleStateRef.current;
+      const thread =
+        activeState?.ephemeral_channel_id === ephemeralChannelId
+          ? huddleThread(activeState)
+          : null;
+      if (thread) {
+        void goChannel(thread.parentChannelId, { thread: thread.rootEventId });
+        return;
+      }
       viewHuddleChannel(ephemeralChannelId);
     },
-    [trackHuddleBackingChannel, viewHuddleChannel],
+    [goChannel, trackHuddleBackingChannel, viewHuddleChannel],
   );
   const handleSidebarChannelSelect = React.useCallback(
     (channelId: string) => {
@@ -359,9 +414,7 @@ export function useHuddlePresentation() {
       void invoke<HuddleTranscriptRouteState>("get_huddle_state")
         .then((state) => {
           if (!state.ephemeral_channel_id) return;
-          if (state.parent_channel_id) {
-            activeHuddleParentChannelIdRef.current = state.parent_channel_id;
-          }
+          rememberActiveHuddle(state);
           showHuddleInMainApp(state.ephemeral_channel_id);
         })
         .catch((error) => {
@@ -375,7 +428,7 @@ export function useHuddlePresentation() {
       cancelled = true;
       unlisten?.();
     };
-  }, [isHuddleRoom, showHuddleInMainApp]);
+  }, [isHuddleRoom, rememberActiveHuddle, showHuddleInMainApp]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -383,25 +436,14 @@ export function useHuddlePresentation() {
     void invoke<HuddleTranscriptRouteState>("get_huddle_state")
       .then((state) => {
         if (cancelled || !state.ephemeral_channel_id) return;
-        activeHuddleChannelIdRef.current = state.ephemeral_channel_id;
-        trackHuddleBackingChannel(state.ephemeral_channel_id);
-        if (state.parent_channel_id) {
-          activeHuddleParentChannelIdRef.current = state.parent_channel_id;
-        }
+        rememberActiveHuddle(state);
       })
       .catch(() => {
         /* lifecycle events remain authoritative */
       });
     listen<HuddleTranscriptRouteState>("huddle-state-changed", (event) => {
       if (cancelled) return;
-      if (event.payload.ephemeral_channel_id) {
-        activeHuddleChannelIdRef.current = event.payload.ephemeral_channel_id;
-        trackHuddleBackingChannel(event.payload.ephemeral_channel_id);
-      }
-      if (event.payload.parent_channel_id) {
-        activeHuddleParentChannelIdRef.current =
-          event.payload.parent_channel_id;
-      }
+      rememberActiveHuddle(event.payload);
       if (
         !isHuddleRoom &&
         event.payload.phase === "creating" &&
@@ -441,8 +483,8 @@ export function useHuddlePresentation() {
     isHuddleRoom,
     openHuddleCompanion,
     queryClient,
+    rememberActiveHuddle,
     returnToHuddleParentAfterEnd,
-    trackHuddleBackingChannel,
   ]);
 
   return {
@@ -453,6 +495,7 @@ export function useHuddlePresentation() {
     handleHuddleVisibilityChange,
     handleSidebarChannelSelect,
     huddleBackingChannelIds,
+    huddleNotificationQuiet: huddleNotificationQuietState,
     revealedHuddleChannelIds,
     isHuddleCompanionOpen,
     isHuddleDrawerOpen,

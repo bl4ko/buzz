@@ -22,6 +22,8 @@ export type NotifyOptions = {
   authoredRootIds: ReadonlySet<string>;
   mutedRootIds?: ReadonlySet<string>;
   mutedChannelIds?: ReadonlySet<string>;
+  quietRootIds?: ReadonlySet<string>;
+  quietAuthorPubkeys?: ReadonlySet<string>;
   channelId?: string | null;
 };
 
@@ -36,9 +38,18 @@ export function shouldNotifyForEvent(
     authoredRootIds,
     mutedRootIds = new Set(),
     mutedChannelIds = new Set(),
+    quietRootIds = new Set(),
+    quietAuthorPubkeys = new Set(),
     channelId = null,
   } = options;
   const { parentId, rootId } = getThreadReference(event.tags);
+
+  if (rootId !== null && quietRootIds.has(rootId)) {
+    return (
+      hasMentionForEvent(event, currentPubkey) &&
+      !quietAuthorPubkeys.has(event.pubkey.toLowerCase())
+    );
+  }
 
   if (isBroadcastReply(event.tags)) {
     return true;

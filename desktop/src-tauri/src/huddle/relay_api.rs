@@ -658,6 +658,64 @@ pub(crate) async fn fetch_channel_members(
         .collect())
 }
 
+#[derive(Debug, PartialEq)]
+pub(crate) struct HuddleStart {
+    pub event_id: String,
+    pub thread_chat: bool,
+}
+
+pub(crate) fn find_huddle_start(
+    events: &[nostr::Event],
+    parent_channel_id: &str,
+    ephemeral_channel_id: &str,
+) -> Option<HuddleStart> {
+    events
+        .iter()
+        .filter(|event| event.kind == nostr::Kind::Custom(48100))
+        .filter(|event| {
+            event
+                .tags
+                .iter()
+                .any(|tag| tag.as_slice() == ["h", parent_channel_id])
+        })
+        .filter_map(|event| {
+            let content: serde_json::Value = serde_json::from_str(&event.content).ok()?;
+            (content["ephemeral_channel_id"] == ephemeral_channel_id).then(|| {
+                (
+                    event.created_at,
+                    HuddleStart {
+                        event_id: event.id.to_hex(),
+                        thread_chat: content["chat"] == "thread",
+                    },
+                )
+            })
+        })
+        .max_by_key(|(created_at, _)| *created_at)
+        .map(|(_, start)| start)
+}
+
+pub(crate) async fn fetch_huddle_start(
+    parent_channel_id: &str,
+    ephemeral_channel_id: &str,
+    hint_event_id: Option<&str>,
+    state: &AppState,
+) -> Result<Option<HuddleStart>, String> {
+    let mut filters = vec![serde_json::json!({
+        "kinds": [48100],
+        "#h": [parent_channel_id],
+        "limit": 20,
+    })];
+    if let Some(hint) = hint_event_id.filter(|id| nostr::EventId::from_hex(id).is_ok()) {
+        filters.push(serde_json::json!({ "ids": [hint], "kinds": [48100] }));
+    }
+    let events = query_relay(state, &filters).await?;
+    Ok(find_huddle_start(
+        &events,
+        parent_channel_id,
+        ephemeral_channel_id,
+    ))
+}
+
 /// Count human (non-bot) members remaining in a channel.
 pub(crate) async fn count_human_members(
     channel_id: &str,
@@ -673,6 +731,61 @@ pub(crate) async fn count_human_members(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn start_event(parent: &str, content: serde_json::Value, created_at: u64) -> nostr::Event {
+        nostr::EventBuilder::new(nostr::Kind::Custom(48100), content.to_string())
+            .tags([nostr::Tag::parse(["h", parent]).unwrap()])
+            .custom_created_at(nostr::Timestamp::from(created_at))
+            .sign_with_keys(&nostr::Keys::generate())
+            .unwrap()
+    }
+
+    #[test]
+    fn joiners_learn_the_thread_root_and_chat_mode_from_the_start_event() {
+        let parent = "36411e44-0e2d-4cfe-bd6e-567eb169db9f";
+        let room = "8d764100-fd8f-44cf-9c98-6d8fbd739b8c";
+        let other_room = "f2b5a3a0-5d55-4bb7-a1a4-2b6f0d6f7f10";
+        let legacy = start_event(
+            parent,
+            serde_json::json!({"ephemeral_channel_id": room}),
+            10,
+        );
+        let thread = start_event(
+            parent,
+            serde_json::json!({"ephemeral_channel_id": room, "chat": "thread"}),
+            20,
+        );
+        let unrelated = start_event(
+            parent,
+            serde_json::json!({"ephemeral_channel_id": other_room, "chat": "thread"}),
+            30,
+        );
+        let elsewhere = start_event(
+            other_room,
+            serde_json::json!({"ephemeral_channel_id": room, "chat": "thread"}),
+            40,
+        );
+
+        assert_eq!(
+            find_huddle_start(
+                &[legacy.clone(), thread.clone(), unrelated.clone(), elsewhere],
+                parent,
+                room
+            ),
+            Some(HuddleStart {
+                event_id: thread.id.to_hex(),
+                thread_chat: true,
+            })
+        );
+        assert_eq!(
+            find_huddle_start(&[legacy.clone(), unrelated.clone()], parent, room),
+            Some(HuddleStart {
+                event_id: legacy.id.to_hex(),
+                thread_chat: false,
+            })
+        );
+        assert_eq!(find_huddle_start(&[unrelated], parent, room), None);
+    }
 
     #[test]
     fn tts_upsampling_doubles_rate_with_linear_midpoints() {

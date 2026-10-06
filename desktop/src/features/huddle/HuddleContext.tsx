@@ -9,6 +9,11 @@ import { type AudioInputDevice, useAudioDevices } from "./lib/useAudioDevices";
 import { usePipelineHotstart } from "./lib/usePipelineHotstart";
 import { formatHuddleActionError } from "./lib/huddleError";
 import {
+  type HuddleBackendThreadState,
+  huddleTtsScope,
+  sameHuddleThreadState,
+} from "./lib/huddleThread";
+import {
   type VoiceInputMode,
   useHuddlePttState,
 } from "./lib/useHuddlePttState";
@@ -119,6 +124,8 @@ export function HuddleProvider({
   const [ephemeralChannelId, setEphemeralChannelId] = React.useState<
     string | null
   >(null);
+  const [backendThreadState, setBackendThreadState] =
+    React.useState<HuddleBackendThreadState | null>(null);
   /** Self pubkey — fetched once, used to filter out own messages from TTS */
   const selfPubkeyRef = React.useRef<string | null>(null);
   const { activeSpeakers, resetSpeakerActivity, speakerLevels } =
@@ -435,12 +442,12 @@ export function HuddleProvider({
   React.useEffect(() => {
     if (!ownsAudioSession) return;
 
-    type HuddleBackendState = {
-      phase?: string;
-      ephemeral_channel_id?: string | null;
-    };
+    type HuddleBackendState = HuddleBackendThreadState;
 
     const applyBackendState = (state: HuddleBackendState) => {
+      setBackendThreadState((current) =>
+        sameHuddleThreadState(current, state) ? current : state,
+      );
       if (state.phase === "idle" || state.phase === "leaving") {
         void disconnectMedia();
         return;
@@ -792,7 +799,9 @@ export function HuddleProvider({
   // subscription. Companion windows receive native playback activity events,
   // but must not enqueue the same reply a second time.
   useTtsSubscription(
-    ownsAudioSession ? ephemeralChannelId : null,
+    ownsAudioSession
+      ? huddleTtsScope(backendThreadState, ephemeralChannelId)
+      : null,
     selfPubkeyRef,
   );
 

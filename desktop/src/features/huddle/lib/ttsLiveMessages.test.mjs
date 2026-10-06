@@ -5,7 +5,9 @@ import {
   classifySpeakableAgentText,
   createInitialTtsReadinessGate,
   createLatestStateGate,
+  createLiveTtsThread,
   createOrderedSpeaker,
+  observeLiveTtsThreadEvent,
   routeLiveAgentText,
 } from "./ttsLiveMessages.ts";
 
@@ -268,4 +270,146 @@ test("drops the initial buffer fail-closed with the readiness failure", () => {
   assert.deepEqual(dropped, [
     { event: "unverified", reason: "tts_state_unavailable" },
   ]);
+});
+
+const PARENT = "parent-channel";
+const ROOT = "a".repeat(64);
+const threadReply = (overrides = {}) => ({
+  id: "reply-1",
+  kind: 9,
+  pubkey: "agent",
+  content: "Spoken reply",
+  tags: [
+    ["h", PARENT],
+    ["e", ROOT, "", "reply"],
+    ["voice", "final"],
+  ],
+  ...overrides,
+});
+
+test("thread huddles speak only final agent replies under the huddle root", () => {
+  const thread = createLiveTtsThread(ROOT);
+  const classify = (event) =>
+    classifySpeakableAgentText(event, agents, "human", PARENT, thread);
+
+  assert.equal(classify(threadReply()).text, "Spoken reply");
+  assert.equal(
+    classify(
+      threadReply({
+        tags: [
+          ["h", PARENT],
+          ["e", ROOT, "", "root"],
+          ["e", "b".repeat(64), "", "reply"],
+          ["voice", "final"],
+        ],
+      }),
+    ).text,
+    "Spoken reply",
+    "nested replies inside the huddle thread are spoken",
+  );
+  assert.equal(
+    classify(
+      threadReply({
+        tags: [
+          ["h", PARENT],
+          ["e", ROOT, "", "reply"],
+        ],
+      }),
+    ).reason,
+    "not_final",
+    "tool progress and drafts without voice=final stay silent",
+  );
+  assert.equal(
+    classify(
+      threadReply({
+        tags: [
+          ["h", PARENT],
+          ["e", "c".repeat(64), "", "reply"],
+          ["voice", "final"],
+        ],
+      }),
+    ).reason,
+    "outside_thread",
+    "other parent-channel threads stay silent",
+  );
+  assert.equal(
+    classify(
+      threadReply({
+        tags: [
+          ["h", PARENT],
+          ["voice", "final"],
+        ],
+      }),
+    ).reason,
+    "outside_thread",
+    "top-level parent-channel messages stay silent",
+  );
+  assert.equal(
+    classify(threadReply({ kind: 40002 })).reason,
+    "unsupported_kind",
+  );
+  assert.equal(
+    classifySpeakableAgentText(threadReply(), agents, "human", CHANNEL, thread)
+      .reason,
+    "h_tag_mismatch",
+  );
+});
+
+test("thread huddles speak a final edit of a known thread reply once", () => {
+  const thread = createLiveTtsThread(ROOT);
+  const spoken = [];
+  const enqueue = (text) => {
+    spoken.push(text);
+    return "queued";
+  };
+  const route = (event) =>
+    routeLiveAgentText(event, agents, "human", PARENT, 1, enqueue, thread);
+  const draft = threadReply({
+    id: "draft",
+    tags: [
+      ["h", PARENT],
+      ["e", ROOT, "", "reply"],
+    ],
+  });
+  const finalEdit = {
+    id: "edit-1",
+    kind: 40003,
+    pubkey: "agent",
+    content: "Finished answer",
+    tags: [
+      ["h", PARENT],
+      ["e", "draft"],
+      ["voice", "final"],
+    ],
+  };
+
+  observeLiveTtsThreadEvent(thread, draft);
+  assert.equal(route(draft), "not_final");
+  assert.equal(route(finalEdit), "queued");
+  assert.equal(
+    route({ ...finalEdit, id: "edit-2", content: "Finished answer again" }),
+    "already_spoken",
+  );
+  assert.equal(
+    route({
+      ...finalEdit,
+      id: "edit-3",
+      tags: [
+        ["h", PARENT],
+        ["e", "x"],
+        ["voice", "final"],
+      ],
+    }),
+    "outside_thread",
+    "edits of messages outside the huddle thread stay silent",
+  );
+  assert.deepEqual(spoken, ["Finished answer"]);
+});
+
+test("legacy ephemeral huddles keep speaking every agent message", () => {
+  assert.equal(
+    speakableText({ ...base, tags: [["h", CHANNEL]] }),
+    "Hello there",
+  );
+  assert.equal(speakableText({ ...base, kind: 40003 }), null);
 });

@@ -71,6 +71,9 @@ export type UseLiveChannelUpdatesOptions = {
   authoredRootIds?: ReadonlySet<string>;
   mutedRootIds?: ReadonlySet<string>;
   mutedChannelIds?: ReadonlySet<string>;
+  /** The active huddle thread notifies only for direct human mentions. */
+  quietRootIds?: ReadonlySet<string>;
+  quietAuthorPubkeys?: ReadonlySet<string>;
 };
 
 const LIVE_SUBSCRIPTION_RETRY_BASE_MS = 1_000;
@@ -321,6 +324,8 @@ export function useLiveChannelUpdates(
           authoredRootIds: options.authoredRootIds ?? EMPTY_SET,
           mutedRootIds: options.mutedRootIds ?? EMPTY_SET,
           mutedChannelIds: options.mutedChannelIds ?? EMPTY_SET,
+          quietRootIds: options.quietRootIds ?? EMPTY_SET,
+          quietAuthorPubkeys: options.quietAuthorPubkeys ?? EMPTY_SET,
           channelId,
         },
       );

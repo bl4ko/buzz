@@ -107,6 +107,45 @@ test("buildMainTimelineEntries keeps huddle thread replies out of the parent tim
   );
 });
 
+test("buildMainTimelineEntries summarizes replies under a thread-chat huddle card", () => {
+  const huddleRoot = message({
+    id: "huddle-root",
+    kind: KIND_HUDDLE_STARTED,
+    createdAt: 1,
+    body: JSON.stringify({
+      ephemeral_channel_id: "8d764100-fd8f-44cf-9c98-6d8fbd739b8c",
+      chat: "thread",
+    }),
+  });
+  const transcript = message({
+    id: "transcript",
+    createdAt: 2,
+    pubkey: "human",
+    parentId: "huddle-root",
+    rootId: "huddle-root",
+    depth: 1,
+    tags: [["e", "huddle-root", "", "reply"]],
+  });
+  const answer = message({
+    id: "answer",
+    createdAt: 3,
+    pubkey: "agent",
+    parentId: "huddle-root",
+    rootId: "huddle-root",
+    depth: 1,
+    tags: [["e", "huddle-root", "", "reply"]],
+  });
+
+  const entries = buildMainTimelineEntries([huddleRoot, transcript, answer]);
+
+  assert.deepEqual(
+    entries.map((entry) => entry.message.id),
+    ["huddle-root"],
+  );
+  assert.equal(entries[0].summary?.threadHeadId, "huddle-root");
+  assert.equal(entries[0].summary?.replyCount, 2);
+});
+
 test("buildThreadPanelData connects direct comments to the thread head", () => {
   const root = message({ id: "root", createdAt: 1 });
   const directComment = message({

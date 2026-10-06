@@ -51,6 +51,9 @@ pub struct HuddleState {
     /// Root event for the huddle's visible parent-channel thread. Transcript
     /// messages reply here while audio coordination stays ephemeral.
     pub huddle_thread_event_id: Option<String>,
+    /// Whether huddle chat lives in the parent-channel thread instead of the
+    /// ephemeral channel.
+    pub thread_chat: bool,
     /// Cancellation token for the audio relay WS task.
     #[serde(skip)]
     pub audio_ws_cancel: Option<tokio_util::sync::CancellationToken>,
@@ -192,6 +195,7 @@ impl Clone for HuddleState {
             parent_channel_id: self.parent_channel_id.clone(),
             ephemeral_channel_id: self.ephemeral_channel_id.clone(),
             huddle_thread_event_id: self.huddle_thread_event_id.clone(),
+            thread_chat: self.thread_chat,
             audio_ws_cancel: None,    // Never clone handles.
             audio_relay_pcm_tx: None, // Never clone handles.
             participants: self.participants.clone(),
@@ -229,6 +233,7 @@ impl Default for HuddleState {
             parent_channel_id: None,
             ephemeral_channel_id: None,
             huddle_thread_event_id: None,
+            thread_chat: false,
             audio_ws_cancel: None,
             audio_relay_pcm_tx: None,
             participants: Vec::new(),

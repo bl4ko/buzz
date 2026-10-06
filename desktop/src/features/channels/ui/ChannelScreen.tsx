@@ -62,6 +62,7 @@ import type { RelayEvent, RespondToMode } from "@/shared/api/types";
 import { ChannelScreenLoadingFallback } from "@/features/channels/ui/ChannelScreenLoadingFallback";
 import {
   useHuddleChannelMessages,
+  isHuddleWindowThread,
   useIsHuddleTranscript,
 } from "@/features/channels/ui/useHuddleChannelMessages";
 import { useHuddleReadMarker } from "@/features/channels/ui/useHuddleReadMarker";
@@ -222,7 +223,7 @@ export function ChannelScreen({
     ? new Date(latestActiveMessage.created_at * 1_000).toISOString()
     : null;
   useChannelOpenReadState(
-    activeChannelId,
+    isHuddleWindowThread(isHuddleTranscript) ? null : activeChannelId,
     activeChannel?.isMember,
     activeReadAt,
   );
@@ -694,7 +695,7 @@ export function ChannelScreen({
     channelContentWidthPx > 0 &&
     channelContentWidthPx < AUXILIARY_PANEL_SINGLE_COLUMN_BREAKPOINT_PX;
   const isSinglePanelView =
-    isNarrowPanelViewport &&
+    (isNarrowPanelViewport || isHuddleWindowThread(isHuddleTranscript)) &&
     activeChannel?.channelType !== "forum" &&
     hasAuxiliaryPanel;
   const shouldCompactHeaderActions =

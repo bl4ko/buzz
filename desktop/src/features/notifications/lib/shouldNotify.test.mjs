@@ -326,3 +326,57 @@ test("isHighPriorityEventForUser returns false for event with no tags at all", (
   const event = makeEvent([]);
   assert.equal(isHighPriorityEventForUser(event, PUBKEY), false);
 });
+
+test("the active huddle thread notifies only for direct human mentions", () => {
+  const AGENT = "c".repeat(64);
+  const quiet = opts({
+    participatedRootIds: new Set([ROOT_ID]),
+    authoredRootIds: new Set([ROOT_ID]),
+    quietRootIds: new Set([ROOT_ID]),
+    quietAuthorPubkeys: new Set([AGENT]),
+  });
+  const reply = (tags, overrides) =>
+    makeEvent([replyTag(ROOT_ID), ...tags], overrides);
+
+  assert.equal(
+    shouldNotifyForEvent(reply([pTag(AGENT)]), PUBKEY, quiet),
+    false,
+    "another participant's transcript stays quiet",
+  );
+  assert.equal(
+    shouldNotifyForEvent(reply([], { pubkey: AGENT }), PUBKEY, quiet),
+    false,
+    "agent replies stay quiet",
+  );
+  assert.equal(
+    shouldNotifyForEvent(
+      reply([pTag(PUBKEY)], { pubkey: AGENT }),
+      PUBKEY,
+      quiet,
+    ),
+    false,
+    "agent mentions stay quiet",
+  );
+  assert.equal(
+    shouldNotifyForEvent(reply([broadcastTag()]), PUBKEY, quiet),
+    false,
+    "broadcast replies stay quiet",
+  );
+  assert.equal(
+    shouldNotifyForEvent(reply([pTag(PUBKEY)]), PUBKEY, quiet),
+    true,
+    "a human mention still notifies",
+  );
+  assert.equal(
+    shouldNotifyForEvent(
+      makeEvent([rootTag(`other-${"0".repeat(58)}`), replyTag(PARENT_ID)]),
+      PUBKEY,
+      opts({
+        participatedRootIds: new Set([`other-${"0".repeat(58)}`]),
+        quietRootIds: new Set([ROOT_ID]),
+      }),
+    ),
+    true,
+    "other threads keep their normal rules",
+  );
+});

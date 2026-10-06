@@ -71,9 +71,8 @@ window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
 const { act, cleanup, renderHook } = await import("@testing-library/react");
 const { relayClient } = await import("@/shared/api/relayClient");
 const { resetRateLimitGate } = await import("@/shared/api/relayRateLimitGate");
-const { buildHuddleTtsLiveFilter } = await import(
-  "@/shared/api/relayChannelFilters"
-);
+const { buildHuddleThreadTtsLiveFilter, buildHuddleTtsLiveFilter } =
+  await import("@/shared/api/relayChannelFilters");
 const { useTtsSubscription } = await import("./useTtsSubscription.ts");
 const flush = async () => {
   for (let i = 0; i < 30; i++) await Promise.resolve();
@@ -144,11 +143,11 @@ after(() => {
   Date.now = originalNow;
   dom.window.close();
 });
-async function mountTts() {
+async function mountTts(scope = { channelId: "huddle", threadRootId: null }) {
   const self = { current: "human" };
   let hook;
   await act(async () => {
-    hook = renderHook(() => useTtsSubscription("huddle", self));
+    hook = renderHook(() => useTtsSubscription(scope, self));
     await flush();
   });
   return hook;
@@ -357,4 +356,58 @@ test("unmounting the companion TTS hook during reconnect cooldown cancels its ow
     "reconnect must not resurrect a departed huddle",
   );
   assert.equal(requests().length, 296);
+});
+
+test("thread huddle TTS subscribes to the parent channel and speaks final replies in the huddle thread", async () => {
+  const root = "a".repeat(64);
+  await mountTts({ channelId: "huddle", threadRootId: root });
+  await advance(250);
+  const { frame } = ttsRequests()[0];
+  assert.deepEqual(frame[2], buildHuddleThreadTtsLiveFilter("huddle", 996));
+  const reply = (id, tags, content) => ({
+    id,
+    kind: 9,
+    pubkey: "agent",
+    created_at: 1001,
+    tags: [["h", "huddle"], ...tags],
+    content,
+    sig: "",
+  });
+  await act(async () => {
+    await deliver([
+      "EVENT",
+      frame[1],
+      reply("progress", [["e", root, "", "reply"]], "Reading files"),
+    ]);
+    await deliver([
+      "EVENT",
+      frame[1],
+      reply(
+        "elsewhere",
+        [
+          ["e", "b".repeat(64), "", "reply"],
+          ["voice", "final"],
+        ],
+        "Other thread",
+      ),
+    ]);
+    await deliver([
+      "EVENT",
+      frame[1],
+      reply(
+        "answer",
+        [
+          ["e", root, "", "reply"],
+          ["voice", "final"],
+        ],
+        "Spoken answer",
+      ),
+    ]);
+    await deliver(["EOSE", frame[1]]);
+    await flush();
+  });
+  assert.deepEqual(
+    spoken.map(({ text }) => text),
+    ["Spoken answer"],
+  );
 });
