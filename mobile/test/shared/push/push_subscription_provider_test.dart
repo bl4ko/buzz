@@ -10,6 +10,31 @@ void main() {
   const archivedID = '123e4567-e89b-42d3-a456-426614174001';
   const nonMemberID = '123e4567-e89b-42d3-a456-426614174002';
 
+  test('includes joined streams and DMs without an explicit mention', () {
+    final subscriptions = desiredBuzzPushSubscriptions(
+      community: Community.create(
+        name: 'Team',
+        relayUrl: 'https://relay.example.com',
+        nsec: nostr.Keys.generate().nsec,
+      ),
+      channels: [
+        channel(activeID, type: 'stream'),
+        channel(archivedID),
+        channel(nonMemberID, isMember: false, type: 'stream'),
+      ],
+      mutedChannelIds: const [],
+    );
+
+    expect(subscriptions, hasLength(2));
+    expect(subscriptions!.last.filter.hTags, [activeID, archivedID]);
+    expect(subscriptions.last.filter.pTags, isNull);
+    expect(subscriptions.last.filter.kinds, [9]);
+    expect(
+      subscriptions.last.ignore.first.authors,
+      subscriptions.first.filter.pTags,
+    );
+  });
+
   test(
     'derives desired subscriptions from nsec, membership, and mute state',
     () {
@@ -21,9 +46,9 @@ void main() {
           nsec: nsec,
         ),
         channels: [
-          channel(activeID),
-          channel(archivedID, archived: true),
-          channel(nonMemberID, isMember: false),
+          channel(activeID, type: 'stream'),
+          channel(archivedID, archived: true, type: 'stream'),
+          channel(nonMemberID, isMember: false, type: 'stream'),
         ],
         mutedChannelIds: const [activeID, archivedID],
       );
@@ -51,16 +76,20 @@ void main() {
   });
 }
 
-Channel channel(String id, {bool isMember = true, bool archived = false}) =>
-    Channel(
-      id: id,
-      name: id,
-      channelType: 'dm',
-      visibility: 'open',
-      description: '',
-      createdBy: 'author',
-      createdAt: DateTime(2026),
-      memberCount: 1,
-      isMember: isMember,
-      archivedAt: archived ? DateTime(2026) : null,
-    );
+Channel channel(
+  String id, {
+  bool isMember = true,
+  bool archived = false,
+  String type = 'dm',
+}) => Channel(
+  id: id,
+  name: id,
+  channelType: type,
+  visibility: 'open',
+  description: '',
+  createdBy: 'author',
+  createdAt: DateTime(2026),
+  memberCount: 1,
+  isMember: isMember,
+  archivedAt: archived ? DateTime(2026) : null,
+);
