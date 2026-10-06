@@ -237,6 +237,9 @@ pub struct Config {
     /// `BUZZ_HUDDLE_AUDIO_AVAILABLE=false` until the out-of-relay media/SFU
     /// service lands.
     pub huddle_audio_available: bool,
+    /// How long an emptied huddle waits for a rejoin before the relay ends it
+    /// (`BUZZ_HUDDLE_EMPTY_GRACE_SECS`, default 120 s, at most 900 s, 0 ends at once).
+    pub huddle_empty_grace: Duration,
     pub(crate) speech_base_url: Option<String>,
     pub(crate) speech_transcription_base_url: Option<String>,
     pub(crate) speech_transcription_model: String,
@@ -766,6 +769,13 @@ impl Config {
         let huddle_audio_available = std::env::var("BUZZ_HUDDLE_AUDIO_AVAILABLE")
             .map(|v| !(v == "false" || v == "0"))
             .unwrap_or(true);
+        let huddle_empty_grace = Duration::from_secs(
+            std::env::var("BUZZ_HUDDLE_EMPTY_GRACE_SECS")
+                .ok()
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .unwrap_or(120)
+                .min(15 * 60),
+        );
 
         // Mesh opt-in: default OFF. Strict rollout no-regression — an image
         // upgrade with untouched env must not bind a new UDP port or write a
@@ -1398,6 +1408,7 @@ impl Config {
             pubkey_allowlist_enabled,
             require_relay_membership,
             huddle_audio_available,
+            huddle_empty_grace,
             speech_base_url: std::env::var("BUZZ_SPEECH_BASE_URL").ok(),
             speech_transcription_base_url: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_BASE_URL").ok(),
             speech_transcription_model: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_MODEL")
@@ -1462,7 +1473,9 @@ impl Config {
         let _fi_guard = crate::nip_fi_config::NIP_FI_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        Self::from_env().expect("default config must load for test fixture")
+        let mut config = Self::from_env().expect("default config must load for test fixture");
+        config.huddle_empty_grace = Duration::ZERO;
+        config
     }
 }
 
@@ -2759,6 +2772,24 @@ mod tests {
         assert!(
             !config.huddle_audio_available,
             "BUZZ_HUDDLE_AUDIO_AVAILABLE=false must disable huddle audio (multi-pod deployments)"
+        );
+    }
+
+    #[test]
+    fn huddle_empty_grace_defaults_to_two_minutes_and_is_bounded() {
+        let _guards = env_guards();
+        let mut parsed = Vec::new();
+        for value in [None, Some("0"), Some(" 45 "), Some("999999"), Some("soon")] {
+            match value {
+                Some(value) => std::env::set_var("BUZZ_HUDDLE_EMPTY_GRACE_SECS", value),
+                None => std::env::remove_var("BUZZ_HUDDLE_EMPTY_GRACE_SECS"),
+            }
+            parsed.push(Config::from_env().expect("config").huddle_empty_grace);
+        }
+        std::env::remove_var("BUZZ_HUDDLE_EMPTY_GRACE_SECS");
+        assert_eq!(
+            parsed,
+            [120, 0, 45, 900, 120].map(Duration::from_secs).to_vec()
         );
     }
 

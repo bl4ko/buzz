@@ -1960,6 +1960,8 @@ pub(crate) async fn handle_active_audio_connection(
         })
     });
 
+    let lease_lost = owner_lost.clone();
+
     // Owner path: watch the room's owner-loss / owner-drain signals. Fenced loss
     // and intentional drain both close local owner clients for rejoin and forget
     // the local generation floor so the fresh generation is accepted. The cause
@@ -2039,14 +2041,15 @@ pub(crate) async fn handle_active_audio_connection(
     if let Some(expiry_task) = nip_fi_audio_expiry_task {
         let _ = expiry_task.await;
     }
-    // Atomic owner remove + end check: remove_peer_and_check_ended holds the
-    // AdmissionGuard lock across index recycling AND the is_empty + ended=true
-    // check. Ingress mirrors never archive authoritative huddle state; they
-    // remove locally and let the owner decide room lifetime.
+    // Atomic owner remove + empty check: the last committed owner peer opens a
+    // grace window under the AdmissionGuard lock instead of ending the room, so
+    // a dropped client can rejoin the same huddle. Ingress mirrors never archive
+    // authoritative huddle state; they remove locally and let the owner decide
+    // room lifetime.
     let removal = if remote_session.is_some() {
-        room.remove_peer(peer_id).map(|delta| (delta, false))
+        room.remove_peer(peer_id).map(|delta| (delta, None))
     } else {
-        room.remove_peer_and_check_ended(peer_id)
+        room.remove_peer_and_open_grace(peer_id)
     };
     let removal_revision = if remote_session.is_none() {
         removal.as_ref().map(|(delta, _)| delta.revision)
@@ -2055,7 +2058,7 @@ pub(crate) async fn handle_active_audio_connection(
         // ordering. Omit it rather than publishing a plausible-but-wrong value.
         None
     };
-    let should_auto_end = removal.as_ref().map(|(_, ended)| *ended).unwrap_or(false);
+    let idle_ticket = removal.as_ref().and_then(|(_, ticket)| *ticket);
 
     if remote_session.is_none() {
         if let Some((delta, _)) = removal {
@@ -2094,57 +2097,33 @@ pub(crate) async fn handle_active_audio_connection(
     )
     .await;
 
-    let room_emptied;
-    if should_auto_end {
-        info!(channel_id = %channel_id, "audio room empty — auto-ending huddle");
-
-        match state
-            .db
-            .archive_channel(tenant.community(), channel_id)
-            .await
-        {
-            Err(e) => {
-                warn!(channel_id = %channel_id, "auto-archive failed, huddle stays alive: {e}");
-                room.clear_ended();
-                room_emptied = false;
-            }
-            Ok(()) => {
-                room_emptied = state
-                    .audio_rooms
-                    .cleanup_if_empty(tenant.community(), channel_id);
-
-                emit_participant_event(
-                    &state,
-                    &tenant,
-                    channel_id,
-                    parent_id_for_event,
-                    ParticipantLifecycle {
-                        kind: Kind::Custom(48103),
-                        participant_pubkey: &pubkey_hex,
-                        roster_revision: None,
-                        admission_id: None,
-                        generation: &lifecycle_generation,
-                    },
-                )
-                .await;
-            }
+    if let Some(ticket) = idle_ticket {
+        let grace = state.config.huddle_empty_grace;
+        let ending = end_idle_huddle(IdleHuddle {
+            state: Arc::clone(&state),
+            tenant: tenant.clone(),
+            channel_id,
+            parent_channel_id: parent_id_for_event,
+            room: Arc::clone(&room),
+            ticket,
+            last_pubkey: pubkey_hex.clone(),
+            generation: lifecycle_generation.clone(),
+            owner_generation,
+            lease_lost,
+        });
+        if grace.is_zero() {
+            ending.await;
+        } else {
+            tokio::spawn(async move {
+                tokio::time::sleep(grace).await;
+                ending.await;
+            });
         }
-    } else {
-        room_emptied = state
-            .audio_rooms
-            .cleanup_if_empty(tenant.community(), channel_id);
-    }
-
-    // Owner path: release this room's lease when the room empties, so a new
-    // owner can acquire and the renewer stops cleanly (silent, not owner-loss).
-    // Fenced on the generation this connection saw as owner: if the room
-    // emptied and a re-acquire installed a newer epoch in the gap, `release`
-    // is a no-op for the stale generation and leaves the live renewer running.
-    // Only the last leaver empties the room, so exactly one release fires.
-    if room_emptied {
-        if let (Some(mesh), Some(generation)) = (state.mesh(), owner_generation) {
-            mesh.owners.release(channel_id, generation);
-        }
+    } else if state
+        .audio_rooms
+        .cleanup_if_empty(tenant.community(), channel_id)
+    {
+        release_huddle_lease(&state, channel_id, owner_generation);
     }
 
     info!(
@@ -2152,6 +2131,113 @@ pub(crate) async fn handle_active_audio_connection(
         pubkey = %pubkey_hex,
         "audio peer left"
     );
+}
+
+const IDLE_RECHECK: Duration = Duration::from_millis(500);
+const MAX_IDLE_RECHECKS: u32 = 60;
+
+/// An owner room whose last peer left, waiting out its rejoin grace window.
+struct IdleHuddle {
+    state: Arc<AppState>,
+    tenant: TenantContext,
+    channel_id: Uuid,
+    parent_channel_id: Uuid,
+    room: Arc<crate::audio::room::Room>,
+    ticket: u64,
+    last_pubkey: String,
+    generation: String,
+    owner_generation: Option<u64>,
+    lease_lost: Option<CancellationToken>,
+}
+
+/// End an emptied huddle unless a peer rejoined during its grace window:
+/// archive the backing channel, announce kind 48103, and drop the room.
+async fn end_idle_huddle(huddle: IdleHuddle) {
+    let IdleHuddle {
+        state,
+        tenant,
+        channel_id,
+        parent_channel_id,
+        room,
+        ticket,
+        last_pubkey,
+        generation,
+        owner_generation,
+        lease_lost,
+    } = huddle;
+    let mut rechecks = 0;
+    loop {
+        match room.end_if_idle(ticket) {
+            crate::audio::room::IdleEnd::Ended => break,
+            crate::audio::room::IdleEnd::Cancelled => return,
+            crate::audio::room::IdleEnd::Busy if rechecks < MAX_IDLE_RECHECKS => {
+                rechecks += 1;
+                tokio::time::sleep(IDLE_RECHECK).await;
+            }
+            crate::audio::room::IdleEnd::Busy => {
+                warn!(channel_id = %channel_id, "huddle admission still pending after grace — not ending");
+                return;
+            }
+        }
+    }
+    if lease_lost
+        .as_ref()
+        .is_some_and(CancellationToken::is_cancelled)
+    {
+        state
+            .audio_rooms
+            .cleanup_if_empty(tenant.community(), channel_id);
+        return;
+    }
+
+    info!(channel_id = %channel_id, "audio room empty — auto-ending huddle");
+    let archived = match state
+        .db
+        .archive_channel(tenant.community(), channel_id)
+        .await
+    {
+        Ok(()) => true,
+        Err(buzz_db::DbError::AccessDenied(_) | buzz_db::DbError::ChannelNotFound(_)) => false,
+        Err(e) => {
+            warn!(channel_id = %channel_id, "auto-archive failed, huddle stays alive: {e}");
+            room.clear_ended();
+            return;
+        }
+    };
+    let room_emptied = state
+        .audio_rooms
+        .cleanup_if_empty(tenant.community(), channel_id);
+    if archived {
+        emit_participant_event(
+            &state,
+            &tenant,
+            channel_id,
+            parent_channel_id,
+            ParticipantLifecycle {
+                kind: Kind::Custom(48103),
+                participant_pubkey: &last_pubkey,
+                roster_revision: None,
+                admission_id: None,
+                generation: &generation,
+            },
+        )
+        .await;
+    }
+    if room_emptied {
+        release_huddle_lease(&state, channel_id, owner_generation);
+    }
+}
+
+/// Owner path: release this room's lease when the room empties, so a new
+/// owner can acquire and the renewer stops cleanly (silent, not owner-loss).
+/// Fenced on the generation this connection saw as owner: if the room
+/// emptied and a re-acquire installed a newer epoch in the gap, `release`
+/// is a no-op for the stale generation and leaves the live renewer running.
+/// Only the last leaver empties the room, so exactly one release fires.
+fn release_huddle_lease(state: &AppState, channel_id: Uuid, owner_generation: Option<u64>) {
+    if let (Some(mesh), Some(generation)) = (state.mesh(), owner_generation) {
+        mesh.owners.release(channel_id, generation);
+    }
 }
 
 /// React to a non-owner huddle teardown signal read off the owner's control
@@ -9896,6 +9982,205 @@ mod tests {
                  room still present: peers={:?}",
                 room_after.as_ref().map(|r| r.peer_pubkeys())
             );
+
+            server.abort();
+            let _ = server.await;
+        }
+
+        type AudioTestClient = tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >;
+
+        async fn next_audio_json(client: &mut AudioTestClient) -> serde_json::Value {
+            loop {
+                let message =
+                    tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
+                        .await
+                        .expect("audio frame timeout")
+                        .expect("audio stream open")
+                        .expect("audio frame");
+                if let tokio_tungstenite::tungstenite::Message::Text(text) = message {
+                    return serde_json::from_str(&text).expect("json frame");
+                }
+            }
+        }
+
+        async fn join_audio_test_client(
+            addr: std::net::SocketAddr,
+            host: &str,
+            key: &nostr::Keys,
+        ) -> AudioTestClient {
+            let (mut client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/"))
+                .await
+                .expect("connect audio client");
+            let challenge = next_audio_json(&mut client).await["challenge"]
+                .as_str()
+                .expect("challenge")
+                .to_string();
+            let auth_event = nostr::EventBuilder::new(nostr::Kind::Authentication, "")
+                .tag(nostr::Tag::parse(["relay", &format!("ws://{host}")]).unwrap())
+                .tag(nostr::Tag::parse(["challenge", &challenge]).unwrap())
+                .sign_with_keys(key)
+                .unwrap();
+            let auth = serde_json::json!({
+                "type": "auth",
+                "event": auth_event,
+                "parent_channel_id": null,
+                "protocol_version": 3,
+            });
+            client
+                .send(tokio_tungstenite::tungstenite::Message::Text(
+                    auth.to_string().into(),
+                ))
+                .await
+                .expect("send auth");
+            loop {
+                let frame = next_audio_json(&mut client).await;
+                assert_ne!(frame["type"], "error", "audio join refused: {frame}");
+                if frame["type"] == "joined" {
+                    break;
+                }
+            }
+            client
+        }
+
+        #[ignore = "requires Postgres — runs in postgres-ci nextest lane"]
+        #[tokio::test]
+        async fn emptied_huddle_waits_for_a_rejoin_before_it_ends() {
+            use buzz_auth::VerifiedAssertion;
+            use std::sync::Arc;
+
+            let grace = std::time::Duration::from_millis(1500);
+            let mut state = (*audio_test_state_real_db()
+                .await
+                .expect("PostgreSQL must be available — set BUZZ_TEST_DATABASE_URL"))
+            .clone();
+            let mut config = (*state.config).clone();
+            config.huddle_empty_grace = grace;
+            state.config = Arc::new(config);
+            let state = Arc::new(state);
+            let pool = state.db.pool().clone();
+            let (tenant, channel_id, key) = seed_audio_fixture(&pool).await;
+            let community = tenant.community();
+            let host = tenant.host().to_string();
+            let assertion = VerifiedAssertion::for_test(
+                Some(key.public_key()),
+                vec![chrono::Utc::now() + chrono::Duration::hours(1)],
+            );
+
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind test listener");
+            let addr = listener.local_addr().expect("test listener addr");
+            let server = tokio::spawn({
+                let state = Arc::clone(&state);
+                let tenant = tenant.clone();
+                async move {
+                    let app = axum::Router::new().route(
+                        "/",
+                        axum::routing::get(move |ws: axum::extract::ws::WebSocketUpgrade| {
+                            let state = Arc::clone(&state);
+                            let tenant = tenant.clone();
+                            let assertion = assertion.clone();
+                            async move {
+                                ws.on_upgrade(move |socket| async move {
+                                    handle_active_audio_connection(
+                                        socket,
+                                        state,
+                                        tenant,
+                                        channel_id,
+                                        crate::state::CommunityConnectionControl::new(
+                                            CancellationToken::new(),
+                                        ),
+                                        Some(assertion),
+                                        chrono::Utc::now(),
+                                        None,
+                                    )
+                                    .await
+                                })
+                            }
+                        }),
+                    );
+                    axum::serve(listener, app).await.expect("test server");
+                }
+            });
+
+            let count = |kind: i32| {
+                let pool = pool.clone();
+                async move {
+                    sqlx::query_scalar::<_, i64>(
+                        "SELECT COUNT(*) FROM events \
+                         WHERE community_id = $1 AND channel_id = $2 AND kind = $3",
+                    )
+                    .bind(community.as_uuid())
+                    .bind(channel_id)
+                    .bind(kind)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count lifecycle events")
+                }
+            };
+            let archived = || {
+                let pool = pool.clone();
+                async move {
+                    sqlx::query_scalar::<_, bool>(
+                        "SELECT archived_at IS NOT NULL FROM channels \
+                         WHERE community_id = $1 AND id = $2",
+                    )
+                    .bind(community.as_uuid())
+                    .bind(channel_id)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("load channel")
+                }
+            };
+
+            let mut first = join_audio_test_client(addr, &host, &key).await;
+            let room = state
+                .audio_rooms
+                .get(community, channel_id)
+                .expect("room exists while joined");
+            first.close(None).await.expect("close first client");
+            for _ in 0..100 {
+                if count(48102).await == 1 {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            assert_eq!(count(48102).await, 1, "the drop must publish one leave");
+            assert!(!archived().await, "an emptied huddle must not end at once");
+            assert_eq!(count(48103).await, 0);
+            assert!(room.is_idle());
+
+            let mut second = join_audio_test_client(addr, &host, &key).await;
+            assert!(Arc::ptr_eq(
+                &room,
+                &state.audio_rooms.get(community, channel_id).expect("room")
+            ));
+            tokio::time::sleep(grace + std::time::Duration::from_millis(500)).await;
+            assert!(!archived().await, "a rejoin must cancel the pending end");
+            assert_eq!(count(48103).await, 0);
+
+            second.close(None).await.expect("close second client");
+            for _ in 0..100 {
+                if archived().await {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            assert!(
+                archived().await,
+                "the huddle must end after the grace window"
+            );
+            for _ in 0..50 {
+                if count(48103).await == 1 && state.audio_rooms.get(community, channel_id).is_none()
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            assert_eq!(count(48103).await, 1);
+            assert!(state.audio_rooms.get(community, channel_id).is_none());
 
             server.abort();
             let _ = server.await;
