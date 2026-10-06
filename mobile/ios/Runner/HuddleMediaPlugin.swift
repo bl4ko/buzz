@@ -770,6 +770,10 @@ private final class HuddleSpeech: NSObject, AVAudioPlayerDelegate {
   }
 
   func play(_ audio: Data, result: @escaping FlutterResult = { _ in }) {
+    if voicedSamples >= sampleRate / 4 {
+      voicedSamples = 0
+      onAudio(wav())
+    }
     clearSegment()
     player?.stop()
     playbackResult?(FlutterError(code: "speech_replaced", message: "Speech playback was replaced.", details: nil))
