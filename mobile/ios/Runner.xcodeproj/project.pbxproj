@@ -62,6 +62,9 @@
 		C0AF00000000000000000011 /* NativeAddMembersSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AF00000000000000000012 /* NativeAddMembersSheet.swift */; };
 		DCAF00000000000000000001 /* IosNavigationBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCAF00000000000000000002 /* IosNavigationBar.swift */; };
 		E7C93DFC36D12A9AA3864AE5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 34C1280A39BA3E4A744C10B1 /* Foundation.framework */; };
+		B14000000000000000000001 = {isa = PBXBuildFile; fileRef = B14000000000000000000002; };
+		B14000000000000000000003 = {isa = PBXBuildFile; fileRef = B14000000000000000000004; };
+		B14000000000000000000005 = {isa = PBXBuildFile; productRef = B14000000000000000000006; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -190,6 +193,8 @@
 		AB1200122F40400100A17E01 /* NativeReactionDetails.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeReactionDetails.swift; sourceTree = "<group>"; };
 		AB1200132F40400100A17E01 /* NativeMessageImageLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMessageImageLoaderTests.swift; sourceTree = "<group>"; };
 		E744B7A3ECCADF82CEA9A204 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B14000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRelay.swift; sourceTree = "<group>"; };
+		B14000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../BuzzPushKit/Sources/BuzzPushKit/NostrHTTPAuth.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -222,6 +227,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B14000000000000000000005,
 				E7C93DFC36D12A9AA3864AE5 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -359,6 +365,8 @@
 		9A92FC325A130E19CDFA3068 /* Bl4uzzWatch */ = {
 			isa = PBXGroup;
 			children = (
+				B14000000000000000000002,
+				B14000000000000000000004,
 				6C5BF8F6E14FCE1CA5AB56EC /* Bl4uzzApp.swift */,
 				5911A2521C78AAF59475E6D3 /* Assets.xcassets */,
 				E744B7A3ECCADF82CEA9A204 /* Info.plist */,
@@ -473,6 +481,7 @@
 			);
 			dependencies = (
 			);
+			packageProductDependencies = (B14000000000000000000006);
 			name = Bl4uzzWatch;
 			productName = Bl4uzzWatch;
 			productReference = BE58B7F77C593EB2E2C708BD /* Bl4uzz.app */;
@@ -511,6 +520,7 @@
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
+				B14000000000000000000007,
 				BZZ00000000000000000021 /* XCLocalSwiftPackageReference "BuzzPushKit" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
@@ -681,6 +691,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B14000000000000000000001,
+				B14000000000000000000003,
 				7C392911DA1EE25993DD94CD /* Bl4uzzApp.swift in Sources */,
 				2F685BB1FF7B95DEBDCEF9A7 /* WatchDraft.swift in Sources */,
 			);
@@ -1283,7 +1295,20 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		B14000000000000000000007 = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/21-DOT-DEV/swift-secp256k1.git";
+			requirement = {kind = exactVersion; version = 0.21.1; };
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		B14000000000000000000006 = {
+			isa = XCSwiftPackageProductDependency;
+			package = B14000000000000000000007;
+			productName = P256K;
+		};
 		BZZ00000000000000000022 /* BuzzPushKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BZZ00000000000000000021 /* XCLocalSwiftPackageReference "BuzzPushKit" */;

@@ -89,8 +89,32 @@ public enum NostrHTTPAuth {
         body: Data,
         privateKeyHex: String,
         createdAt: Int = Int(Date().timeIntervalSince1970),
-        auxiliaryRandomness: [UInt8]? = nil
+        auxiliaryRandomness: [UInt8]? = nil,
+        nonce: String? = nil
     ) throws -> String {
+        var tags = [
+            ["u", url.absoluteString],
+            ["method", method.uppercased()],
+            ["payload", VerifiedNostrEvent.hex(SHA256.hash(data: body))],
+        ]
+        if let nonce { tags.append(["nonce", nonce]) }
+        let event = try signedEvent(
+            kind: 27235, tags: tags, content: "", privateKeyHex: privateKeyHex,
+            createdAt: createdAt, auxiliaryRandomness: auxiliaryRandomness
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        return "Nostr " + (try encoder.encode(event)).base64EncodedString()
+    }
+
+    public static func signedEvent(
+        kind: Int, tags: [[String]], content: String, privateKeyHex: String,
+        createdAt: Int = Int(Date().timeIntervalSince1970),
+        auxiliaryRandomness: [UInt8]? = nil
+    ) throws -> VerifiedNostrEvent {
+        guard privateKeyHex.utf8.count == 64,
+              privateKeyHex.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) })
+        else { throw NostrHTTPAuthError.invalidHex }
         guard let privateKeyBytes = VerifiedNostrEvent.hexBytes(privateKeyHex),
               privateKeyBytes.count == 32
         else { throw NostrHTTPAuthError.invalidHex }
@@ -99,15 +123,9 @@ public enum NostrHTTPAuth {
                 dataRepresentation: privateKeyBytes
             )
             let pubkey = VerifiedNostrEvent.hex(privateKey.xonly.bytes)
-            let payload = VerifiedNostrEvent.hex(SHA256.hash(data: body))
-            let tags = [
-                ["u", url.absoluteString],
-                ["method", method.uppercased()],
-                ["payload", payload],
-            ]
             let serialized = try VerifiedNostrEvent.canonicalSerialization(
-                pubkey: pubkey, createdAt: createdAt, kind: 27235,
-                tags: tags, content: ""
+                pubkey: pubkey, createdAt: createdAt, kind: kind,
+                tags: tags, content: content
             )
             let digest = Array(SHA256.hash(data: serialized))
             var message = digest
@@ -122,18 +140,15 @@ public enum NostrHTTPAuth {
                     message: &message, auxiliaryRand: nil
                 )
             }
-            let event = VerifiedNostrEvent(
+            return VerifiedNostrEvent(
                 id: VerifiedNostrEvent.hex(digest),
                 pubkey: pubkey,
                 createdAt: createdAt,
-                kind: 27235,
+                kind: kind,
                 tags: tags,
-                content: "",
+                content: content,
                 sig: VerifiedNostrEvent.hex(signature.dataRepresentation)
             )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.withoutEscapingSlashes]
-            return "Nostr " + (try encoder.encode(event)).base64EncodedString()
         } catch let error as NostrHTTPAuthError {
             throw error
         } catch {

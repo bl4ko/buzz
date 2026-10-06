@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:nostr/nostr.dart' as nostr;
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
@@ -57,6 +58,16 @@ class _Config extends RelayConfigNotifier {
   @override
   RelayConfig build() =>
       const RelayConfig(baseUrl: 'https://relay.example', nsec: null);
+
+  void setSigningKey(String privateKey) {
+    state = RelayConfig(
+      baseUrl: 'https://relay.example',
+      nsec: nostr.Nip19.encode(
+        prefix: nostr.Nip19Prefix.nsec,
+        data: privateKey,
+      ),
+    );
+  }
 }
 
 class _Channels extends ChannelsNotifier {
@@ -179,11 +190,12 @@ void main() {
       final age = _Age();
       final send = _Send();
       final messageSource = _Messages('channel-0');
+      final config = _Config();
       final container = ProviderContainer(
         overrides: [
           authProvider.overrideWith(() => auth),
           ageSignalProvider.overrideWith(() => age),
-          relayConfigProvider.overrideWith(_Config.new),
+          relayConfigProvider.overrideWith(() => config),
           relaySessionProvider.overrideWith(_OfflineSession.new),
           myPubkeyProvider.overrideWithValue('a' * 64),
           channelsProvider.overrideWith(_Channels.new),
@@ -217,6 +229,17 @@ void main() {
       expect(
         channels.any((channel) => (channel as Map)['id'] == 'private-other'),
         false,
+      );
+      expect(
+        (await request({'action': 'setupStandalone'}))['error'],
+        isNotNull,
+      );
+      expect(
+        (await request({
+          'action': 'setupStandalone',
+          'confirmed': true,
+        }))['error'],
+        isNotNull,
       );
       expect(
         (await request({
@@ -288,7 +311,93 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect((states.last as Map)['available'], false);
       expect((states.last as Map)['scope'], '');
+      expect((states.last as Map)['resetStandalone'], true);
       expect(send.sent, ['hello']);
+    },
+  );
+
+  test(
+    'standalone setup requires confirmation and keeps keys out of state',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final states = <Map>[];
+      messenger.setMockMethodCallHandler(watchChannel, (call) async {
+        states.add(call.arguments as Map);
+        return null;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(watchChannel, null));
+      final config = _Config();
+      final age = _Age();
+      final container = ProviderContainer(
+        overrides: [
+          authProvider.overrideWith(_Auth.new),
+          ageSignalProvider.overrideWith(() => age),
+          relayConfigProvider.overrideWith(() => config),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(authProvider.future);
+      final privateKey = '${'0' * 63}1';
+      container.read(relayConfigProvider);
+      config.setSigningKey(privateKey);
+      container.read(watchBridgeProvider);
+      await Future<void>.delayed(Duration.zero);
+      Future<Map> request(Map<String, Object?> args) async {
+        final result = Completer<Map>();
+        await messenger.handlePlatformMessage(
+          watchChannel.name,
+          watchChannel.codec.encodeMethodCall(MethodCall('request', args)),
+          (reply) =>
+              result.complete(watchChannel.codec.decodeEnvelope(reply!) as Map),
+        );
+        return result.future;
+      }
+
+      expect(
+        (await request({'action': 'setupStandalone'}))['error'],
+        isNotNull,
+      );
+      final setup = await request({
+        'action': 'setupStandalone',
+        'confirmed': true,
+      });
+      expect(setup['privateKeyHex'], privateKey);
+      expect(setup['pubkey'], nostr.Keys(privateKey).public);
+      expect(setup['relayURL'], 'https://relay.example');
+      expect(setup['scope'], endsWith(':${nostr.Keys(privateKey).public}'));
+      expect(
+        states.every((state) => !state.containsKey('privateKeyHex')),
+        true,
+      );
+      expect(states.last['resetStandalone'], false);
+      config.update(
+        baseUrl: 'http://relay.example',
+        nsec: nostr.Nip19.encode(
+          prefix: nostr.Nip19Prefix.nsec,
+          data: privateKey,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        (await request({
+          'action': 'setupStandalone',
+          'confirmed': true,
+        }))['error'],
+        isNotNull,
+      );
+      age.restrict();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        (await request({
+          'action': 'setupStandalone',
+          'confirmed': true,
+        }))['error'],
+        isNotNull,
+      );
+      expect(states.last['resetStandalone'], true);
     },
   );
 }
