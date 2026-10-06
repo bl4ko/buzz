@@ -57,6 +57,9 @@ final class HuddleSessionState {
   /// uses this to offer an OS-settings recovery path instead of a bare retry.
   final bool microphonePermissionRequired;
 
+  /// Whether native audio keeps running while the app is in the background.
+  final bool runsInBackground;
+
   const HuddleSessionState({
     required this.phase,
     this.parentChannelId,
@@ -78,6 +81,7 @@ final class HuddleSessionState {
     this.issue,
     this.error,
     this.microphonePermissionRequired = false,
+    this.runsInBackground = false,
   });
 
   static const idle = HuddleSessionState(phase: HuddleSessionPhase.idle);
@@ -117,6 +121,7 @@ final class HuddleSessionState {
     Object? issue = _notProvided,
     Object? error = _notProvided,
     bool? microphonePermissionRequired,
+    bool? runsInBackground,
   }) => HuddleSessionState(
     phase: phase ?? this.phase,
     parentChannelId: parentChannelId == _notProvided
@@ -149,6 +154,7 @@ final class HuddleSessionState {
     error: error == _notProvided ? this.error : error as String?,
     microphonePermissionRequired:
         microphonePermissionRequired ?? this.microphonePermissionRequired,
+    runsInBackground: runsInBackground ?? this.runsInBackground,
   );
 }
 
@@ -171,14 +177,15 @@ final huddleTransportFactoryProvider = Provider<HuddleTransportFactory>((ref) {
 });
 
 final huddleReconnectDelaysProvider = Provider<List<Duration>>(
-  (_) => const [
+  (_) => [
     Duration.zero,
-    Duration(milliseconds: 100),
-    Duration(milliseconds: 250),
-    Duration(milliseconds: 500),
-    Duration(seconds: 1),
-    Duration(seconds: 2),
-    Duration(seconds: 2),
+    const Duration(milliseconds: 100),
+    const Duration(milliseconds: 250),
+    const Duration(milliseconds: 500),
+    const Duration(seconds: 1),
+    const Duration(seconds: 2),
+    const Duration(seconds: 2),
+    for (var attempt = 0; attempt < 30; attempt++) const Duration(seconds: 5),
   ],
 );
 
@@ -295,7 +302,10 @@ final class HuddleSessionNotifier extends Notifier<HuddleSessionState> {
         );
       }
 
-      state = state.copyWith(phase: HuddleSessionPhase.requestingPermission);
+      state = state.copyWith(
+        phase: HuddleSessionPhase.requestingPermission,
+        runsInBackground: capabilities.supportsBackgroundAudio,
+      );
       final permission = await media.requestMicrophonePermission();
       _ensureCurrent(generation);
       if (permission != HuddleMicrophonePermission.granted) {
@@ -654,18 +664,44 @@ final class HuddleSessionNotifier extends Notifier<HuddleSessionState> {
       reconnectAttempt: attempt,
       issue: issue,
     );
-    _reconnectTimer = Timer(delays[attempt - 1], () async {
-      _reconnectTimer = null;
+    _reconnectTimer = Timer(
+      delays[attempt - 1],
+      () => unawaited(_reconnect(transport, generation)),
+    );
+  }
+
+  /// Retries a dropped connection now instead of waiting out its backoff.
+  void reconnectNow() {
+    final timer = _reconnectTimer;
+    final transport = _transport;
+    if (timer == null ||
+        transport == null ||
+        state.phase != HuddleSessionPhase.reconnecting) {
+      return;
+    }
+    timer.cancel();
+    unawaited(_reconnect(transport, _generation));
+  }
+
+  Future<void> _reconnect(
+    HuddleTransportClient transport,
+    int generation,
+  ) async {
+    _reconnectTimer = null;
+    if (!_isCurrent(generation)) return;
+    _reconnectInFlight = true;
+    try {
+      await transport.connect();
+    } catch (error) {
       if (!_isCurrent(generation)) return;
-      _reconnectInFlight = true;
-      try {
-        await transport.connect();
-      } catch (error) {
-        if (!_isCurrent(generation)) return;
-        _reconnectInFlight = false;
-        _scheduleReconnect(transport, generation, _messageFor(error));
+      _reconnectInFlight = false;
+      if (error is HuddleTransportError &&
+          error.code == HuddleTransportErrorCode.relayRejected) {
+        await _fail(_messageFor(error), generation);
+        return;
       }
-    });
+      _scheduleReconnect(transport, generation, _messageFor(error));
+    }
   }
 
   void _emitStatsIfNeeded({required bool sent}) {

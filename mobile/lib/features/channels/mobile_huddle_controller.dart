@@ -128,6 +128,7 @@ final class MobileHuddleController extends Notifier<bool> {
   String? _latestAdmissionTargetBackingChannelId;
   _HuddleAdmissionToken? _admissionToken;
   final Set<_HuddleAdmissionToken> _finishedLifecycleAdmissions = {};
+  void Function()? _releaseRelayHold;
 
   @override
   bool build() {
@@ -145,13 +146,38 @@ final class MobileHuddleController extends Notifier<bool> {
         _startFailureCleanup(next);
       }
     });
+    ref.listen(
+      huddleSessionProvider.select(
+        (session) => session.isInSession && session.runsInBackground,
+      ),
+      (_, runsInBackground) => _holdRelayInBackground(runsInBackground),
+    );
+    ref.onDispose(() => _holdRelayInBackground(false));
     ref.listen(appLifecycleProvider, (_, next) {
-      if (next == AppLifecycleState.paused ||
-          next == AppLifecycleState.detached) {
-        unawaited(_leaveForBackground());
+      switch (next) {
+        case AppLifecycleState.resumed:
+          ref.read(huddleSessionProvider.notifier).reconnectNow();
+        case AppLifecycleState.paused:
+          unawaited(_leaveForBackground());
+        case AppLifecycleState.detached:
+          unawaited(_leaveForBackground(evenIfAudioContinues: true));
+        case AppLifecycleState.inactive || AppLifecycleState.hidden:
+          break;
       }
     });
     return false;
+  }
+
+  void _holdRelayInBackground(bool hold) {
+    if (hold) {
+      _releaseRelayHold ??= ref
+          .read(relaySessionProvider.notifier)
+          .holdInBackground();
+      return;
+    }
+    final release = _releaseRelayHold;
+    _releaseRelayHold = null;
+    release?.call();
   }
 
   Future<void>? _startFuture;
@@ -277,7 +303,13 @@ final class MobileHuddleController extends Notifier<bool> {
   Future<void>? _failureCleanup;
   final Set<Future<void>> _lifecycleCleanups = {};
 
-  Future<void> _leaveForBackground() {
+  Future<void> _leaveForBackground({bool evenIfAudioContinues = false}) {
+    final session = ref.read(huddleSessionProvider);
+    if (!evenIfAudioContinues &&
+        session.isInSession &&
+        session.runsInBackground) {
+      return Future.value();
+    }
     final inFlight = _backgroundLeave;
     if (inFlight != null) return inFlight;
 
@@ -295,7 +327,7 @@ final class MobileHuddleController extends Notifier<bool> {
     Object? leaveFailure;
     StackTrace? leaveFailureStackTrace;
     try {
-      await leave();
+      await leave(endIfLastHuman: false);
     } catch (error, stackTrace) {
       leaveFailure = error;
       leaveFailureStackTrace = stackTrace;
@@ -345,7 +377,8 @@ final class MobileHuddleController extends Notifier<bool> {
     }
   }
 
-  Future<void> leave() async {
+  /// Without [endIfLastHuman], the relay ends an emptied Huddle after a grace.
+  Future<void> leave({bool endIfLastHuman = true}) async {
     ++_generation;
     state = false;
     final session = ref.read(huddleSessionProvider);
@@ -381,6 +414,7 @@ final class MobileHuddleController extends Notifier<bool> {
           parentChannelId: parentChannelId,
           backingChannelId: backingChannelId,
           humanCount: humanCount,
+          endIfLastHuman: endIfLastHuman,
         ),
       );
     }
@@ -403,6 +437,7 @@ final class MobileHuddleController extends Notifier<bool> {
         parentChannelId: session.parentChannelId,
         backingChannelId: backingChannelId,
         humanCount: humanCount,
+        endIfLastHuman: false,
       ),
     );
   }
@@ -421,6 +456,7 @@ final class MobileHuddleController extends Notifier<bool> {
     required String? parentChannelId,
     required String backingChannelId,
     required Future<int> humanCount,
+    required bool endIfLastHuman,
   }) async {
     final actions = ref.read(channelActionsProvider);
     final humansRemaining = await humanCount;
@@ -432,6 +468,7 @@ final class MobileHuddleController extends Notifier<bool> {
     }
     if (!_finishedLifecycleAdmissions.add(admissionToken)) return;
     if (humansRemaining <= 1 && parentChannelId != null) {
+      if (!endIfLastHuman) return;
       // Desktop auto-ends when the departing person is the last human.
       // Both lifecycle publication and archival are best effort there.
       try {
