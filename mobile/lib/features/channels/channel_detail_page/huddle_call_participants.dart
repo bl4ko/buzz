@@ -122,19 +122,22 @@ class _HuddleCallParticipants extends StatelessWidget {
                 child: child,
               ),
             ),
-            child: _HuddleCallAvatar(
-              pubkey: localPubkey ?? '',
-              profile: localPubkey == null ? null : profiles[localPubkey],
-              fallbackLabel: null,
-              active:
-                  localPubkey != null &&
-                  activeSpeakerPubkeys.contains(localPubkey),
-              speakerLevel: localPubkey == null
-                  ? 0
-                  : speakerLevels[localPubkey] ?? 0,
-              preparingResponse: false,
-              isSelf: true,
-              onTap: null,
+            child: LayoutBuilder(
+              builder: (context, constraints) => _HuddleCallAvatar(
+                pubkey: localPubkey ?? '',
+                profile: localPubkey == null ? null : profiles[localPubkey],
+                fallbackLabel: null,
+                active:
+                    localPubkey != null &&
+                    activeSpeakerPubkeys.contains(localPubkey),
+                speakerLevel: localPubkey == null
+                    ? 0
+                    : speakerLevels[localPubkey] ?? 0,
+                preparingResponse: false,
+                isSelf: true,
+                onTap: null,
+                frameSize: min(_huddleAvatarFrameSize, constraints.maxHeight),
+              ),
             ),
           ),
         ),

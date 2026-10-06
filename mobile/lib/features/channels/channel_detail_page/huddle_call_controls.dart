@@ -93,6 +93,7 @@ class _HuddleRoundControl extends StatelessWidget {
     required this.backgroundColor,
     required this.onPressed,
     this.dimension = 64,
+    this.iconSize = 28,
     this.showTooltip = true,
     this.toggled,
     this.useHapticFeedback = false,
@@ -104,6 +105,7 @@ class _HuddleRoundControl extends StatelessWidget {
   final Color backgroundColor;
   final VoidCallback? onPressed;
   final double dimension;
+  final double iconSize;
   final bool showTooltip;
   final bool? toggled;
   final bool useHapticFeedback;
@@ -137,7 +139,7 @@ class _HuddleRoundControl extends StatelessWidget {
               disabledForegroundColor: foregroundColor.withValues(alpha: 0.5),
               disabledBackgroundColor: backgroundColor.withValues(alpha: 0.5),
             ),
-            icon: Icon(icon, size: 28),
+            icon: Icon(icon, size: iconSize),
           ),
         ),
       ),

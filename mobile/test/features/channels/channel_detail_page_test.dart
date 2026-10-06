@@ -82,6 +82,7 @@ part 'channel_detail_page_test/loading_review_tests.dart';
 part 'channel_detail_page_test/presence_tests.dart';
 part 'channel_detail_page_test/action_row_tests.dart';
 part 'channel_detail_page_test/huddle_thread_tests.dart';
+part 'channel_detail_page_test/huddle_call_layout_tests.dart';
 
 const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
@@ -509,6 +510,7 @@ void main() {
   presenceTests();
   actionRowTests();
   huddleThreadTests();
+  huddleCallLayoutTests();
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _testPrefs = await SharedPreferences.getInstance();

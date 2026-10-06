@@ -60,10 +60,6 @@ class _HuddleAgentVoice extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (defaultTargetPlatform != TargetPlatform.iOS) {
-      return const SizedBox.shrink();
-    }
-
     final parentChannelId = chat.parentChannelId;
     final ephemeralChannelId = chat.ephemeralChannelId;
     final config = ref.watch(relayConfigProvider);
@@ -289,96 +285,229 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       );
       return null;
     }, [agent, selectedName]);
+    final agentName = selectedName ?? 'Agent';
+    final reply = agent == null
+        ? null
+        : ref.watch(
+            channelMessagesProvider(chat.channelId).select(
+              (messages) => _huddleAgentReply(
+                chat.events(messages.asData?.value ?? const <NostrEvent>[]),
+                agent,
+              ),
+            ),
+          );
+    final mode = microphoneMode.value;
+    final voiceIsolation = mode == 'voiceIsolation';
+
+    Widget chip(IconData icon, String label, {bool menu = true}) =>
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Grid.twelve),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18),
+                const SizedBox(width: Grid.xxs),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.textTheme.labelLarge,
+                  ),
+                ),
+                if (menu) ...[
+                  const SizedBox(width: Grid.half),
+                  const Icon(BuzzIcons.chevronDown, size: 16),
+                ],
+              ],
+            ),
+          ),
+        );
+
+    Widget line(String key, String speaker, String text) => Padding(
+      padding: const EdgeInsets.only(top: Grid.xxs),
+      child: Text.rich(
+        key: ValueKey(key),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$speaker: ',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            TextSpan(text: text),
+          ],
+        ),
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+        style: context.textTheme.bodyMedium,
+      ),
+    );
+
+    final agentControl = switch ((agent, bots.isEmpty, agents.isEmpty)) {
+      (null, true, true) => chip(
+        BuzzIcons.botOff,
+        'No agents in this channel',
+        menu: false,
+      ),
+      (null, true, false) => PopupMenuButton<String>(
+        key: const ValueKey('huddle-agent-add'),
+        tooltip: 'Add an agent to this Huddle',
+        onSelected: (pubkey) => unawaited(selectAgent(pubkey)),
+        itemBuilder: (_) => [
+          for (final entry in agents)
+            PopupMenuItem(
+              value: entry.pubkey.toLowerCase(),
+              child: Text(entry.displayName ?? entry.pubkey.substring(0, 8)),
+            ),
+        ],
+        child: chip(BuzzIcons.bot, 'Add agent'),
+      ),
+      (null, false, _) => Semantics(
+        button: true,
+        child: InkWell(
+          key: const ValueKey('huddle-agent-start'),
+          onTap: () => unawaited(selectAgent(bots.first)),
+          child: chip(BuzzIcons.play, 'Start agent speech', menu: false),
+        ),
+      ),
+      _ => FutureBuilder<List<HuddleVoice>>(
+        future: voices,
+        builder: (context, snapshot) {
+          final voiceName = snapshot.data
+              ?.where((voice) => voice.id == voiceId.value)
+              .firstOrNull
+              ?.name;
+          return PopupMenuButton<String>(
+            key: const ValueKey('huddle-agent-voice'),
+            tooltip: voiceName == null
+                ? 'Choose agent voice'
+                : 'Agent voice: $voiceName',
+            enabled: snapshot.hasData && snapshot.data!.isNotEmpty,
+            onSelected: (id) {
+              voiceId.value = id;
+              ref.read(savedPrefsProvider).setString('huddle.voice.$agent', id);
+            },
+            itemBuilder: (_) => [
+              for (final voice in snapshot.data ?? const <HuddleVoice>[])
+                PopupMenuItem(value: voice.id, child: Text(voice.name)),
+            ],
+            child: chip(
+              BuzzIcons.bot,
+              voiceName == null ? agentName : '$agentName · $voiceName',
+            ),
+          );
+        },
+      ),
+    };
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Grid.sm),
+      padding: const EdgeInsets.symmetric(vertical: Grid.xxs),
       child: Column(
         children: [
-          if (agent == null && bots.isEmpty && agents.isEmpty)
-            const Text('No agents in this channel')
-          else if (agent == null && bots.isEmpty)
-            PopupMenuButton<String>(
-              tooltip: 'Add an agent to this Huddle',
-              onSelected: (pubkey) => unawaited(selectAgent(pubkey)),
-              itemBuilder: (_) => [
-                for (final entry in agents)
-                  PopupMenuItem(
-                    value: entry.pubkey.toLowerCase(),
-                    child: Text(
-                      entry.displayName ?? entry.pubkey.substring(0, 8),
-                    ),
-                  ),
-              ],
-              child: const Text('Add agent'),
-            )
-          else if (agent == null)
-            TextButton(
-              onPressed: () => unawaited(selectAgent(bots.first)),
-              child: const Text('Start agent speech'),
-            )
-          else
-            Text(selectedName ?? 'Agent', style: context.textTheme.titleSmall),
-          if (agent != null)
-            FutureBuilder<List<HuddleVoice>>(
-              future: voices,
-              builder: (context, snapshot) => PopupMenuButton<String>(
-                tooltip: 'Choose agent voice',
-                enabled: snapshot.hasData && snapshot.data!.isNotEmpty,
-                onSelected: (id) {
-                  voiceId.value = id;
-                  ref
-                      .read(savedPrefsProvider)
-                      .setString('huddle.voice.$agent', id);
-                },
-                itemBuilder: (_) => [
-                  for (final voice in snapshot.data ?? const <HuddleVoice>[])
-                    PopupMenuItem(value: voice.id, child: Text(voice.name)),
-                ],
-                child: Text(
-                  snapshot.data
-                          ?.where((voice) => voice.id == voiceId.value)
-                          .firstOrNull
-                          ?.name ??
-                      'Choose voice',
+          Row(
+            key: const ValueKey('huddle-agent-toolbar'),
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Material(
+                  color: context.colors.surfaceContainerHighest,
+                  shape: const StadiumBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: agentControl,
                 ),
               ),
-            ),
-          if (agent != null && microphoneMode.value != null)
-            OutlinedButton.icon(
-              onPressed: () => unawaited(
-                speech.showMicrophoneModes().catchError((Object _) {}),
-              ),
-              icon: const Icon(Icons.graphic_eq),
-              label: Text(switch (microphoneMode.value) {
-                'voiceIsolation' => 'Mic mode: Voice Isolation',
-                'wideSpectrum' =>
-                  'Mic mode: Wide Spectrum. Use Voice Isolation',
-                _ => 'Mic mode: Standard. Use Voice Isolation',
-              }),
-            ),
-          if (agent != null && agentSpeaking)
-            TextButton(
-              onPressed: () => unawaited(
-                speech.stopSpeaking().catchError((Object error) {
-                  if (context.mounted) status.value = 'Could not stop: $error';
-                }),
-              ),
-              child: const Text('Stop speaking'),
-            ),
-          Semantics(
-            liveRegion: true,
-            child: Text(status.value, style: context.textTheme.bodySmall),
+              if (agent != null && mode != null) ...[
+                const SizedBox(width: Grid.xxs),
+                _HuddleRoundControl(
+                  key: const ValueKey('huddle-agent-mic-mode'),
+                  tooltip: switch (mode) {
+                    'voiceIsolation' => 'Mic mode: Voice Isolation',
+                    'wideSpectrum' =>
+                      'Mic mode: Wide Spectrum. Use Voice Isolation',
+                    _ => 'Mic mode: Standard. Use Voice Isolation',
+                  },
+                  icon: BuzzIcons.audioWaveform,
+                  foregroundColor: voiceIsolation
+                      ? context.colors.onPrimary
+                      : context.colors.onSurface,
+                  backgroundColor: voiceIsolation
+                      ? context.colors.primary
+                      : context.colors.surfaceContainerHighest,
+                  dimension: 48,
+                  iconSize: 22,
+                  onPressed: () => unawaited(
+                    speech.showMicrophoneModes().catchError((Object _) {}),
+                  ),
+                ),
+              ],
+              if (agent != null && agentSpeaking) ...[
+                const SizedBox(width: Grid.xxs),
+                _HuddleRoundControl(
+                  key: const ValueKey('huddle-agent-stop-speaking'),
+                  tooltip: 'Stop speaking',
+                  icon: BuzzIcons.square,
+                  foregroundColor: context.colors.onError,
+                  backgroundColor: context.colors.error,
+                  dimension: 48,
+                  iconSize: 20,
+                  useHapticFeedback: true,
+                  onPressed: () => unawaited(
+                    speech.stopSpeaking().catchError((Object error) {
+                      if (context.mounted) {
+                        status.value = 'Could not stop: $error';
+                      }
+                    }),
+                  ),
+                ),
+              ],
+            ],
           ),
-          if (heardText.value != null)
-            Text(
-              'You: ${heardText.value}',
-              style: context.textTheme.bodySmall,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+          const SizedBox(height: Grid.half),
+          Expanded(
+            child: SingleChildScrollView(
+              key: const ValueKey('huddle-agent-conversation'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      status.value,
+                      textAlign: TextAlign.center,
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: context.colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (heardText.value case final heard?)
+                    line('huddle-agent-voice-heard', 'You', heard),
+                  if (reply != null)
+                    line('huddle-agent-voice-reply', agentName, reply),
+                ],
+              ),
             ),
+          ),
         ],
       ),
     );
   }
+}
+
+String? _huddleAgentReply(Iterable<NostrEvent> events, String agent) {
+  NostrEvent? latest;
+  for (final event in events) {
+    if (event.pubkey.toLowerCase() == agent &&
+        (event.kind == EventKind.streamMessage ||
+            event.kind == EventKind.streamMessageEdit) &&
+        event.getTagValue('voice') == 'final' &&
+        event.createdAt >= (latest?.createdAt ?? 0)) {
+      latest = event;
+    }
+  }
+  final text = latest?.content.trim();
+  return text == null || text.isEmpty ? null : text;
 }
 
 List<AgentDirectoryEntry> huddleAgentCandidates({
