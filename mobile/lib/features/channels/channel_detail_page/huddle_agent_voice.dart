@@ -33,6 +33,7 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     final agentSpeaking = useValueListenable(speech.agentSpeaking);
     final selecting = useRef(false);
     final selectedAt = useRef(0);
+    final waitingSince = useRef<int?>(null);
     final heard = useMemoized(() => <String>{});
     final parentMembers =
         ref.watch(channelMembersProvider(parentChannelId)).asData?.value ??
@@ -161,7 +162,11 @@ class _HuddleAgentVoice extends HookConsumerWidget {
               mentionPubkeys: [agent],
             )
             .then((_) {
-              if (context.mounted) status.value = 'Waiting for agent';
+              if (!context.mounted) return;
+              status.value = 'Waiting for agent';
+              waitingSince.value =
+                  DateTime.now().millisecondsSinceEpoch ~/ 1000;
+              speech.awaitReply(voiceId: voiceId.value);
             })
             .catchError((Object error) {
               if (context.mounted) {
@@ -182,7 +187,16 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     ref.listen(channelMessagesProvider(ephemeralChannelId), (previous, next) {
       final agent = selected.value;
       if (agent == null) return;
+      NostrEvent? progress;
       for (final event in next.asData?.value ?? const <NostrEvent>[]) {
+        final since = waitingSince.value;
+        if (since != null &&
+            event.pubkey.toLowerCase() == agent &&
+            event.createdAt >= since &&
+            event.getTagValue('voice') != 'final' &&
+            event.createdAt >= (progress?.createdAt ?? 0)) {
+          progress = event;
+        }
         if (event.pubkey.toLowerCase() != agent ||
             (event.kind != EventKind.streamMessage &&
                 event.kind != EventKind.streamMessageEdit) ||
@@ -195,6 +209,8 @@ class _HuddleAgentVoice extends HookConsumerWidget {
             )) {
           continue;
         }
+        waitingSince.value = null;
+        progress = null;
         unawaited(
           speech.speak(event.content, voiceId: voiceId.value).catchError((
             Object error,
@@ -203,6 +219,10 @@ class _HuddleAgentVoice extends HookConsumerWidget {
           }),
         );
       }
+      final line = progress?.content.trim().split('\n').last.trim() ?? '';
+      if (line.isNotEmpty && context.mounted) {
+        status.value = line.length > 60 ? '${line.substring(0, 57)}...' : line;
+      }
     });
 
     final agent = selected.value;
@@ -210,6 +230,15 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         .where((entry) => entry.pubkey.toLowerCase() == agent)
         .map((entry) => entry.displayName ?? entry.pubkey.substring(0, 8))
         .firstOrNull;
+    useEffect(() {
+      final chat = ref.read(_huddleChatAgentProvider.notifier);
+      Future.microtask(
+        () => chat.select(
+          agent == null ? null : (pubkey: agent, name: selectedName ?? 'Agent'),
+        ),
+      );
+      return null;
+    }, [agent, selectedName]);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: Grid.sm),
       child: Column(
@@ -262,20 +291,6 @@ class _HuddleAgentVoice extends HookConsumerWidget {
                       'Choose voice',
                 ),
               ),
-            ),
-          if (agent != null)
-            TextButton(
-              onPressed: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                useSafeArea: true,
-                builder: (_) => _HuddleAgentChat(
-                  channelId: ephemeralChannelId,
-                  agentPubkey: agent,
-                  agentName: selectedName ?? 'Agent',
-                ),
-              ),
-              child: const Text('Huddle chat'),
             ),
           if (agent != null && microphoneMode.value != null)
             OutlinedButton.icon(
@@ -348,6 +363,19 @@ List<AgentDirectoryEntry> huddleAgentCandidates({
   return agents;
 }
 
+final _huddleChatAgentProvider =
+    NotifierProvider.autoDispose<
+      _HuddleChatAgent,
+      ({String pubkey, String name})?
+    >(_HuddleChatAgent.new);
+
+final class _HuddleChatAgent extends Notifier<({String pubkey, String name})?> {
+  @override
+  ({String pubkey, String name})? build() => null;
+
+  void select(({String pubkey, String name})? agent) => state = agent;
+}
+
 class _HuddleAgentChat extends HookConsumerWidget {
   const _HuddleAgentChat({
     required this.channelId,
@@ -356,7 +384,7 @@ class _HuddleAgentChat extends HookConsumerWidget {
   });
 
   final String channelId;
-  final String agentPubkey;
+  final String? agentPubkey;
   final String agentName;
 
   @override
@@ -385,7 +413,7 @@ class _HuddleAgentChat extends HookConsumerWidget {
             .call(
               channelId: channelId,
               content: text,
-              mentionPubkeys: [agentPubkey],
+              mentionPubkeys: [?agentPubkey],
             );
         input.clear();
       } catch (failure) {

@@ -17,6 +17,8 @@ final class HuddleSpeech {
   final String channelId;
   final Duration turnEnd;
   final Duration turnHold;
+  final Duration firstCue;
+  final Duration nextCue;
   final ValueNotifier<bool> agentSpeaking = ValueNotifier(false);
   void Function(String)? onTranscript;
   void Function(String)? onError;
@@ -28,6 +30,7 @@ final class HuddleSpeech {
   DateTime? _speakingSince;
   bool _active = false;
   Timer? _turnTimer;
+  Timer? _cueTimer;
   String? _agentName;
   String _heard = '';
   final List<Uint8List> _clips = [];
@@ -38,6 +41,8 @@ final class HuddleSpeech {
     required this.channelId,
     this.turnEnd = const Duration(milliseconds: 500),
     this.turnHold = const Duration(seconds: 3),
+    this.firstCue = const Duration(seconds: 4),
+    this.nextCue = const Duration(seconds: 20),
     http.Client? client,
   }) : _client = client ?? http.Client();
 
@@ -162,6 +167,7 @@ final class HuddleSpeech {
 
   Future<void> start({String? agentName}) async {
     _generation++;
+    _cueTimer?.cancel();
     _clips.clear();
     _heard = '';
     _speakingSince = null;
@@ -176,6 +182,7 @@ final class HuddleSpeech {
     _generation++;
     _active = false;
     _turnTimer?.cancel();
+    _cueTimer?.cancel();
     _clips.clear();
     _heard = '';
     _speakingSince = null;
@@ -191,6 +198,7 @@ final class HuddleSpeech {
 
   Future<void> stopSpeaking() async {
     _playbackGeneration++;
+    _cueTimer?.cancel();
     agentSpeaking.value = false;
     await _channel.invokeMethod<void>('stopPlayback');
     if (_active) onStatus?.call('Listening on this device');
@@ -202,7 +210,26 @@ final class HuddleSpeech {
   Future<void> showMicrophoneModes() =>
       _channel.invokeMethod<void>('showMicrophoneModes');
 
+  void awaitReply({String? voiceId}) {
+    _cueTimer?.cancel();
+    void cue(String text) {
+      if (_active && _replies == 0 && _held <= Duration.zero) {
+        unawaited(_enqueue(text, voiceId).catchError((Object _) {}));
+      }
+    }
+
+    _cueTimer = Timer(firstCue, () {
+      cue('One moment.');
+      _cueTimer = Timer.periodic(nextCue, (_) => cue('Still working.'));
+    });
+  }
+
   Future<void> speak(String text, {String? voiceId}) {
+    _cueTimer?.cancel();
+    return _enqueue(text, voiceId);
+  }
+
+  Future<void> _enqueue(String text, String? voiceId) {
     final generation = _generation;
     final playback = _playbackGeneration;
     _replies++;
@@ -261,6 +288,7 @@ final class HuddleSpeech {
     _generation++;
     _active = false;
     _turnTimer?.cancel();
+    _cueTimer?.cancel();
     onTranscript = null;
     onError = null;
     onStatus = null;
