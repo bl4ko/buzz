@@ -13,5 +13,6 @@
   <key>WKApplication</key><true/>
   <key>WKCompanionAppBundleIdentifier</key><string>$(BUNDLE_IDENTIFIER)</string>
   <key>WKWatchOnly</key><false/>
+  <key>WKRunsIndependentlyOfCompanionApp</key><true/>
 </dict>
 </plist>

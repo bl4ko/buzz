@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:nostr/nostr.dart' as nostr;
 
 import '../../../features/age_gate/age_signal_provider.dart';
 import '../../../features/channels/channel.dart';
@@ -36,6 +37,10 @@ final watchBridgeProvider = Provider<void>((ref) {
     await watchChannel.invokeMethod<void>('setState', {
       'available': available(),
       'scope': scope(),
+      'resetStandalone':
+          ref.read(authProvider).asData?.value.status ==
+              AuthStatus.unauthenticated ||
+          ref.read(ageSignalProvider) == AgeSignalState.restricted,
     });
   }
 
@@ -64,6 +69,37 @@ final watchBridgeProvider = Provider<void>((ref) {
     try {
       final args = Map<String, Object?>.from(call.arguments as Map);
       final action = args['action'];
+      if (action == 'setupStandalone') {
+        if (args['confirmed'] != true) {
+          return {'error': 'Confirm watch sign-in first.'};
+        }
+        final config = ref.read(relayConfigProvider);
+        final uri = Uri.tryParse(config.baseUrl);
+        if (uri == null ||
+            uri.scheme != 'https' ||
+            uri.host.isEmpty ||
+            uri.userInfo.isNotEmpty ||
+            uri.hasQuery ||
+            uri.hasFragment ||
+            (uri.path.isNotEmpty && uri.path != '/') ||
+            config.nsec == null) {
+          return {
+            'error': 'Watch sign-in needs a secure relay and a signing key.',
+          };
+        }
+        final privateKeyHex = nostr.Nip19.decode(payload: config.nsec!).data;
+        if (nostr.Keys(privateKeyHex).public != ref.read(myPubkeyProvider)) {
+          return {
+            'error': 'The active account changed. Try watch sign-in again.',
+          };
+        }
+        return {
+          'scope': requestScope,
+          'relayURL': uri.replace(path: '').toString(),
+          'privateKeyHex': privateKeyHex,
+          'pubkey': ref.read(myPubkeyProvider),
+        };
+      }
       final channels = await ref.read(channelsProvider.future);
       if (!ref.mounted || requestGeneration != generation || !available()) {
         return {'error': 'The active account changed. Refresh the watch.'};
