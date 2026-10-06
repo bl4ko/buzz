@@ -595,6 +595,8 @@ class _MobileHuddleCallPage extends ConsumerWidget {
     final connected =
         session.phase == HuddleSessionPhase.connected ||
         session.phase == HuddleSessionPhase.interrupted;
+    final showsAgentVoice =
+        connected && defaultTargetPlatform == TargetPlatform.iOS;
     final unavailable =
         session.phase == HuddleSessionPhase.failed &&
         _isUnavailableHuddleError(session.error);
@@ -731,6 +733,7 @@ class _MobileHuddleCallPage extends ConsumerWidget {
                   },
                 ),
                 Expanded(
+                  flex: 6,
                   child: _HuddleCallParticipants(
                     connected: connected,
                     error: session.phase == HuddleSessionPhase.failed
@@ -764,7 +767,8 @@ class _MobileHuddleCallPage extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (connected) _HuddleAgentVoice(chat: chat),
+                if (showsAgentVoice)
+                  Expanded(flex: 5, child: _HuddleAgentVoice(chat: chat)),
                 if (connected)
                   _HuddleCallControls(
                     onChat: () => showModalBottomSheet<void>(

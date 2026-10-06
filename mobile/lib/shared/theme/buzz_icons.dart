@@ -46,6 +46,9 @@ abstract final class BuzzIcons {
   /// Tabler `at`.
   static const atSign = IconData(0xea2b, fontFamily: 'BuzzTabler');
 
+  /// Tabler `wave-sine`.
+  static const audioWaveform = IconData(0xecd4, fontFamily: 'BuzzTabler');
+
   /// Tabler `bell`.
   static const bell = IconData(0xea35, fontFamily: 'BuzzTabler');
 
@@ -60,6 +63,9 @@ abstract final class BuzzIcons {
 
   /// Tabler `robot`.
   static const bot = IconData(0xf00b, fontFamily: 'BuzzTabler');
+
+  /// Tabler `robot-off`.
+  static const botOff = IconData(0xf192, fontFamily: 'BuzzTabler');
 
   /// Tabler `brain`.
   static const brain = IconData(0xf59f, fontFamily: 'BuzzTabler');
