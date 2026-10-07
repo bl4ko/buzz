@@ -11,6 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSigningKeychain } from "./release-bl4ko-desktop.mjs";
@@ -132,7 +133,7 @@ async function release(build, upload) {
     mkdirSync(directory, { recursive: true });
     writeFileSync(path.join(directory, "source-commit.txt"), `${commit}\n`);
   }
-  const temporary = mkdtempSync("/private/tmp/buzz-mac-testflight-");
+  const temporary = mkdtempSync(path.join(tmpdir(), "buzz-mac-testflight-"));
   const keychains = output("security", ["list-keychains", "-d", "user"])
     .split("\n")
     .map((line) => line.trim().replace(/^"|"$/g, ""))
