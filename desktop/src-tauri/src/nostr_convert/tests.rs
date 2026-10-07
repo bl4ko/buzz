@@ -532,6 +532,53 @@ fn managed_agent_candidates_use_only_relay_signed_bot_membership() {
 }
 
 #[test]
+fn member_pubkeys_include_every_role_from_relay_signed_membership() {
+    let relay_keys = Keys::generate();
+    let agent_pubkey = Keys::generate().public_key().to_hex();
+    let human = Keys::generate().public_key().to_hex();
+    let membership = EventBuilder::new(Kind::Custom(39002), "")
+        .tags([
+            Tag::parse(["d", "family"]).expect("parse d tag"),
+            Tag::parse(["p", &agent_pubkey, "", "member"]).expect("parse agent tag"),
+            Tag::parse(["p", &human]).expect("parse human tag"),
+        ])
+        .sign_with_keys(&relay_keys)
+        .expect("sign membership");
+    let forged_pubkey = Keys::generate().public_key().to_hex();
+    let forged = ev(
+        39002,
+        "",
+        vec![vec!["d", "forged"], vec!["p", &forged_pubkey, "", "bot"]],
+    );
+
+    let pubkeys =
+        member_pubkeys_from_events(&[forged, membership], &relay_keys.public_key().to_hex());
+
+    assert_eq!(pubkeys, [agent_pubkey, human].into_iter().collect());
+}
+
+#[test]
+fn owner_attested_agents_answer_only_their_verified_owner() {
+    let (profile, owner) = oa_profile_event(r#"{"name":"zeus","display_name":"Zeus"}"#);
+
+    let agents = owner_attested_relay_agents(std::slice::from_ref(&profile), &owner);
+
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].pubkey, profile.pubkey.to_hex());
+    assert_eq!(agents[0].owner_pubkey.as_deref(), Some(owner.as_str()));
+    assert_eq!(agents[0].name, "Zeus");
+    assert_eq!(
+        agents[0].respond_to,
+        Some(crate::managed_agents::RespondTo::OwnerOnly)
+    );
+    assert!(owner_attested_relay_agents(
+        &[profile, ev(0, r#"{"name":"human"}"#, vec![])],
+        &Keys::generate().public_key().to_hex(),
+    )
+    .is_empty());
+}
+
+#[test]
 fn managed_agent_directory_query_pubkeys_reject_malformed_d_tags() {
     let valid_pubkey = Keys::generate().public_key().to_hex();
     let valid = ev(30177, "{}", vec![vec!["d", &valid_pubkey]]);
