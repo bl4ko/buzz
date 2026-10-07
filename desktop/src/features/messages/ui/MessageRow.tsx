@@ -39,6 +39,7 @@ import { normalizePubkey } from "@/shared/lib/pubkey";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { useChannelNavigation } from "@/shared/context/ChannelNavigationContext";
 import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
+import { getHiddenMentionPubkeys } from "@/features/messages/lib/getHiddenMentionPubkeys";
 import { useMessageEmoji } from "@/features/messages/lib/useMessageEmoji";
 import { parseWaveMessageContent } from "@/features/messages/lib/waveMessage";
 import { resolveSnapshotSharedBy } from "@/features/messages/lib/snapshotSharedBy";
@@ -60,6 +61,7 @@ import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
+import { MessageNotifiedLine } from "./MessageNotifiedLine";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
 export type ThreadDepthGuideAction = {
@@ -289,14 +291,34 @@ export const MessageRow = React.memo(
       }
       return Object.keys(values).length > 0 ? values : undefined;
     }, [isKnownAgentPubkey, mentionPubkeysByName]);
-    const agentAddressPrefix = useMessageAgentAddressPrefix({
-      profiles,
-      body: message.body,
-      tags: message.tags,
-      mentionNames,
-      mentionPubkeysByName,
-      isKnownAgentPubkey,
-    });
+    const { prefix: agentAddressPrefix, pubkeys: agentAddressPubkeys } =
+      useMessageAgentAddressPrefix({
+        profiles,
+        body: message.body,
+        tags: message.tags,
+        mentionNames,
+        mentionPubkeysByName,
+        isKnownAgentPubkey,
+      });
+    const hiddenMentionPubkeys = React.useMemo(
+      () =>
+        getHiddenMentionPubkeys(
+          message.body,
+          message.tags,
+          [message.pubkey, message.signerPubkey, ...agentAddressPubkeys],
+          mentionPubkeysByName,
+          mentionNames,
+        ),
+      [
+        message.body,
+        message.tags,
+        message.pubkey,
+        message.signerPubkey,
+        agentAddressPubkeys,
+        mentionPubkeysByName,
+        mentionNames,
+      ],
+    );
     const imetaByUrl = React.useMemo(
       () => (message.tags ? parseImetaTags(message.tags) : undefined),
       [message.tags],
@@ -316,7 +338,11 @@ export const MessageRow = React.memo(
     );
     const bodyOffsetClass = emojiOnly ? "mt-1" : "mt-conversation-body";
 
-    const { nonDmChannelNames: channelNames } = useChannelNavigation();
+    const { channels, nonDmChannelNames: channelNames } =
+      useChannelNavigation();
+    const isDmChannel = channels.some(
+      (channel) => channel.id === channelId && channel.channelType === "dm",
+    );
 
     const indentRem = getThreadReplyIndentRem(message.depth);
     const descendantGuideOffsetRem = connectDescendants
@@ -687,6 +713,11 @@ export const MessageRow = React.memo(
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
         {renderBody()}
+        <MessageNotifiedLine
+          isKnownAgentPubkey={isKnownAgentPubkey}
+          profiles={profiles}
+          pubkeys={isDmChannel ? [] : hiddenMentionPubkeys}
+        />
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}

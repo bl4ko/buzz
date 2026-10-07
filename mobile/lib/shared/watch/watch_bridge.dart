@@ -12,6 +12,7 @@ import '../../../features/channels/channels_provider.dart';
 import '../../../features/channels/send_message_provider.dart';
 import '../../../features/channels/timeline_message.dart';
 import '../auth/auth.dart';
+import '../mentions/hidden_mentions.dart';
 import '../profile/user_cache_provider.dart';
 import '../relay/relay.dart';
 
@@ -129,6 +130,7 @@ final watchBridgeProvider = Provider<void>((ref) {
                       .runes
                       .take(64),
                 ),
+                'dm': channel.isDm,
               },
           ],
         };
@@ -198,6 +200,27 @@ final watchBridgeProvider = Provider<void>((ref) {
                 (profiles[message.pubkey]?.label ?? 'Member').runes.take(32),
               ),
               'text': String.fromCharCodes(message.content.runes.take(300)),
+              'notified': channel.isDm
+                  ? const <String>[]
+                  : [
+                      for (final pubkey in hiddenMentionPubkeys(
+                        message.content,
+                        message.tags,
+                        {
+                          for (final tag in message.tags)
+                            if (tag.length >= 2 &&
+                                profiles[tag[1].toLowerCase()]?.label != null)
+                              tag[1].toLowerCase():
+                                  profiles[tag[1].toLowerCase()]!.label,
+                        },
+                        [message.pubkey],
+                      ))
+                        String.fromCharCodes(
+                          (profiles[pubkey]?.label ?? pubkey.substring(0, 8))
+                              .runes
+                              .take(32),
+                        ),
+                    ],
             },
         ],
       };

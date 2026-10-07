@@ -51,6 +51,7 @@ import 'package:buzz/features/channels/thread_detail_page.dart';
 import 'package:buzz/features/channels/thread_replies_provider.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
+import 'package:buzz/features/channels/message_content.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
@@ -610,10 +611,23 @@ void main() {
               );
               await tester.pumpAndSettle();
               await tapProfile('Scout (bbbbbbbb…bbbb)', second);
-              expect(find.text('Scout'), findsNothing);
-              expect(find.text('Bob'), findsNothing);
-              if (firstName != null) expect(find.text(firstName), findsNothing);
-              expect(find.text('Other (eeeeeeee…eeee)'), findsNothing);
+              Finder body(String text) => find.descendant(
+                of: find.byType(MessageContent),
+                matching: find.text(text),
+              );
+              expect(body('Scout'), findsNothing);
+              expect(body('Bob'), findsNothing);
+              if (firstName != null) expect(body(firstName), findsNothing);
+              expect(body('Other (eeeeeeee…eeee)'), findsNothing);
+              if (firstName != null) {
+                expect(
+                  find.descendant(
+                    of: find.byKey(const ValueKey('message-notified')),
+                    matching: find.text(firstName),
+                  ),
+                  findsWidgets,
+                );
+              }
               await tapProfile('Alice', sibling);
               expect(tester.takeException(), isNull);
               await tester.pumpWidget(const SizedBox.shrink());

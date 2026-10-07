@@ -34,9 +34,13 @@ export function useMessageAgentAddressPrefix({
       ),
     [body, tags, isKnownAgentPubkey, mentionPubkeysByName, mentionNames],
   );
-  return pubkeys.length > 0 ? (
-    <MessageAgentAddressPrefix profiles={profiles} pubkeys={pubkeys} />
-  ) : undefined;
+  return {
+    pubkeys,
+    prefix:
+      pubkeys.length > 0 ? (
+        <MessageAgentAddressPrefix profiles={profiles} pubkeys={pubkeys} />
+      ) : undefined,
+  };
 }
 
 /** Visible send-state prefix for recipients kept in the composer address tray. */

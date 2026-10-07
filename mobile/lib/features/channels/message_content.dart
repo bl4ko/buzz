@@ -16,6 +16,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../shared/clipboard_utils.dart';
 import '../../shared/widgets/media_loading_placeholder.dart';
+import '../../shared/mentions/hidden_mentions.dart';
 import '../../shared/mentions/mention_bindings.dart';
 import '../../shared/mentions/mention_tags.dart';
 import '../../shared/deeplink/deep_link.dart';
@@ -889,6 +890,73 @@ class _MentionMd extends InlineMd {
       child: pubkey != null && onMentionTap != null
           ? GestureDetector(onTap: () => onMentionTap!(pubkey), child: pill)
           : pill,
+    );
+  }
+}
+
+/// Shows signed `p` recipients that the message text does not show.
+class MessageNotifiedLine extends ConsumerWidget {
+  final String content;
+  final List<List<String>> tags;
+  final String senderPubkey;
+  final String channelId;
+  final Map<String, String> mentionNames;
+  final Map<String, String> mentionLabels;
+  final Set<String> agentMentionPubkeys;
+  final void Function(String pubkey)? onMentionTap;
+
+  const MessageNotifiedLine({
+    super.key,
+    required this.content,
+    required this.tags,
+    required this.senderPubkey,
+    required this.channelId,
+    this.mentionNames = const {},
+    this.mentionLabels = const {},
+    this.agentMentionPubkeys = const {},
+    this.onMentionTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDm =
+        ref
+            .watch(channelsProvider)
+            .asData
+            ?.value
+            .any((channel) => channel.id == channelId && channel.isDm) ??
+        false;
+    if (isDm) return const SizedBox.shrink();
+    final pubkeys = hiddenMentionPubkeys(content, tags, mentionNames, [
+      senderPubkey,
+    ]);
+    if (pubkeys.isEmpty) return const SizedBox.shrink();
+    final style = context.textTheme.bodySmall?.copyWith(
+      color: context.colors.onSurfaceVariant,
+    );
+    return Padding(
+      key: const ValueKey('message-notified'),
+      padding: const EdgeInsets.only(top: Grid.half),
+      child: Wrap(
+        spacing: Grid.half,
+        runSpacing: Grid.half,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('Notified:', style: style),
+          for (final pubkey in pubkeys)
+            GestureDetector(
+              onTap: onMentionTap == null ? null : () => onMentionTap!(pubkey),
+              child: MessageMentionPill(
+                label:
+                    mentionLabels[pubkey] ??
+                    mentionNames[pubkey] ??
+                    '${pubkey.substring(0, 8)}…',
+                isAgent: agentMentionPubkeys.contains(pubkey),
+                textStyle: style,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

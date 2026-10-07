@@ -120,7 +120,7 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
       guard message["scope"] as? String == credentials.scope,
         let id = message["channelId"] as? String, !id.isEmpty, id.count <= 128
       else { throw WatchRelayError.invalidSetup }
-      return try await messages(in: id)
+      return try await messages(in: id, dm: message["dm"] as? Bool == true)
     case "send":
       guard message["scope"] as? String == credentials.scope,
         let id = message["channelId"] as? String, !id.isEmpty, id.count <= 128,
@@ -250,7 +250,7 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
       let labels = event.tags.filter { $0.count >= 2 && $0[0] == "p" && $0[1] != credentials.pubkey }
         .map { profiles[$0[1]] ?? String($0[1].prefix(8)) }
       let name = isDM && !labels.isEmpty ? labels.joined(separator: ", ") : event.tag("name") ?? "Channel"
-      return ["id": event.tag("d")!, "name": String(name.unicodeScalars.prefix(64))]
+      return ["id": event.tag("d")!, "name": String(name.unicodeScalars.prefix(64)), "dm": isDM]
     }.sorted { ($0["name"] as! String).localizedCaseInsensitiveCompare($1["name"] as! String) == .orderedAscending }
     return ["scope": credentials.scope, "channels": Array(result.prefix(30))]
   }
@@ -269,7 +269,7 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
     return labels
   }
 
-  private func messages(in id: String) async throws -> [String: Any] {
+  private func messages(in id: String, dm: Bool) async throws -> [String: Any] {
     let originals = try await query([["kinds": [9, 40002, 40008], "#h": [id], "limit": 40]])
       .filter { [9, 40002, 40008].contains($0.kind) && $0.tag("h") == id }
     if originals.isEmpty { return ["scope": credentials.scope, "messages": []] }
@@ -277,11 +277,12 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
     let changes = try await query([
       ["kinds": [5, 9005, 40003], "#e": ids, "#h": [id], "limit": 200]
     ])
-    let labels = try await profileLabels(Array(Set(originals.map(\.pubkey))))
-    return ["scope": credentials.scope, "messages": Self.timeline(originals + changes, channelID: id, labels: labels)]
+    let recipients = dm ? [] : originals.flatMap { $0.tags.filter { $0.count >= 2 && $0[0] == "p" }.map { $0[1].lowercased() } }
+    let labels = try await profileLabels(Array(Set(originals.map(\.pubkey) + recipients).sorted().prefix(256)))
+    return ["scope": credentials.scope, "messages": Self.timeline(originals + changes, channelID: id, labels: labels, dm: dm)]
   }
 
-  static func timeline(_ events: [VerifiedNostrEvent], channelID: String, labels: [String: String]) -> [[String: Any]] {
+  static func timeline(_ events: [VerifiedNostrEvent], channelID: String, labels: [String: String], dm: Bool = false) -> [[String: Any]] {
     let scoped = events.filter { $0.tag("h") == channelID }
     let deleted = Set(scoped.filter { $0.kind == 5 || $0.kind == 9005 }.flatMap {
       $0.tags.filter { $0.count >= 2 && $0[0] == "e" }.map { $0[1] }
@@ -292,9 +293,21 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
     return scoped.filter { [9, 40002, 40008].contains($0.kind) && !deleted.contains($0.id) }
       .sorted { $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt < $1.createdAt }
       .suffix(20).map { event in
-        ["id": event.id, "author": labels[event.pubkey] ?? String(event.pubkey.prefix(8)),
-          "text": String((edits[event.id]?.content ?? event.content).unicodeScalars.prefix(300))]
+        let text = edits[event.id]?.content ?? event.content
+        return ["id": event.id, "author": labels[event.pubkey] ?? String(event.pubkey.prefix(8)),
+          "text": String(text.unicodeScalars.prefix(300)),
+          "notified": dm ? [] : notifiedLabels(event, text: text, labels: labels)]
       }
+  }
+
+  // ponytail: plain "@Label" text match, not the iPhone mention binder
+  static func notifiedLabels(_ event: VerifiedNostrEvent, text: String, labels: [String: String]) -> [String] {
+    var seen: Set<String> = [event.pubkey.lowercased()]
+    return event.tags.compactMap { tag in
+      guard tag.count >= 2, tag[0] == "p", !tag[1].isEmpty, seen.insert(tag[1].lowercased()).inserted else { return nil }
+      let label = labels[tag[1].lowercased()] ?? String(tag[1].lowercased().prefix(8))
+      return text.range(of: "@" + label, options: .caseInsensitive) == nil ? label : nil
+    }
   }
 
   private static func latest(

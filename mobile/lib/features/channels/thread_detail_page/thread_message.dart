@@ -330,6 +330,26 @@ class _ThreadMessage extends HookConsumerWidget {
                                                   ),
                                             ),
                                       ),
+                                    if (systemEvent == null)
+                                      MessageNotifiedLine(
+                                        content: message.content,
+                                        tags: message.tags,
+                                        senderPubkey: message.pubkey,
+                                        channelId: channelId,
+                                        mentionNames: resolvedMentionNames,
+                                        mentionLabels: mentionLabels,
+                                        agentMentionPubkeys:
+                                            agentMentionPubkeys,
+                                        onMentionTap: (pubkey) =>
+                                            showUserProfileSheet(
+                                              context,
+                                              pubkey,
+                                              names:
+                                                  channelIdentityNamesProvider(
+                                                    channelId,
+                                                  ),
+                                            ),
+                                      ),
                                   ],
                                 ),
                               ),

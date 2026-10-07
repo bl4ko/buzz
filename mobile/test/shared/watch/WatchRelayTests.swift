@@ -181,6 +181,17 @@ final class WatchRelayTests: XCTestCase {
     XCTAssertEqual((bounded[0]["text"] as! String).unicodeScalars.count, 300)
   }
 
+  func testTimelineListsOnlyHiddenRecipients() throws {
+    let zeus = String(repeating: "a", count: 64), argus = String(repeating: "b", count: 64)
+    let message = try event(kind: 9, tags: [["h", "joined"], ["p", zeus], ["p", argus.uppercased()], ["p", argus]], content: "@Zeus Argus: evidence please")
+    let labels = [zeus: "Zeus", argus: "Argus"]
+    XCTAssertEqual(WatchRelay.timeline([message], channelID: "joined", labels: labels)[0]["notified"] as? [String], ["Argus"])
+    XCTAssertEqual(WatchRelay.timeline([message], channelID: "joined", labels: labels, dm: true)[0]["notified"] as? [String], [])
+    let own = try event(kind: 9, tags: [["h", "joined"]], content: "x")
+    let selfTagged = try event(kind: 9, tags: [["h", "joined"], ["p", own.pubkey]], content: "Working")
+    XCTAssertEqual(WatchRelay.timeline([selfTagged], channelID: "joined", labels: [:])[0]["notified"] as? [String], [])
+  }
+
   func testSetupRejectsInsecureOriginsAndMismatchedIdentity() throws {
     let pubkey = try event(kind: 0, tags: []).pubkey
     for url in ["http://watch.example", "https://user:pass@watch.example", "https://watch.example/path", "https://watch.example?key=x", "https://watch.example#x"] {

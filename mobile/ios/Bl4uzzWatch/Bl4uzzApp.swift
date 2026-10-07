@@ -5,12 +5,14 @@ import WatchKit
 struct WatchChannel: Codable, Identifiable {
   let id: String
   let name: String
+  let dm: Bool?
 }
 
 struct WatchMessage: Codable, Identifiable {
   let id: String
   let author: String
   let text: String
+  let notified: [String]?
 }
 
 @MainActor
@@ -124,7 +126,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
       messages = []
       messageChannelID = channel.id
     }
-    request(["action": "messages", "scope": scope, "channelId": channel.id]) { response in
+    request(["action": "messages", "scope": scope, "channelId": channel.id, "dm": channel.dm == true]) { response in
       guard response["scope"] as? String == self.scope,
         let messages: [WatchMessage] = self.decode(response["messages"])
       else {
@@ -380,6 +382,9 @@ struct ConversationView: View {
         VStack(alignment: .leading, spacing: 4) {
           Text(message.author).font(.caption).foregroundStyle(.secondary)
           Text(message.text.isEmpty ? "Attachment: open on iPhone." : message.text)
+          if let notified = message.notified, !notified.isEmpty {
+            Text("Notified: " + notified.joined(separator: ", ")).font(.caption2).foregroundStyle(.secondary)
+          }
         }
       }
     }

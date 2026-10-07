@@ -319,6 +319,23 @@ class _MessageBubble extends HookConsumerWidget {
                                           ),
                                         ),
                                   ),
+                                  MessageNotifiedLine(
+                                    content: message.content,
+                                    tags: message.tags,
+                                    senderPubkey: message.pubkey,
+                                    channelId: currentChannelId,
+                                    mentionNames: resolvedMentionNames,
+                                    mentionLabels: mentionLabels,
+                                    agentMentionPubkeys: agentMentionPubkeys,
+                                    onMentionTap: (pubkey) =>
+                                        showUserProfileSheet(
+                                          context,
+                                          pubkey,
+                                          names: channelIdentityNamesProvider(
+                                            currentChannelId,
+                                          ),
+                                        ),
+                                  ),
                                 ],
                               ),
                             ),
