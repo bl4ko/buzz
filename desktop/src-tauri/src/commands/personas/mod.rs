@@ -312,12 +312,8 @@ pub async fn set_persona_active(
             && load_managed_agents(&app)?
                 .iter()
                 .any(|agent| agent.persona_id.as_deref() == Some(id.as_str()));
-        let referenced_by_team = !active
-            && load_teams(&app)?.iter().any(|team| {
-                team.persona_ids
-                    .iter()
-                    .any(|persona_id| persona_id == id.as_str())
-            });
+        let referenced_by_team =
+            !active && crate::managed_agents::persona_in_custom_team(&load_teams(&app)?, &id);
 
         validate_persona_activation_change(
             persona,

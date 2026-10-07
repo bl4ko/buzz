@@ -1,7 +1,8 @@
 use super::{
     built_in_persona_records, ensure_persona_ids_are_active, ensure_persona_is_active,
-    merge_personas, migrate_retired_personas, validate_persona_activation_change,
-    validate_persona_deletion, BUILT_IN_PERSONAS, RETIRED_PERSONAS,
+    merge_personas, migrate_retired_personas, persona_in_custom_team,
+    validate_persona_activation_change, validate_persona_deletion, BUILT_IN_PERSONAS,
+    RETIRED_PERSONAS,
 };
 use crate::managed_agents::discovery::{default_agent_command, effective_agent_command};
 use crate::managed_agents::AgentDefinition;
@@ -417,4 +418,27 @@ fn fizz_builtin_resolves_to_buzz_agent() {
         "buzz-agent",
         "Fizz must resolve to buzz-agent specifically"
     );
+}
+
+#[test]
+fn built_in_teams_do_not_block_removing_built_in_personas() {
+    let team = |is_builtin| crate::managed_agents::TeamRecord {
+        id: "team".to_string(),
+        name: "Team".to_string(),
+        description: None,
+        instructions: None,
+        persona_ids: vec!["builtin:fizz".to_string()],
+        is_builtin,
+        shared: false,
+        catalog_source: None,
+        source_dir: None,
+        is_symlink: false,
+        symlink_target: None,
+        version: None,
+        created_at: "2026-10-07T00:00:00Z".to_string(),
+        updated_at: "2026-10-07T00:00:00Z".to_string(),
+    };
+
+    assert!(!persona_in_custom_team(&[team(true)], "builtin:fizz"));
+    assert!(persona_in_custom_team(&[team(false)], "builtin:fizz"));
 }
