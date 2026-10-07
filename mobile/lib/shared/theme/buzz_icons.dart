@@ -50,6 +50,15 @@ abstract final class BuzzIcons {
   /// Tabler `bold`.
   static const bold = IconData(0xeb7b, fontFamily: 'BuzzTabler');
 
+  /// Tabler `bookmark`.
+  static const bookmark = IconData(0xea3a, fontFamily: 'BuzzTabler');
+
+  /// Tabler `bookmark`.
+  static const bookmark300 = IconData(0xea3a, fontFamily: 'BuzzTabler');
+
+  /// Tabler `bookmark`.
+  static const bookmark500 = IconData(0xea3a, fontFamily: 'BuzzTabler');
+
   /// Tabler `robot`.
   static const bot = IconData(0xf00b, fontFamily: 'BuzzTabler');
 

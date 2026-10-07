@@ -72,7 +72,7 @@ void main() {
     await tester.pump();
     final bar = find.byKey(const ValueKey('home-ios-glass-tabs'));
     expect(bar, findsOneWidget);
-    expect(tester.getSize(bar), const Size(218, 56));
+    expect(tester.getSize(bar), const Size(288, 56));
     expect(created.where((params) => params['usesGlass'] == true), isNotEmpty);
     expect(
       find.descendant(of: bar, matching: find.byIcon(BuzzIcons.house500)),

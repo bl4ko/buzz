@@ -87,6 +87,9 @@ Future<bool> _showNativeMessageActions({
         );
       });
       if (ref.read(reminderServiceProvider) != null) {
+        action('later', 'Save for later', 'bookmark', () {
+          unawaited(_saveForLater(context, ref, message, channelId));
+        });
         action('remind', 'Remind me', 'clock', () {
           showRemindMeLaterSheet(
             context: context,

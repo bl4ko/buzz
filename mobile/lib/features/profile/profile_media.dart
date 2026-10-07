@@ -146,7 +146,7 @@ class ProfileMediaEditor extends HookConsumerWidget {
                   )
                 : const XTypeGroup(
                     label: 'Profile image',
-                    extensions: ['jpg', 'jpeg', 'png', 'webp'],
+                    extensions: ['gif', 'jpg', 'jpeg', 'png', 'webp'],
                     uniformTypeIdentifiers: ['public.image'],
                   ),
           ],

@@ -172,23 +172,44 @@ class RemindersNotifier extends AsyncNotifier<List<Reminder>> {
     final conversationKey = getConversationKey(privkeyHex, myPk);
 
     final session = ref.read(relaySessionProvider.notifier);
-    final events = await session.fetchHistory(
-      NostrFilter(
-        kinds: const [kindEventReminder],
-        authors: [myPk],
-        limit: 200,
-      ),
-    );
-
-    // Parameterized-replaceable: keep only the newest event per d-tag.
     final newestByDTag = <String, NostrEvent>{};
-    for (final event in events) {
-      final dTag = event.getTagValue('d');
-      if (dTag == null) continue;
-      final existing = newestByDTag[dTag];
-      if (existing == null || event.createdAt > existing.createdAt) {
-        newestByDTag[dTag] = event;
+    var limit = 200;
+    int? until;
+    while (true) {
+      final page = await session.fetchHistory(
+        NostrFilter(
+          kinds: const [kindEventReminder],
+          authors: [myPk],
+          limit: limit,
+          until: until,
+        ),
+      );
+      for (final event in page) {
+        final dTag = event.getTagValue('d');
+        if (dTag == null) continue;
+        final existing = newestByDTag[dTag];
+        if (existing == null ||
+            event.createdAt > existing.createdAt ||
+            (event.createdAt == existing.createdAt &&
+                event.id.compareTo(existing.id) < 0)) {
+          newestByDTag[dTag] = event;
+        }
       }
+      if (page.length < limit) break;
+      final oldest = page
+          .map((event) => event.createdAt)
+          .reduce((a, b) => a < b ? a : b);
+      if (until == null || oldest < until) {
+        until = oldest;
+        continue;
+      }
+      if (limit < 1000) {
+        limit = 1000;
+        continue;
+      }
+      throw StateError(
+        'Could not load saved items: a full relay page shares one timestamp.',
+      );
     }
 
     final reminders = <Reminder>[];

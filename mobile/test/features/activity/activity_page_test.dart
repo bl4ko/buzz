@@ -6,6 +6,7 @@ import 'package:buzz/features/activity/activity_provider.dart';
 import 'package:buzz/features/activity/compose_drafts_provider.dart';
 import 'package:buzz/features/activity/feed_item.dart';
 import 'package:buzz/features/activity/inbox_item.dart';
+import 'package:buzz/features/activity/inbox_local_state_provider.dart';
 import 'package:buzz/features/activity/reminders_provider.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_detail_page.dart';
@@ -166,43 +167,92 @@ void main() {
     );
   }
 
-  testWidgets('opens a reaction at its referenced message and thread', (
-    tester,
-  ) async {
-    final reaction = FeedItem(
-      id: 'reaction-event',
-      kind: 7,
-      pubkey:
-          'a11ce00000000000000000000000000000000000000000000000000000000000',
-      content: '👍',
-      createdAt: now,
-      channelId: 'ch1',
-      channelName: 'general',
-      tags: const [
-        ['e', 'reacted-message'],
-      ],
-      category: 'reaction',
-      targetEventId: 'reacted-message',
-      targetThreadRootId: 'thread-root',
-      targetContent: 'My original message',
+  for (final threadRoot in [null, 'thread-root']) {
+    testWidgets(
+      'reads opened reactions without reading channel traffic: $threadRoot',
+      (tester) async {
+        final reaction = FeedItem(
+          id: 'reaction-event',
+          kind: 7,
+          pubkey:
+              'a11ce00000000000000000000000000000000000000000000000000000000000',
+          content: '👍',
+          createdAt: now,
+          channelId: 'ch1',
+          channelName: 'general',
+          tags: const [
+            ['e', 'reacted-message'],
+          ],
+          category: 'reaction',
+          targetEventId: 'reacted-message',
+          targetThreadRootId: threadRoot,
+          targetContent: 'My original message',
+        );
+        final feed = HomeFeedResponse(
+          mentions: [testMention],
+          needsAction: const [],
+          activity: [reaction],
+          agentActivity: const [],
+        );
+        await tester.pumpWidget(
+          await buildTestable(
+            feed: feed,
+            readContexts: {'ch1': now - 300},
+            channels: [
+              testChannels.first.copyWith(
+                lastMessageAt: DateTime.fromMillisecondsSinceEpoch(now * 1000),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ActivityPage)),
+        );
+        container.read(inboxLocalStateProvider.notifier).markUnread([
+          'reaction-event',
+        ]);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('My original message'), findsOneWidget);
+        await tester.tap(
+          find.byKey(const ValueKey('inbox-row-reaction-event')),
+        );
+        await tester.pumpAndSettle();
+        final page = tester.widget<ChannelDetailPage>(
+          find.byType(ChannelDetailPage),
+        );
+        expect(page.initialMessageId, 'reacted-message');
+        expect(page.initialThreadRootId, threadRoot);
+        expect(page.markChannelReadOnOpen, isFalse);
+        expect(container.read(readStateProvider).contexts, {
+          'ch1': now - 300,
+          'msg:reaction-event': now,
+        });
+        expect(container.read(inboxLocalStateProvider).unreadIds, isEmpty);
+        Navigator.of(tester.element(find.byType(ChannelDetailPage))).pop();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('inbox-row-reaction-event')),
+          findsNothing,
+        );
+        expect(find.byKey(const ValueKey('inbox-row-m1')), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpWidget(
+          await buildTestable(feed: feed, channels: const []),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('inbox-row-reaction-event')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(ChannelDetailPage), findsNothing);
+        expect(
+          find.byKey(const ValueKey('inbox-row-reaction-event')),
+          findsOneWidget,
+        );
+      },
     );
-    final feed = HomeFeedResponse(
-      mentions: const [],
-      needsAction: const [],
-      activity: [reaction],
-      agentActivity: const [],
-    );
-    await tester.pumpWidget(await buildTestable(feed: feed));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('My original message'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('inbox-row-reaction-event')));
-    await tester.pumpAndSettle();
-    final page = tester.widget<ChannelDetailPage>(
-      find.byType(ChannelDetailPage),
-    );
-    expect(page.initialMessageId, 'reacted-message');
-    expect(page.initialThreadRootId, 'thread-root');
-  });
+  }
 
   testWidgets('shows loading skeleton while feed loads', (tester) async {
     await tester.pumpWidget(

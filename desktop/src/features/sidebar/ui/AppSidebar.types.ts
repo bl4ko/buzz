@@ -39,6 +39,7 @@ export type AppSidebarProps = {
   errorMessage?: string;
   selectedChannelId: string | null;
   selectedView:
+    | "later"
     | "home"
     | "channel"
     | "messages"

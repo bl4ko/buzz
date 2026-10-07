@@ -224,7 +224,7 @@ export function ProfileMediaEditor({
       <input
         ref={bannerInput}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/gif,image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(event) => {
           void upload(event.target.files?.[0], "banner");

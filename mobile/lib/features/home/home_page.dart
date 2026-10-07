@@ -13,6 +13,7 @@ import '../../shared/widgets/concentric_sheet_surface.dart';
 import '../../shared/widgets/directional_transition_scope.dart';
 import '../../shared/widgets/mobile_tab_footer_backdrop.dart';
 import '../activity/activity_page.dart';
+import '../activity/later_page.dart';
 import '../channels/channels_page.dart';
 import '../search/search_page.dart';
 
@@ -69,6 +70,11 @@ class HomePage extends HookConsumerWidget {
       selectedIcon: BuzzIcons.search500,
       label: 'Search',
     ),
+    _HomeDestination(
+      icon: BuzzIcons.bookmark300,
+      selectedIcon: BuzzIcons.bookmark500,
+      label: 'Later',
+    ),
   ];
 
   @override
@@ -115,6 +121,10 @@ class HomePage extends HookConsumerWidget {
         const SizedBox.shrink(),
       if (visitedTabs.value.contains(2))
         SearchPage(tabReselection: searchReselection)
+      else
+        const SizedBox.shrink(),
+      if (visitedTabs.value.contains(3))
+        const LaterPage()
       else
         const SizedBox.shrink(),
     ];

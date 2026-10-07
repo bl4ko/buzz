@@ -1,6 +1,7 @@
 import {
   BellOff,
   BellRing,
+  Bookmark,
   Clock,
   Copy,
   CornerUpLeft,
@@ -17,6 +18,7 @@ import * as React from "react";
 import { toast } from "sonner";
 
 import { buildMessageLink } from "@/features/messages/lib/messageLink";
+import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import { EmojiPicker } from "@/features/custom-emoji/ui/EmojiPicker";
 import { useCustomEmoji } from "@/features/custom-emoji/hooks";
 import { buildMentionClipboardHtml } from "@/features/messages/lib/mentionClipboard";
@@ -120,6 +122,7 @@ function MoreActionsMenu({
   isUnread?: boolean;
 }) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const { saveForLater } = useRemindLater();
   const [isReportDialogOpen, setIsReportDialogOpen] = React.useState(false);
   // Transfer focus ownership only after the menu has finished closing.
   // During its exit animation Radix's pointer-leave handler can still focus
@@ -252,6 +255,22 @@ function MoreActionsMenu({
             >
               <Clock className="h-4 w-4" />
               Remind me later
+            </DropdownMenuItem>
+          ) : null}
+
+          {onRemindLater && canCopyMessageLink(message, channelId) ? (
+            <DropdownMenuItem
+              onClick={() =>
+                saveForLater({
+                  eventId: message.id,
+                  channelId,
+                  preview: message.body.slice(0, 1_000),
+                  authorPubkey: message.pubkey ?? "",
+                })
+              }
+            >
+              <Bookmark className="h-4 w-4" />
+              Save for later
             </DropdownMenuItem>
           ) : null}
 

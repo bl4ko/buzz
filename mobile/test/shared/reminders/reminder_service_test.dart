@@ -51,6 +51,24 @@ void main() {
   });
 
   group('buildReminderTags', () {
+    test('bookmarks have no notification time or expiration', () {
+      expect(buildReminderTags(dTag: 'later:event-1'), [
+        ['d', 'later:event-1'],
+      ]);
+      for (final status in ['pending', 'done', 'cancelled']) {
+        expect(
+          jsonDecode(
+            buildReminderPlaintext(target: target, status: status),
+          )['status'],
+          status,
+        );
+      }
+      expect(
+        () => buildReminderPlaintext(target: target, status: 'unknown'),
+        throwsArgumentError,
+      );
+      expect(() => buildReminderPlaintext(), throwsArgumentError);
+    });
     test('emits d and strict-decimal not_before tags', () {
       expect(buildReminderTags(dTag: 'abc', notBefore: 1753000000), [
         ['d', 'abc'],

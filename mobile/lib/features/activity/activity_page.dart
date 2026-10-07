@@ -270,6 +270,10 @@ class ActivityPage extends HookConsumerWidget {
           : target.targetThreadRootId ?? thread.parentId;
 
       if (!context.mounted) return;
+      final isReaction = item.categories.every(
+        (category) => category == 'reaction',
+      );
+      if (isReaction) markItemRead(item);
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ChannelDetailPage(
@@ -278,6 +282,7 @@ class ActivityPage extends HookConsumerWidget {
             initialThreadRootId: threadRootId,
             initialThreadRouteBehavior:
                 InitialThreadRouteBehavior.replaceCurrentRoute,
+            markChannelReadOnOpen: !isReaction,
           ),
         ),
       );

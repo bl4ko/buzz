@@ -29,6 +29,7 @@ import '../../shared/widgets/native_message_presentation.dart';
 import '../../shared/emoji/emoji_data_provider.dart';
 import '../../shared/reminders/remind_me_later_sheet.dart';
 import '../../shared/reminders/reminder_service.dart';
+import '../activity/reminders_provider.dart' show remindersProvider;
 import 'channel_management_provider.dart';
 import 'channels_provider.dart';
 import 'emoji_picker.dart';
@@ -50,6 +51,64 @@ part 'message_actions/message_action_popover.dart';
 part 'message_actions/message_action_popover_widgets.dart';
 part 'message_actions/message_reaction_tray.dart';
 part 'message_actions/native_actions.dart';
+
+final _pendingLaterSaves = <(String, String?, String)>{};
+
+Future<void> _saveForLater(
+  BuildContext context,
+  WidgetRef ref,
+  TimelineMessage message,
+  String channelId,
+) async {
+  final service = ref.read(reminderServiceProvider);
+  if (service == null) return;
+  final community = ref.read(relayConfigProvider);
+  final account = ref.read(myPubkeyProvider);
+  final key = (community.baseUrl, account, message.id);
+  if (!_pendingLaterSaves.add(key)) return;
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    final items = await ref.read(remindersProvider.future);
+    if (!context.mounted ||
+        ref.read(relayConfigProvider) != community ||
+        ref.read(myPubkeyProvider) != account) return;
+    final matches = items
+        .where((item) => item.target?.eventId == message.id)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (!matches.any((item) => item.status == 'pending')) {
+      final previous = matches.firstOrNull;
+      await service.createReminder(
+        target: ReminderTarget(
+          eventId: message.id,
+          channelId: channelId,
+          preview: message.content.characters.take(1000).toString(),
+          authorPubkey: message.pubkey,
+        ),
+        dTag: previous?.id,
+        previousCreatedAt: previous?.createdAt,
+      );
+    }
+    if (!context.mounted ||
+        ref.read(relayConfigProvider) != community ||
+        ref.read(myPubkeyProvider) != account) return;
+    await ref.read(remindersProvider.notifier).refresh();
+    if (!context.mounted ||
+        ref.read(relayConfigProvider) != community ||
+        ref.read(myPubkeyProvider) != account) return;
+    messenger.showSnackBar(const SnackBar(content: Text('Saved for later')));
+  } catch (_) {
+    if (context.mounted &&
+        ref.read(relayConfigProvider) == community &&
+        ref.read(myPubkeyProvider) == account) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not save for later. Try again.')),
+      );
+    }
+  } finally {
+    _pendingLaterSaves.remove(key);
+  }
+}
 
 /// Preview length for reminder targets — matches desktop's
 /// `msg.body.slice(0, 100)`.
@@ -228,6 +287,7 @@ Future<void> showMessageActions({
                       isMember: isMember,
                       isArchived: isArchived,
                       pageContext: context,
+                      pageRef: ref,
                     ),
                     const SizedBox(height: Grid.xs),
                     // Triage: come back to this message later.
@@ -672,6 +732,8 @@ class _FastActionsRow extends ConsumerWidget {
   /// for the thread push and the copy-link snackbar.
   final BuildContext pageContext;
 
+  final WidgetRef pageRef;
+
   const _FastActionsRow({
     required this.message,
     required this.channelId,
@@ -680,6 +742,7 @@ class _FastActionsRow extends ConsumerWidget {
     required this.isMember,
     required this.isArchived,
     required this.pageContext,
+    required this.pageRef,
   });
 
   @override
@@ -722,6 +785,15 @@ class _FastActionsRow extends ConsumerWidget {
       ),
       if (canRemind)
         _FastActionTile(
+          icon: BuzzIcons.bookmark,
+          label: 'Save for later',
+          onTap: () {
+            Navigator.of(context).pop();
+            unawaited(_saveForLater(pageContext, pageRef, message, channelId));
+          },
+        ),
+      if (canRemind)
+        _FastActionTile(
           icon: BuzzIcons.clock,
           label: 'Remind me',
           onTap: () {
@@ -732,7 +804,7 @@ class _FastActionsRow extends ConsumerWidget {
             Navigator.of(context).pop();
             showRemindMeLaterSheet(
               context: rootContext,
-              ref: ref,
+              ref: pageRef,
               target: ReminderTarget(
                 eventId: message.id,
                 channelId: channelId,

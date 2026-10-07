@@ -3,6 +3,7 @@ import type { DesktopNotificationTarget } from "@/features/notifications/lib/des
 import type { SearchHit } from "@/shared/api/types";
 
 export type AppView =
+  | "later"
   | "home"
   | "channel"
   | "messages"
@@ -231,6 +232,10 @@ export function deriveShellRoute(pathname: string): {
       selectedChannelId: null,
       selectedView: "messages",
     };
+  }
+
+  if (pathname === "/later") {
+    return { selectedChannelId: null, selectedView: "later" };
   }
 
   if (pathname === "/agents") {

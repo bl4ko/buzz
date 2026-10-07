@@ -82,6 +82,12 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goLater = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/later" }, behavior),
+    [commitNavigation],
+  );
+
   const goAgents = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -464,6 +470,7 @@ export function useAppNavigation() {
     goEditWorkflow,
     goForumPost,
     goHome,
+    goLater,
     goNewMessage,
     goNewWorkflow,
     goNewWorkflowForChannel,

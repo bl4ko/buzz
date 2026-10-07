@@ -1,5 +1,9 @@
 import { relayClient } from "@/shared/api/relayClient";
+import { PublishCanceledError } from "@/shared/api/relayEventPublisher";
+import { getIdentity } from "@/shared/api/tauriIdentity";
+import { matchesDetachedToastScope } from "@/features/messages/lib/detachedToastScope";
 import {
+  getRelayWsUrl,
   nip44DecryptFromSelf,
   nip44EncryptToSelf,
   signRelayEvent,
@@ -12,10 +16,22 @@ import type {
   ReminderTarget,
 } from "./reminderTypes";
 
-// Jittered expiration for completed/cancelled reminders (30-90 days).
-function jitteredExpiration(): number {
-  const days = 30 + Math.floor(Math.random() * 60);
-  return Math.floor(Date.now() / 1_000) + days * 86_400;
+const createdAtById = new Map<string, number>();
+let writeGeneration = 0;
+
+export function resetReminderWrites() {
+  writeGeneration++;
+  createdAtById.clear();
+}
+
+function nextCreatedAt(id: string, previousCreatedAt = 0): number {
+  const createdAt = Math.max(
+    Math.floor(Date.now() / 1_000),
+    previousCreatedAt + 1,
+    (createdAtById.get(id) ?? 0) + 1,
+  );
+  createdAtById.set(id, createdAt);
+  return createdAt;
 }
 
 function extractDTag(event: RelayEvent): string | null {
@@ -142,133 +158,150 @@ async function decryptReminder(event: RelayEvent): Promise<Reminder | null> {
 }
 
 export async function fetchReminders(pubkey: string): Promise<Reminder[]> {
-  const events = await relayClient.fetchEvents({
-    kinds: [KIND_EVENT_REMINDER],
-    authors: [pubkey],
-    limit: 200,
-  });
-
-  const results = await Promise.all(events.map(decryptReminder));
+  const newestByDTag = new Map<string, RelayEvent>();
+  let limit = 200;
+  let until: number | undefined;
+  for (;;) {
+    const page = await relayClient.fetchEvents({
+      kinds: [KIND_EVENT_REMINDER],
+      authors: [pubkey],
+      limit,
+      ...(until === undefined ? {} : { until }),
+    });
+    for (const event of page) {
+      const dTag = extractDTag(event);
+      if (!dTag) continue;
+      const existing = newestByDTag.get(dTag);
+      if (
+        !existing ||
+        event.created_at > existing.created_at ||
+        (event.created_at === existing.created_at && event.id < existing.id)
+      ) {
+        newestByDTag.set(dTag, event);
+      }
+    }
+    if (page.length < limit) break;
+    const oldest = Math.min(...page.map((event) => event.created_at));
+    if (until === undefined || oldest < until) {
+      until = oldest;
+      continue;
+    }
+    if (limit < 1_000) {
+      limit = 1_000;
+      continue;
+    }
+    throw new Error(
+      "Could not load saved items: a full relay page shares one timestamp.",
+    );
+  }
+  const results = await Promise.all(
+    [...newestByDTag.values()].map(decryptReminder),
+  );
   return results.filter((r): r is Reminder => r !== null);
+}
+
+async function publishReminder(
+  content: ReminderContent,
+  tags: string[][],
+  createdAt: number,
+  action: string,
+  expectedPubkey?: string,
+): Promise<RelayEvent> {
+  const generation = writeGeneration;
+  const pubkey = (await getIdentity()).pubkey;
+  if (
+    generation !== writeGeneration ||
+    (expectedPubkey !== undefined && expectedPubkey !== pubkey)
+  ) {
+    throw new PublishCanceledError();
+  }
+  const relayUrl = await getRelayWsUrl();
+  const isCurrent = () =>
+    generation === writeGeneration &&
+    matchesDetachedToastScope(relayUrl, pubkey);
+  const check = () => {
+    if (!isCurrent()) throw new PublishCanceledError();
+  };
+  check();
+  const ciphertext = await nip44EncryptToSelf(JSON.stringify(content));
+  check();
+  const event = await signRelayEvent({
+    kind: KIND_EVENT_REMINDER,
+    content: ciphertext,
+    tags,
+    createdAt,
+  });
+  check();
+  if (event.pubkey !== pubkey) throw new PublishCanceledError();
+  const published = await relayClient.publishEvent(
+    event,
+    `Timed out ${action} reminder.`,
+    `Failed to ${action} reminder.`,
+    isCurrent,
+  );
+  check();
+  return published;
 }
 
 export async function createReminder(
   target: ReminderTarget,
-  notBefore: number,
+  notBefore?: number,
   note?: string,
+  previous?: Reminder,
+  pubkey?: string,
 ): Promise<RelayEvent> {
-  const dTag = randomDTag();
-  const content: ReminderContent = {
-    target,
-    note,
-    status: "pending",
-  };
-
-  const ciphertext = await nip44EncryptToSelf(JSON.stringify(content));
-  const tags: string[][] = [
-    ["d", dTag],
-    ["not_before", String(notBefore)],
-  ];
-
-  const event = await signRelayEvent({
-    kind: KIND_EVENT_REMINDER,
-    content: ciphertext,
+  const dTag = previous?.id ?? randomDTag();
+  const createdAt = nextCreatedAt(dTag, previous?.createdAt);
+  const tags: string[][] = [["d", dTag]];
+  if (notBefore !== undefined) tags.push(["not_before", String(notBefore)]);
+  return publishReminder(
+    { target, note, status: "pending" },
     tags,
-  });
-
-  return relayClient.publishEvent(
-    event,
-    "Timed out creating reminder.",
-    "Failed to create reminder.",
+    createdAt,
+    "create",
+    pubkey,
   );
 }
 
 export async function completeReminder(
-  _pubkey: string,
+  pubkey: string,
   reminder: Reminder,
 ): Promise<RelayEvent> {
-  const content: ReminderContent = {
-    ...reminder.content,
-    status: "done",
-  };
-
-  const ciphertext = await nip44EncryptToSelf(JSON.stringify(content));
-  const expiration = jitteredExpiration();
-  const tags: string[][] = [
-    ["d", reminder.id],
-    ["expiration", String(expiration)],
-  ];
-
-  const event = await signRelayEvent({
-    kind: KIND_EVENT_REMINDER,
-    content: ciphertext,
-    createdAt: Math.max(Math.floor(Date.now() / 1_000), reminder.createdAt + 1),
-    tags,
-  });
-
-  return relayClient.publishEvent(
-    event,
-    "Timed out completing reminder.",
-    "Failed to complete reminder.",
+  return publishReminder(
+    { ...reminder.content, status: "done" },
+    [["d", reminder.id]],
+    nextCreatedAt(reminder.id, reminder.createdAt),
+    "complete",
+    pubkey,
   );
 }
 
 export async function snoozeReminder(
-  _pubkey: string,
+  pubkey: string,
   reminder: Reminder,
-  newNotBefore: number,
+  newNotBefore?: number,
 ): Promise<RelayEvent> {
-  const content: ReminderContent = {
-    ...reminder.content,
-    status: "pending",
-  };
-
-  const ciphertext = await nip44EncryptToSelf(JSON.stringify(content));
-  const tags: string[][] = [
-    ["d", reminder.id],
-    ["not_before", String(newNotBefore)],
-  ];
-
-  const event = await signRelayEvent({
-    kind: KIND_EVENT_REMINDER,
-    content: ciphertext,
-    createdAt: Math.max(Math.floor(Date.now() / 1_000), reminder.createdAt + 1),
+  const tags: string[][] = [["d", reminder.id]];
+  if (newNotBefore !== undefined)
+    tags.push(["not_before", String(newNotBefore)]);
+  return publishReminder(
+    { ...reminder.content, status: "pending" },
     tags,
-  });
-
-  return relayClient.publishEvent(
-    event,
-    "Timed out snoozing reminder.",
-    "Failed to snooze reminder.",
+    nextCreatedAt(reminder.id, reminder.createdAt),
+    "snooze",
+    pubkey,
   );
 }
 
 export async function cancelReminder(
-  _pubkey: string,
+  pubkey: string,
   reminder: Reminder,
 ): Promise<RelayEvent> {
-  const content: ReminderContent = {
-    ...reminder.content,
-    status: "cancelled",
-  };
-
-  const ciphertext = await nip44EncryptToSelf(JSON.stringify(content));
-  const expiration = jitteredExpiration();
-  const tags: string[][] = [
-    ["d", reminder.id],
-    ["expiration", String(expiration)],
-  ];
-
-  const event = await signRelayEvent({
-    kind: KIND_EVENT_REMINDER,
-    content: ciphertext,
-    createdAt: Math.max(Math.floor(Date.now() / 1_000), reminder.createdAt + 1),
-    tags,
-  });
-
-  return relayClient.publishEvent(
-    event,
-    "Timed out cancelling reminder.",
-    "Failed to cancel reminder.",
+  return publishReminder(
+    { ...reminder.content, status: "cancelled" },
+    [["d", reminder.id]],
+    nextCreatedAt(reminder.id, reminder.createdAt),
+    "cancel",
+    pubkey,
   );
 }

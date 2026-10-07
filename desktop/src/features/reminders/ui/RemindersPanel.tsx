@@ -2,7 +2,6 @@ import { ArrowLeft, Bell, Check, Clock, ExternalLink, X } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelReferences } from "@/features/channels/openChannelDirectory";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import {
@@ -14,10 +13,8 @@ import {
   useReminderMutations,
 } from "@/features/reminders/hooks";
 import { groupReminders } from "@/features/reminders/lib/reminderFilters";
-import {
-  hasNavigableTarget,
-  resolveReminderDestination,
-} from "@/features/reminders/lib/reminderNavigation";
+import { hasNavigableTarget } from "@/features/reminders/lib/reminderNavigation";
+import { useReminderNavigation } from "@/features/reminders/useReminderNavigation";
 import type { Reminder } from "@/features/reminders/lib/reminderTypes";
 import { SnoozeMenu } from "@/features/reminders/ui/SnoozeMenu";
 import { resolveChannelDisplayLabel } from "@/features/sidebar/lib/channelLabels";
@@ -279,23 +276,14 @@ export function RemindersPanel({
 }) {
   const remindersQuery = useRemindersQuery(pubkey);
   const reminders = remindersQuery.data;
-  const { goChannel } = useAppNavigation();
+  const openMessage = useReminderNavigation(pubkey);
   const sources = useReminderSources(reminders ?? []);
 
   const handleNavigate = React.useCallback(
     async (reminder: Reminder) => {
-      const destination = await resolveReminderDestination(
-        reminder.content.target,
-      );
-      if (!destination) {
-        return;
-      }
-      void goChannel(destination.channelId, {
-        messageId: destination.messageId,
-        threadRootId: destination.threadRootId,
-      });
+      await openMessage(reminder.content.target);
     },
-    [goChannel],
+    [openMessage],
   );
 
   const groups = React.useMemo(
@@ -377,7 +365,7 @@ export function ReminderDetailPane({
   pubkey: string;
   reminder: Reminder | null;
 }) {
-  const { goChannel } = useAppNavigation();
+  const openMessage = useReminderNavigation(pubkey);
   const reminderList = React.useMemo(
     () => (reminder ? [reminder] : []),
     [reminder],
@@ -407,16 +395,7 @@ export function ReminderDetailPane({
   const preview =
     reminder.content.target?.preview || reminder.content.note || "Reminder";
 
-  const handleNavigate = async () => {
-    const destination = await resolveReminderDestination(
-      reminder.content.target,
-    );
-    if (!destination) return;
-    void goChannel(destination.channelId, {
-      messageId: destination.messageId,
-      threadRootId: destination.threadRootId,
-    });
-  };
+  const handleNavigate = () => openMessage(reminder.content.target);
 
   return (
     <section

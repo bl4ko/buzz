@@ -44,11 +44,21 @@ class ReminderTarget {
 /// Matches the JSON desktop writes in `reminderService.ts#createReminder`:
 /// `{"target": {...}, "note": <optional>, "status": "pending"}`. `note` is
 /// omitted entirely when absent so both clients parse each other's payloads.
-String buildReminderPlaintext({required ReminderTarget target, String? note}) {
+String buildReminderPlaintext({
+  ReminderTarget? target,
+  String? note,
+  String status = 'pending',
+}) {
+  if (!const ['pending', 'done', 'cancelled'].contains(status)) {
+    throw ArgumentError('Invalid reminder status');
+  }
+  if (target == null && (note == null || note.isEmpty)) {
+    throw ArgumentError('A saved item must have a message or note');
+  }
   return jsonEncode({
-    'target': target.toJson(),
+    if (target != null) 'target': target.toJson(),
     if (note != null && note.isNotEmpty) 'note': note,
-    'status': 'pending',
+    'status': status,
   });
 }
 
@@ -60,16 +70,13 @@ String randomReminderDTag() {
 
 /// Tags for a new pending reminder event: `d` plus strict-decimal
 /// `not_before`, exactly as the relay's NIP-ER validator expects.
-List<List<String>> buildReminderTags({
-  required String dTag,
-  required int notBefore,
-}) {
-  if (notBefore < 0) {
+List<List<String>> buildReminderTags({required String dTag, int? notBefore}) {
+  if (notBefore != null && notBefore < 0) {
     throw ArgumentError('notBefore must be a non-negative Unix timestamp');
   }
   return [
     ['d', dTag],
-    ['not_before', '$notBefore'],
+    if (notBefore != null) ['not_before', '$notBefore'],
   ];
 }
 
@@ -97,6 +104,7 @@ class ReminderCrypto {
 class ReminderService {
   final SignedEventRelay _signedEventRelay;
   final ReminderCrypto _crypto;
+  final _createdAtById = <String, int>{};
 
   ReminderService({
     required SignedEventRelay signedEventRelay,
@@ -107,16 +115,34 @@ class ReminderService {
   /// Encrypt, sign, and publish a new pending reminder. [notBefore] is a Unix
   /// timestamp in seconds after which clients surface the reminder.
   Future<void> createReminder({
-    required ReminderTarget target,
-    required int notBefore,
+    ReminderTarget? target,
+    int? notBefore,
     String? note,
+    String status = 'pending',
+    String? dTag,
+    int? previousCreatedAt,
   }) async {
-    final plaintext = buildReminderPlaintext(target: target, note: note);
+    final id = dTag ?? randomReminderDTag();
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    var createdAt = now;
+    for (final previous in [previousCreatedAt, _createdAtById[id]]) {
+      if (previous != null && previous >= createdAt) createdAt = previous + 1;
+    }
+    _createdAtById[id] = createdAt;
+    final plaintext = buildReminderPlaintext(
+      target: target,
+      note: note,
+      status: status,
+    );
     final ciphertext = _crypto.encrypt(plaintext);
     await _signedEventRelay.submit(
       kind: EventKind.eventReminder,
       content: ciphertext,
-      tags: buildReminderTags(dTag: randomReminderDTag(), notBefore: notBefore),
+      tags: buildReminderTags(
+        dTag: id,
+        notBefore: status == 'pending' ? notBefore : null,
+      ),
+      createdAt: createdAt,
     );
   }
 }

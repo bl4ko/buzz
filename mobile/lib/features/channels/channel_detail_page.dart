@@ -255,6 +255,7 @@ class ChannelDetailPage extends HookConsumerWidget {
   final Channel channel;
   final String? initialMessageId;
   final String? initialThreadRootId;
+  final bool markChannelReadOnOpen;
 
   /// How the automatically opened initial thread affects the route stack.
   final InitialThreadRouteBehavior initialThreadRouteBehavior;
@@ -264,6 +265,7 @@ class ChannelDetailPage extends HookConsumerWidget {
     required this.channel,
     this.initialMessageId,
     this.initialThreadRootId,
+    this.markChannelReadOnOpen = true,
     this.initialThreadRouteBehavior = InitialThreadRouteBehavior.push,
   });
 
@@ -547,7 +549,9 @@ class ChannelDetailPage extends HookConsumerWidget {
     );
 
     useEffect(() {
-      if (!readState.isReady || readTimestamp == null) {
+      if (!markChannelReadOnOpen ||
+          !readState.isReady ||
+          readTimestamp == null) {
         return null;
       }
       return deferReadStateUpdate(context, () {
@@ -558,7 +562,7 @@ class ChannelDetailPage extends HookConsumerWidget {
             .read(channelsProvider.notifier)
             .clearObservedUnreadCoveredByRead(channel.id, readTimestamp);
       });
-    }, [channel.id, readState.isReady, readTimestamp]);
+    }, [channel.id, markChannelReadOnOpen, readState.isReady, readTimestamp]);
 
     final dmHeader = resolvedChannel.isDm
         ? _watchDmHeader(ref, resolvedChannel, currentPubkey)

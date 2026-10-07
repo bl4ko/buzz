@@ -279,6 +279,25 @@ List<_PopoverMessageAction> _buildPopoverMessageActions({
     if (canRemind) {
       actions.add(
         _PopoverMessageAction(
+          id: 'later',
+          title: 'Save for later',
+          icon: BuzzIcons.bookmark,
+          group: _PopoverMessageActionGroup.utility,
+          onSelected: () {
+            if (!context.mounted) return;
+            unawaited(
+              _saveForLater(
+                context,
+                ref,
+                message,
+                channelId,
+              ),
+            );
+          },
+        ),
+      );
+      actions.add(
+        _PopoverMessageAction(
           id: 'remind',
           title: 'Remind me',
           icon: BuzzIcons.clock,
