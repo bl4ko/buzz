@@ -47,6 +47,7 @@ import { resetSidebarRelayConnectionCardState } from "@/features/sidebar/ui/useS
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
+import { resetReminderWrites } from "@/features/reminders/lib/reminderService";
 
 import {
   initFirstCommunity,
@@ -67,6 +68,7 @@ async function resetCommunityState({
 }: {
   resetAvatarState: boolean;
 }): Promise<void> {
+  resetReminderWrites();
   relayClient.disconnect();
   await resetNavigationDeepLinkDrain();
   resetRateLimitGate();
@@ -423,6 +425,7 @@ export function useCommunityInit(
 
     return () => {
       cancelled = true;
+      resetReminderWrites();
     };
   }, [
     activeCommunity?.id,

@@ -30,13 +30,16 @@ class _RecordingReminderService extends ReminderService {
 
   @override
   Future<void> createReminder({
-    required ReminderTarget target,
-    required int notBefore,
+    ReminderTarget? target,
+    int? notBefore,
     String? note,
+    String status = 'pending',
+    String? dTag,
+    int? previousCreatedAt,
   }) async {
     final error = this.error;
     if (error != null) throw error;
-    submittedNotBefore.add(notBefore);
+    submittedNotBefore.add(notBefore!);
   }
 }
 

@@ -57,6 +57,7 @@ function ProfileModel({ url }: { url: string }) {
   const [attempt, setAttempt] = React.useState(0);
   const [failed, setFailed] = React.useState(false);
   const element = React.useRef<HTMLElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the keyed viewer remounts on url and attempt
   React.useEffect(() => {
     setFailed(false);
     const viewer = element.current;
@@ -224,7 +225,7 @@ export function ProfileMediaEditor({
       <input
         ref={bannerInput}
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept="image/gif,image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(event) => {
           void upload(event.target.files?.[0], "banner");

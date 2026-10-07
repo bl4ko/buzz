@@ -1,3 +1,4 @@
+import '../activity/later_page.dart';
 import '../../shared/widgets/android_expanding_menu_button.dart';
 
 import 'package:flutter/material.dart';
@@ -109,6 +110,11 @@ class HomePage extends HookConsumerWidget {
             label: 'Agents',
             symbol: 'agent',
             onPressed: () => onAgents(context),
+          ),
+          (
+            label: 'Later',
+            symbol: 'bookmark',
+            onPressed: () => openPage((_) => const LaterPage()),
           ),
           if (communityAppearancePageBuilder != null)
             (

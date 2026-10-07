@@ -280,6 +280,7 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
   final String? initialAssistant;
   final String? initialMessageId;
   final String? initialThreadRootId;
+  final bool markChannelReadOnOpen;
 
   /// How the automatically opened initial thread affects the route stack.
   final InitialThreadRouteBehavior initialThreadRouteBehavior;
@@ -293,6 +294,7 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
     this.initialAssistant,
     this.initialMessageId,
     this.initialThreadRootId,
+    this.markChannelReadOnOpen = true,
     this.initialThreadRouteBehavior = InitialThreadRouteBehavior.push,
   });
 
@@ -626,19 +628,31 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
     final openReadActive =
         isAppInUse(useAppLifecycleState()) &&
         (ModalRoute.of(context)?.isCurrent ?? true);
-    useEffect(() {
-      if (!readState.isReady || !openReadActive || openReadTimestamp == null) {
-        return null;
-      }
-      return deferReadStateUpdate(context, () {
-        ref
-            .read(readStateProvider.notifier)
-            .markContextRead(channel.id, openReadTimestamp);
-        ref
-            .read(channelsProvider.notifier)
-            .clearObservedUnreadCoveredByRead(channel.id, openReadTimestamp);
-      });
-    }, [channel.id, readState.isReady, openReadActive, openReadTimestamp]);
+    useEffect(
+      () {
+        if (!markChannelReadOnOpen ||
+            !readState.isReady ||
+            !openReadActive ||
+            openReadTimestamp == null) {
+          return null;
+        }
+        return deferReadStateUpdate(context, () {
+          ref
+              .read(readStateProvider.notifier)
+              .markContextRead(channel.id, openReadTimestamp);
+          ref
+              .read(channelsProvider.notifier)
+              .clearObservedUnreadCoveredByRead(channel.id, openReadTimestamp);
+        });
+      },
+      [
+        channel.id,
+        markChannelReadOnOpen,
+        readState.isReady,
+        openReadActive,
+        openReadTimestamp,
+      ],
+    );
 
     final dmHeader = resolvedChannel.isDm
         ? _watchDmHeader(ref, resolvedChannel, currentPubkey)

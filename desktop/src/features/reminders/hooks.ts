@@ -67,9 +67,17 @@ export function useReminderMutations(pubkey: string) {
   const create = useMutation({
     mutationFn: (input: {
       target: ReminderTarget;
-      notBefore: number;
+      notBefore?: number;
       note?: string;
-    }) => createReminder(input.target, input.notBefore, input.note),
+      previous?: Reminder;
+    }) =>
+      createReminder(
+        input.target,
+        input.notBefore,
+        input.note,
+        input.previous,
+        pubkey,
+      ),
     onSuccess: invalidate,
   });
   const complete = useMutation({
@@ -77,7 +85,7 @@ export function useReminderMutations(pubkey: string) {
     onSuccess: invalidate,
   });
   const snooze = useMutation({
-    mutationFn: (input: { reminder: Reminder; notBefore: number }) =>
+    mutationFn: (input: { reminder: Reminder; notBefore?: number }) =>
       snoozeReminder(pubkey, input.reminder, input.notBefore),
     onSuccess: invalidate,
   });

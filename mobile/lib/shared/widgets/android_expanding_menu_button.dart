@@ -357,6 +357,9 @@ class _CreateMenuRoute extends PopupRoute<int> {
                                                             'gearshape' =>
                                                               BuzzIcons
                                                                   .settings,
+                                                            'bookmark' =>
+                                                              BuzzIcons
+                                                                  .bookmark,
                                                             _ => BuzzIcons.plus,
                                                           }, size: 22),
                                                     const SizedBox(

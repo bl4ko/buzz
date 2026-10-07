@@ -118,6 +118,79 @@ test("initial workspace restore waits for avatar trust IPC", async () => {
   assert.equal(calls.filter(([cmd]) => cmd === "apply_workspace").length, 1);
 });
 
+for (const nextScope of [
+  { community: a, key: "a" },
+  { community: b, key: "b-new-identity" },
+]) {
+  test(`pending reminders cancel before identity resolution for ${nextScope.key}`, async (t) => {
+    const { createReminder } = await import(
+      "@/features/reminders/lib/reminderService"
+    );
+    const { PublishCanceledError } = await import(
+      "@/shared/api/relayEventPublisher"
+    );
+    const invoke = dom.window.__TAURI_INTERNALS__.invoke;
+    const pendingIdentities = [];
+    let holdIdentity = false;
+    let releaseEncryption;
+    t.mock.method(
+      dom.window.__TAURI_INTERNALS__,
+      "invoke",
+      async (command, args) => {
+        if (command === "get_identity" && holdIdentity)
+          return new Promise((resolve) => pendingIdentities.push(resolve));
+        if (command === "get_relay_ws_url") return b.relayUrl;
+        if (command === "nip44_encrypt_to_self") {
+          await new Promise((resolve) => {
+            releaseEncryption = resolve;
+          });
+          return "encrypted";
+        }
+        if (command === "sign_event")
+          return JSON.stringify({
+            id: "reminder-event",
+            pubkey: "a".repeat(64),
+            kind: args.kind,
+            content: args.content,
+            tags: args.tags,
+            created_at: args.createdAt,
+            sig: "signature",
+          });
+        return invoke(command, args);
+      },
+    );
+    t.mock.method(relayClient, "disconnect", () => {});
+    const publish = t.mock.method(
+      relayClient,
+      "publishEvent",
+      async (event) => event,
+    );
+    t.after(() => {
+      for (const resolve of pendingIdentities)
+        resolve({ pubkey: "a".repeat(64) });
+    });
+    const { result, rerender } = renderHook(
+      ({ community, key }) =>
+        useCommunityInit(community, key, false, false, [a, b]),
+      { initialProps: { community: b, key: "b" } },
+    );
+    await waitFor(() => assert.equal(result.current.isReady, true));
+    const write = createReminder({
+      eventId: "message",
+      channelId: "channel",
+      authorPubkey: "author",
+      preview: "Private preview",
+    });
+    await waitFor(() => assert.equal(typeof releaseEncryption, "function"));
+    holdIdentity = true;
+    rerender(nextScope);
+    await waitFor(() => assert.equal(pendingIdentities.length, 1));
+    const rejection = assert.rejects(write, PublishCanceledError);
+    await Promise.all([act(async () => releaseEncryption()), rejection]);
+    assert.equal(publish.mock.callCount(), 0);
+  });
+}
+
 test("source removal during pending trust serializes IPC and blocks restore until the latest update", async (t) => {
   holdTrust = true;
   const disconnect = t.mock.method(relayClient, "disconnect", () => {});

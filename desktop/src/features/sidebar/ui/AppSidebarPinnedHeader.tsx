@@ -1,4 +1,7 @@
-import { Activity, Bot, Folders, Inbox, Zap } from "lucide-react";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useRemindersQuery } from "@/features/reminders/hooks";
+import { useIdentityQuery } from "@/shared/api/hooks";
+import { Activity, Bookmark, Bot, Folders, Inbox, Zap } from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
@@ -15,6 +18,7 @@ import { SidebarMenuLabel } from "@/shared/ui/sidebar-menu-label";
 import { ProtectedBestieSidebarEntry } from "@protected-feature-components";
 
 type SidebarSelectedView =
+  | "later"
   | "home"
   | "channel"
   | "messages"
@@ -99,6 +103,12 @@ export function AppSidebarPrimaryMenu({
   projectsOverviewActive,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
+  const pubkey = useIdentityQuery().data?.pubkey;
+  const { goLater } = useAppNavigation();
+  const reminders = useRemindersQuery(pubkey);
+  const count = (reminders.data ?? []).filter(
+    (item) => item.content.status === "pending",
+  ).length;
   return (
     <>
       <SidebarHeader
@@ -124,6 +134,23 @@ export function AppSidebarPrimaryMenu({
                 data-testid="sidebar-home-count"
               >
                 {Math.min(homeBadgeCount, 99)}
+              </SidebarMenuBadge>
+            ) : null}
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={selectedView === "later"}
+              tooltip="Later"
+              type="button"
+              onClick={() => void goLater()}
+              data-testid="open-later-view"
+            >
+              <Bookmark className="h-4 w-4" />
+              <SidebarMenuLabel>Later</SidebarMenuLabel>
+            </SidebarMenuButton>
+            {count > 0 ? (
+              <SidebarMenuBadge data-testid="sidebar-later-count">
+                {Math.min(count, 99)}
               </SidebarMenuBadge>
             ) : null}
           </SidebarMenuItem>
