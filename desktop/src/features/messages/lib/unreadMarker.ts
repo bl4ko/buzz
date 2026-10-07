@@ -76,6 +76,13 @@ export function computeChannelUnreadMarker(
     : { firstUnreadMessageId, unreadCount };
 }
 
+export function getOpenUnreadTargetId(
+  marker: ChannelUnreadMarker,
+  frontierSeconds: number | null,
+): string | null {
+  return frontierSeconds === null ? null : marker.firstUnreadMessageId;
+}
+
 /**
  * Thread-scoped unread marker. Counts replies newer than the thread read
  * frontier and identifies the first unread reply.

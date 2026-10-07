@@ -21,6 +21,7 @@ import {
 import {
   computeChannelUnreadMarker,
   computeThreadUnreadMarker,
+  getOpenUnreadTargetId,
 } from "@/features/messages/lib/unreadMarker";
 import type { TimelineMessage } from "@/features/messages/types";
 import { isConversationalUnreadKind } from "@/shared/constants/kinds";
@@ -196,7 +197,7 @@ export function useChannelUnreadState({
   // Keyed per channel so the pill/divider survive the mark-read effect.
   // Non-conversational kinds (system rows, job-lifecycle events) are filtered
   // out first so they don't inflate the pill; see isConversationalUnreadKind.
-  const { firstUnreadMessageId, unreadCount } = React.useMemo(
+  const channelUnreadMarker = React.useMemo(
     () =>
       computeChannelUnreadMarker(
         timelineMessages.filter((message) =>
@@ -213,6 +214,11 @@ export function useChannelUnreadState({
       openFrontierSeconds,
       timelineMessages,
     ],
+  );
+  const { firstUnreadMessageId, unreadCount } = channelUnreadMarker;
+  const openUnreadTargetId = getOpenUnreadTargetId(
+    channelUnreadMarker,
+    openFrontierSeconds,
   );
 
   // --- Thread unread state ---
@@ -506,6 +512,7 @@ export function useChannelUnreadState({
     isMessageUnread,
     markRevealedRepliesRead,
     openThreadHeadMessage,
+    openUnreadTargetId,
     threadFirstUnreadReplyId,
     threadMessages,
     threadReplyTargetMessage,

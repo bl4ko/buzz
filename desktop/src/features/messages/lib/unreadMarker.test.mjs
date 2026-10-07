@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   computeChannelUnreadMarker,
   computeThreadUnreadMarker,
+  getOpenUnreadTargetId,
 } from "./unreadMarker.ts";
 
 function topLevel(id, createdAt) {
@@ -295,4 +296,22 @@ test("computeThreadUnreadMarker_selfAuthoredMixedCase_skipsOwnReplies", () => {
   const marker = computeThreadUnreadMarker(replies, uniformReadAt(5), "abcdef");
   assert.equal(marker.firstUnreadReplyId, "r2");
   assert.equal(marker.unreadCount, 1);
+});
+
+test("getOpenUnreadTargetId_readChannel_targetsOldestUnread", () => {
+  const messages = [topLevel("a", 100), topLevel("b", 200), topLevel("c", 300)];
+  const marker = computeChannelUnreadMarker(messages, 150);
+  assert.equal(getOpenUnreadTargetId(marker, 150), "b");
+});
+
+test("getOpenUnreadTargetId_neverReadChannel_staysAtBottom", () => {
+  const messages = [topLevel("a", 100), topLevel("b", 200)];
+  const marker = computeChannelUnreadMarker(messages, null);
+  assert.equal(marker.firstUnreadMessageId, "a");
+  assert.equal(getOpenUnreadTargetId(marker, null), null);
+});
+
+test("getOpenUnreadTargetId_noUnread_staysAtBottom", () => {
+  const marker = computeChannelUnreadMarker([topLevel("a", 100)], 100);
+  assert.equal(getOpenUnreadTargetId(marker, 100), null);
 });

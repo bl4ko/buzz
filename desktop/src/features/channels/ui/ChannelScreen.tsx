@@ -453,6 +453,7 @@ export function ChannelScreen({
     isMessageUnread,
     markRevealedRepliesRead,
     openThreadHeadMessage,
+    openUnreadTargetId,
     threadFirstUnreadReplyId,
     threadReplyTargetMessage,
     threadReplyUnreadCounts,
@@ -955,6 +956,7 @@ export function ChannelScreen({
                   ownerProfiles={messageOwnerProfiles}
                   firstUnreadMessageId={firstUnreadMessageId}
                   unreadCount={unreadCount}
+                  openUnreadTargetId={openUnreadTargetId}
                   targetMessageId={mainTimelineTargetMessageId}
                   threadAllMessages={displayedThreadAllMessages}
                   threadHeadMessage={displayedThreadHeadMessage}
