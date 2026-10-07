@@ -1099,4 +1099,133 @@ mod flush_barrier {
             "unrelated row marked synced"
         );
     }
+
+    /// Stub relay with the production ±900s ingest window: `POST /events`
+    /// rejects out-of-window events with HTTP 400 and records accepted ones;
+    /// `POST /query` returns `heads`.
+    async fn spawn_windowed_relay(
+        heads: Vec<nostr::Event>,
+    ) -> (String, Arc<Mutex<Vec<nostr::Event>>>) {
+        use axum::{http::StatusCode, routing::post, Router};
+
+        let accepted = Arc::new(Mutex::new(Vec::new()));
+        let recorded = accepted.clone();
+        let heads_json = serde_json::to_string(&heads).unwrap();
+        let app = Router::new()
+            .route(
+                "/events",
+                post(move |body: String| {
+                    let recorded = recorded.clone();
+                    async move {
+                        let event = nostr::Event::from_json(&body).unwrap();
+                        let now = nostr::Timestamp::now().as_secs() as i64;
+                        let accepted = (event.created_at.as_secs() as i64 - now).abs() <= 900;
+                        if accepted {
+                            recorded.lock().unwrap().push(event.clone());
+                        }
+                        let status = if accepted {
+                            StatusCode::OK
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        };
+                        let body = serde_json::json!({
+                            "event_id": event.id.to_hex(),
+                            "accepted": accepted,
+                            "message": if accepted { "" } else { "invalid: event timestamp too far from server time" }
+                        });
+                        (status, body.to_string())
+                    }
+                }),
+            )
+            .route("/query", post(move || async move { heads_json }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind stub relay");
+        let addr = listener.local_addr().expect("stub relay addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (format!("http://{addr}"), accepted)
+    }
+
+    fn stale_agent_head(keys: &nostr::Keys, content: &str, created_at: i64) -> nostr::Event {
+        EventBuilder::new(Kind::Custom(30177), content)
+            .tags(vec![Tag::parse(["d", "agent"]).unwrap()])
+            .custom_created_at(nostr::Timestamp::from(created_at as u64))
+            .sign_with_keys(keys)
+            .unwrap()
+    }
+
+    async fn flush_stale_agent_head(
+        relay_heads: impl FnOnce(&nostr::Keys, i64) -> Vec<nostr::Event>,
+    ) -> (bool, Vec<nostr::Event>, i64, nostr::Keys) {
+        let keys = nostr::Keys::generate();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("retention.db");
+        let stale_at = nostr::Timestamp::now().as_secs() as i64 - 3600;
+        let stale = stale_agent_head(&keys, "{\"name\":\"local\"}", stale_at);
+        {
+            let conn = open_retention_db(&db_path).expect("open db");
+            retain_event(
+                &conn,
+                &RetainedEvent {
+                    kind: 30177,
+                    pubkey: keys.public_key().to_hex(),
+                    d_tag: "agent".into(),
+                    content: stale.content.clone(),
+                    created_at: stale_at,
+                    raw_event: stale.as_json(),
+                    pending_sync: true,
+                },
+            )
+            .expect("retain stale head");
+        }
+        let (relay, accepted) = spawn_windowed_relay(relay_heads(&keys, stale_at)).await;
+        let state = build_app_state();
+        *state.keys.lock().unwrap() = keys.clone();
+        *state.relay_url_override.lock().unwrap() = Some(relay);
+
+        let flushed = flush_pending_events(&db_path, &state).await.expect("flush");
+        assert_eq!(flushed, 1, "stale head settles in one sweep");
+
+        let conn = open_retention_db(&db_path).expect("reopen db");
+        let pending = get_retained_event(&conn, 30177, &keys.public_key().to_hex(), "agent")
+            .unwrap()
+            .unwrap()
+            .pending_sync;
+        let accepted = accepted.lock().unwrap().clone();
+        (pending, accepted, stale_at, keys)
+    }
+
+    #[tokio::test]
+    async fn stale_head_is_redated_when_relay_has_no_newer_head() {
+        let (pending, accepted, stale_at, keys) = flush_stale_agent_head(|_, _| Vec::new()).await;
+
+        assert!(!pending, "re-dated head marks the row synced");
+        assert_eq!(accepted.len(), 1, "relay accepts one re-dated head");
+        let head = &accepted[0];
+        assert!(head.created_at.as_secs() as i64 > stale_at + 900);
+        assert_eq!(head.content, "{\"name\":\"local\"}");
+        assert_eq!(head.tags.identifier(), Some("agent"));
+        assert_eq!(head.pubkey, keys.public_key());
+        assert!(head.verify_signature());
+    }
+
+    #[tokio::test]
+    async fn stale_head_yields_to_newer_relay_head() {
+        let (pending, accepted, _, _) = flush_stale_agent_head(|keys, stale_at| {
+            vec![stale_agent_head(
+                keys,
+                "{\"name\":\"remote\"}",
+                stale_at + 60,
+            )]
+        })
+        .await;
+
+        assert!(!pending, "superseded head stops retrying");
+        assert!(
+            accepted.is_empty(),
+            "local edit must not replace the newer head"
+        );
+    }
 }
