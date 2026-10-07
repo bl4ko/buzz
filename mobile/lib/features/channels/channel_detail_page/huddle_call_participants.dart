@@ -77,96 +77,26 @@ class _HuddleCallParticipants extends StatelessWidget {
     }
 
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final hasRemoteParticipants = remotePubkeys.isNotEmpty;
-    final hasDenseRemoteRoster =
-        remotePubkeys.length > _huddleDenseParticipantThreshold;
-    final remoteHeightFactor = hasDenseRemoteRoster ? 0.58 : 0.5;
-    final localHeightFactor = hasDenseRemoteRoster ? 0.42 : 0.5;
-    final movementDuration = reducedMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 360);
     final entryDuration = reducedMotion
         ? Duration.zero
         : const Duration(milliseconds: 420);
-    final exitDuration = reducedMotion
-        ? Duration.zero
-        : const Duration(milliseconds: 360);
 
-    return Stack(
+    return Container(
       key: const ValueKey('huddle-participant-stage'),
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
-          child: TweenAnimationBuilder<double>(
-            key: const ValueKey('huddle-local-participant-motion'),
-            duration: movementDuration,
-            curve: Curves.easeOutBack,
-            tween: Tween(
-              begin: hasRemoteParticipants ? 1 : 0,
-              end: hasRemoteParticipants ? 1 : 0,
-            ),
-            builder: (context, value, child) => FractionallySizedBox(
-              heightFactor: localHeightFactor,
-              alignment: Alignment.lerp(
-                Alignment.center,
-                Alignment.bottomCenter,
-                value,
-              )!,
-              child: Align(
-                key: const ValueKey('huddle-local-participant'),
-                alignment: Alignment.lerp(
-                  Alignment.center,
-                  const Alignment(0, -0.35),
-                  value,
-                )!,
-                child: child,
-              ),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) => _HuddleCallAvatar(
-                pubkey: localPubkey ?? '',
-                profile: localPubkey == null ? null : profiles[localPubkey],
-                fallbackLabel: null,
-                active:
-                    localPubkey != null &&
-                    activeSpeakerPubkeys.contains(localPubkey),
-                speakerLevel: localPubkey == null
-                    ? 0
-                    : speakerLevels[localPubkey] ?? 0,
-                preparingResponse: false,
-                isSelf: true,
-                onTap: null,
-                frameSize: min(_huddleAvatarFrameSize, constraints.maxHeight),
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: FractionallySizedBox(
-            key: const ValueKey('huddle-remote-participant-region'),
-            heightFactor: remoteHeightFactor,
-            alignment: Alignment.topCenter,
-            child: Align(
-              key: const ValueKey('huddle-remote-participant-group'),
-              alignment: const Alignment(0, 0.35),
-              child: _HuddleParticipantCluster(
-                pubkeys: remotePubkeys,
-                profiles: profiles,
-                fallbackLabels: fallbackLabels,
-                contextualLabels: contextualLabels,
-                activeSpeakerPubkeys: activeSpeakerPubkeys,
-                speakerLevels: speakerLevels,
-                workingAgentPubkeys: workingAgentPubkeys,
-                movementDuration: movementDuration,
-                entryDuration: entryDuration,
-                exitDuration: exitDuration,
-                onParticipantTap: onParticipantTap,
-                onOverflowTap: onOverflowTap,
-              ),
-            ),
-          ),
-        ),
-      ],
+      alignment: Alignment.center,
+      child: _HuddleParticipantGrid(
+        localPubkey: localPubkey ?? '',
+        remotePubkeys: remotePubkeys,
+        profiles: profiles,
+        fallbackLabels: fallbackLabels,
+        contextualLabels: contextualLabels,
+        activeSpeakerPubkeys: activeSpeakerPubkeys,
+        speakerLevels: speakerLevels,
+        workingAgentPubkeys: workingAgentPubkeys,
+        entryDuration: entryDuration,
+        onParticipantTap: onParticipantTap,
+        onOverflowTap: onOverflowTap,
+      ),
     );
   }
 }

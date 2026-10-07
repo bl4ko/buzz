@@ -243,7 +243,10 @@ void huddleCallLayoutTests() {
         expect(find.byType(OutlinedButton), findsNothing);
         expect(find.textContaining('Mic mode'), findsNothing);
         expect(find.text('Stop speaking'), findsNothing);
-        expect(find.text('Pollen'), findsOneWidget);
+        expect(
+          find.descendant(of: toolbar, matching: find.text('Pollen')),
+          findsOneWidget,
+        );
         expect(find.byTooltip('Mic mode: Voice Isolation'), findsOneWidget);
         expect(_semanticsLabel('Mic mode: Voice Isolation'), findsOneWidget);
         final micButton = tester.widget<IconButton>(
@@ -377,13 +380,21 @@ void huddleCallLayoutTests() {
             );
             expect(selfRing.top, greaterThanOrEqualTo(stage.top));
             expect(selfRing.bottom, lessThanOrEqualTo(stage.bottom));
+            final agentRing = tester.getRect(
+              find.byKey(const ValueKey('huddle-speaking-ring-agent')),
+            );
+            expect(agentRing.size, selfRing.size);
+            expect(agentRing.top, selfRing.top);
+            expect(agentRing.left, greaterThan(selfRing.right - 1));
+            expect(agentRing.right, lessThanOrEqualTo(stage.right));
+            expect(agentRing.bottom, lessThanOrEqualTo(stage.bottom));
+            expect(find.text('You'), findsOneWidget);
             expect(
-              tester
-                  .getRect(
-                    find.byKey(const ValueKey('huddle-speaking-ring-agent')),
-                  )
-                  .bottom,
-              lessThan(selfRing.top),
+              find.descendant(
+                of: find.byKey(const ValueKey('huddle-participant-grid')),
+                matching: find.text('Pollen'),
+              ),
+              findsOneWidget,
             );
           },
         );
