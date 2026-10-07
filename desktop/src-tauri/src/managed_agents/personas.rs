@@ -312,6 +312,16 @@ pub fn validate_persona_deletion(
     Ok(())
 }
 
+pub fn persona_in_custom_team(
+    teams: &[crate::managed_agents::TeamRecord],
+    persona_id: &str,
+) -> bool {
+    teams
+        .iter()
+        .filter(|team| !team.is_builtin)
+        .any(|team| team.persona_ids.iter().any(|id| id == persona_id))
+}
+
 pub fn validate_persona_activation_change(
     persona: &AgentDefinition,
     active: bool,
