@@ -5,7 +5,6 @@ const _huddleAvatarRadius = 52.0;
 const _huddleAvatarFrameSize = 128.0;
 const _huddleSpeakingRingSize = 112.0;
 const _huddleParticipantLabelSpace = 28.0;
-const _huddleDenseParticipantThreshold = 6;
 
 final _huddleParticipantProfileUpdatesProvider = NotifierProvider.autoDispose
     .family<_HuddleParticipantProfileUpdates, int, String>(
@@ -892,18 +891,55 @@ class _HuddleCallHeader extends StatelessWidget {
             icon: const Icon(BuzzIcons.chevronDown, size: 32),
           ),
           const Spacer(),
-          _HuddleRoundControl(
-            key: const ValueKey('huddle-leave'),
-            tooltip: 'Leave Huddle',
-            icon: BuzzIcons.phoneOff,
-            foregroundColor: context.colors.error,
-            backgroundColor: context.colors.surfaceContainerHighest,
-            useHapticFeedback: true,
-            onPressed: isLeaving ? null : onLeave,
-          ),
+          _HuddleLeaveButton(onPressed: isLeaving ? null : onLeave),
         ],
       ),
     );
+  }
+}
+
+class _HuddleLeaveButton extends StatelessWidget {
+  const _HuddleLeaveButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Leave Huddle',
+      button: true,
+      enabled: onPressed != null,
+      onTap: onPressed == null ? null : _press,
+      child: ExcludeSemantics(
+        child: FilledButton.icon(
+          key: const ValueKey('huddle-leave'),
+          onPressed: onPressed == null ? null : _press,
+          style: FilledButton.styleFrom(
+            backgroundColor: context.colors.error,
+            foregroundColor: context.colors.onError,
+            disabledBackgroundColor: context.colors.error.withValues(
+              alpha: 0.4,
+            ),
+            disabledForegroundColor: context.colors.onError.withValues(
+              alpha: 0.6,
+            ),
+            minimumSize: const Size(96, 48),
+            padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
+            shape: const StadiumBorder(),
+            textStyle: context.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          icon: const Icon(BuzzIcons.phoneOff, size: 22),
+          label: const Text('Leave'),
+        ),
+      ),
+    );
+  }
+
+  void _press() {
+    unawaited(HapticFeedback.selectionClick());
+    onPressed!();
   }
 }
 

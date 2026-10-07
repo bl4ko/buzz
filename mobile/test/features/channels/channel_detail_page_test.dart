@@ -6726,9 +6726,24 @@ void main() {
         expect(route.transitionDuration, const Duration(milliseconds: 280));
         expect(find.byKey(const ValueKey('huddle-minimize')), findsOneWidget);
         expect(find.byKey(const ValueKey('huddle-leave')), findsOneWidget);
+        final leaveSize = tester.getSize(
+          find.byKey(const ValueKey('huddle-leave')),
+        );
+        expect(leaveSize.width, greaterThanOrEqualTo(44));
+        expect(leaveSize.height, greaterThanOrEqualTo(44));
+        final leaveColors = Theme.of(
+          tester.element(find.byKey(const ValueKey('huddle-leave'))),
+        ).colorScheme;
+        final leaveButton = tester.widget<FilledButton>(
+          find.byKey(const ValueKey('huddle-leave')),
+        );
         expect(
-          tester.getSize(find.byKey(const ValueKey('huddle-leave'))),
-          const Size.square(64),
+          leaveButton.style!.backgroundColor!.resolve(const {}),
+          leaveColors.error,
+        );
+        expect(
+          leaveButton.style!.foregroundColor!.resolve(const {}),
+          leaveColors.onError,
         );
         for (final key in [
           'huddle-speaker-toggle',
@@ -6777,49 +6792,24 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Huddle chat'), findsNothing);
         hapticCalls.clear();
-        expect(find.text('Miles'), findsNothing);
-        expect(find.text('Pollen'), findsNothing);
-        expect(find.text('You'), findsNothing);
+        expect(find.text('Miles'), findsOneWidget);
+        expect(find.text('Pollen'), findsOneWidget);
+        expect(find.text('You'), findsOneWidget);
         expect(
           find.byWidgetPredicate(
             (widget) => widget is Semantics && widget.properties.label == 'You',
           ),
           findsOneWidget,
         );
-        expect(
-          tester
-              .widget<Align>(
-                find.byKey(const ValueKey('huddle-remote-participant-group')),
-              )
-              .alignment,
-          const Alignment(0, 0.35),
+        final selfRing = tester.getRect(
+          find.byKey(const ValueKey('huddle-speaking-ring-self')),
         );
-        expect(
-          tester
-              .widget<Align>(
-                find.byKey(const ValueKey('huddle-local-participant')),
-              )
-              .alignment,
-          const Alignment(0, -0.35),
-        );
-        expect(
-          tester
-              .getCenter(
-                find.byKey(const ValueKey('huddle-speaking-ring-desktop')),
-              )
-              .dy,
-          lessThan(
-            tester
-                .getCenter(
-                  find.byKey(const ValueKey('huddle-speaking-ring-self')),
-                )
-                .dy,
-          ),
-        );
-        expect(
-          tester.getSize(find.byType(CircleAvatar).first),
-          const Size.square(104),
-        );
+        for (final pubkey in ['desktop', 'agent']) {
+          final ring = find.byKey(ValueKey('huddle-speaking-ring-$pubkey'));
+          if (ring.evaluate().isEmpty) continue;
+          expect(tester.getSize(ring), selfRing.size);
+          expect(tester.getRect(ring).top, selfRing.top);
+        }
         expect(find.byIcon(BuzzIcons.userRound), findsNWidgets(3));
         await tester.tap(
           find.byKey(const ValueKey('huddle-participant-avatar-desktop')),
@@ -6836,7 +6826,7 @@ void main() {
           findsOneWidget,
         );
         await tester.pumpAndSettle();
-        expect(find.text('Miles'), findsOneWidget);
+        expect(find.text('Miles'), findsNWidgets(2));
         expect(
           find.byWidgetPredicate(
             (widget) =>
@@ -6859,7 +6849,7 @@ void main() {
         );
         await tester.pump();
         expect(find.text('Miles'), findsNothing);
-        expect(find.text('Miles Davis'), findsOneWidget);
+        expect(find.text('Miles Davis'), findsNWidgets(2));
         expect(
           find.byWidgetPredicate(
             (widget) =>
@@ -6872,7 +6862,7 @@ void main() {
           const UserProfile(pubkey: 'desktop', displayName: 'Miles'),
         );
         await tester.pump();
-        expect(find.text('Pollen'), findsNothing);
+        expect(find.text('Pollen'), findsOneWidget);
         expect(find.byKey(const ValueKey('huddle-leave')), findsOneWidget);
         expect(
           find.byKey(const ValueKey('huddle-participant-label-desktop')),
@@ -6896,16 +6886,16 @@ void main() {
         await tester.pumpAndSettle();
         expect(hapticCalls, hasLength(2));
         expect(hapticCalls.last.arguments, 'HapticFeedbackType.selectionClick');
-        expect(find.text('Pollen'), findsOneWidget);
+        expect(find.text('Pollen'), findsNWidgets(2));
         await tester.tapAt(const Offset(8, 8));
         await tester.pumpAndSettle();
-        expect(find.text('Pollen'), findsNothing);
+        expect(find.text('Pollen'), findsOneWidget);
 
         await tester.tap(
           find.byKey(const ValueKey('huddle-participant-avatar-self')),
         );
         await tester.pumpAndSettle();
-        expect(find.text('You'), findsNothing);
+        expect(find.text('You'), findsOneWidget);
         expect(
           find.byKey(
             const ValueKey('huddle-participant-spotlight-avatar-self'),
@@ -7003,7 +6993,7 @@ void main() {
           matching: find.byIcon(BuzzIcons.phoneOff),
         );
         expect(tester.widget<Icon>(speakerIcon).size, 28);
-        expect(tester.widget<Icon>(leaveIcon).size, 28);
+        expect(tester.widget<Icon>(leaveIcon).size, 22);
         final inactiveSpeakerButton = tester.widget<IconButton>(
           find.descendant(
             of: find.byKey(const ValueKey('huddle-speaker-toggle')),
@@ -7363,20 +7353,37 @@ void main() {
         await tester.tap(find.widgetWithText(FilledButton, 'Join'));
         await tester.pumpAndSettle();
 
-        final remoteRegion = find.byKey(
-          const ValueKey('huddle-remote-participant-region'),
+        final selfRingSize = tester.getSize(
+          find.byKey(const ValueKey('huddle-speaking-ring-self')),
         );
-        expect(
-          tester.widget<FractionallySizedBox>(remoteRegion).heightFactor,
-          0.58,
-        );
+        final grid = find.byKey(const ValueKey('huddle-participant-grid'));
         expect(
           find.descendant(
-            of: remoteRegion,
+            of: grid,
             matching: find.byType(SingleChildScrollView),
           ),
           findsNothing,
         );
+        for (final pubkey in remotePubkeys.take(10)) {
+          expect(
+            tester.getSize(
+              find.byKey(ValueKey('huddle-speaking-ring-$pubkey')),
+            ),
+            selfRingSize,
+          );
+          expect(
+            tester
+                .getRect(find.byKey(ValueKey('huddle-speaking-ring-$pubkey')))
+                .bottom,
+            lessThanOrEqualTo(
+              tester
+                  .getRect(
+                    find.byKey(const ValueKey('huddle-participant-stage')),
+                  )
+                  .bottom,
+            ),
+          );
+        }
         for (final pubkey in remotePubkeys.take(10)) {
           expect(
             find.byKey(ValueKey('huddle-participant-avatar-$pubkey')),
@@ -7526,71 +7533,65 @@ void main() {
       },
     );
 
-    testWidgets(
-      'centers a solo participant and moves them when another person joins',
-      (tester) async {
-        const guestPubkey = 'guest';
-        final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        final transport = _HuddleTestTransport(
-          peers: const {2: HuddlePeer(pubkey: 'self', peerIndex: 2, epoch: 0)},
-        );
+    testWidgets('centers a solo participant and seats a joiner beside them', (
+      tester,
+    ) async {
+      const guestPubkey = 'guest';
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final transport = _HuddleTestTransport(
+        peers: const {2: HuddlePeer(pubkey: 'self', peerIndex: 2, epoch: 0)},
+      );
 
-        await tester.pumpWidget(
-          _buildTestable(
-            messages: [
-              _huddleMsg(
-                id: 'solo-call-motion',
-                kind: EventKind.huddleStarted,
-                pubkey: 'self',
-                createdAt: now,
-              ),
-            ],
-            users: const {
-              'self': UserProfile(pubkey: 'self', displayName: 'Self'),
-              guestPubkey: UserProfile(
-                pubkey: guestPubkey,
-                displayName: 'Guest',
-              ),
-            },
-            relayConfigNotifier: _HuddleRelayConfigNotifier(),
-            relaySessionNotifier: _ReconnectingRelaySession(),
-            huddleCurrentPubkey: 'self',
-            huddleMediaFactory: _HuddleTestMedia.new,
-            huddleTransportFactory: (_) => transport,
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: [
+            _huddleMsg(
+              id: 'solo-call-motion',
+              kind: EventKind.huddleStarted,
+              pubkey: 'self',
+              createdAt: now,
+            ),
+          ],
+          users: const {
+            'self': UserProfile(pubkey: 'self', displayName: 'Self'),
+            guestPubkey: UserProfile(pubkey: guestPubkey, displayName: 'Guest'),
+          },
+          relayConfigNotifier: _HuddleRelayConfigNotifier(),
+          relaySessionNotifier: _ReconnectingRelaySession(),
+          huddleCurrentPubkey: 'self',
+          huddleMediaFactory: _HuddleTestMedia.new,
+          huddleTransportFactory: (_) => transport,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await tester.pumpAndSettle();
 
-        final stage = find.byKey(const ValueKey('huddle-participant-stage'));
-        final localAvatar = find.byKey(
-          const ValueKey('huddle-speaking-ring-self'),
-        );
-        final soloCenter = tester.getCenter(localAvatar).dy;
-        expect(soloCenter, closeTo(tester.getCenter(stage).dy, 1));
+      final stage = find.byKey(const ValueKey('huddle-participant-stage'));
+      final localAvatar = find.byKey(
+        const ValueKey('huddle-speaking-ring-self'),
+      );
+      final soloCenter = tester.getCenter(localAvatar);
+      expect(soloCenter.dy, closeTo(tester.getCenter(stage).dy, 40));
+      expect(soloCenter.dx, closeTo(tester.getCenter(stage).dx, 1));
 
-        transport.emitPeerJoin(
-          const HuddlePeer(pubkey: guestPubkey, peerIndex: 1, epoch: 0),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 130));
-        final movingCenter = tester.getCenter(localAvatar).dy;
-        expect(movingCenter, greaterThan(soloCenter));
-
-        await tester.pumpAndSettle();
-        final occupiedCenter = tester.getCenter(localAvatar).dy;
-        expect(occupiedCenter, greaterThan(movingCenter));
-        expect(
-          tester
-              .getCenter(
-                find.byKey(const ValueKey('huddle-speaking-ring-$guestPubkey')),
-              )
-              .dy,
-          lessThan(occupiedCenter),
-        );
-      },
-    );
+      transport.emitPeerJoin(
+        const HuddlePeer(pubkey: guestPubkey, peerIndex: 1, epoch: 0),
+      );
+      await tester.pumpAndSettle();
+      final guestAvatar = find.byKey(
+        const ValueKey('huddle-speaking-ring-$guestPubkey'),
+      );
+      expect(tester.getSize(guestAvatar), tester.getSize(localAvatar));
+      expect(
+        tester.getCenter(guestAvatar).dy,
+        closeTo(tester.getCenter(localAvatar).dy, 0.01),
+      );
+      expect(
+        tester.getCenter(guestAvatar).dx,
+        greaterThan(tester.getCenter(localAvatar).dx),
+      );
+    });
 
     testWidgets(
       'shows admitted agents from membership before their audio peer joins',
@@ -7634,7 +7635,6 @@ void main() {
         final desktopAvatar = find.byKey(
           const ValueKey('huddle-speaking-ring-desktop'),
         );
-        final initialDesktopCenter = tester.getCenter(desktopAvatar);
 
         membersNotifier.replace([
           ChannelMember(
@@ -7660,14 +7660,9 @@ void main() {
           closeTo(0.72, 0.01),
         );
         await tester.pump(const Duration(milliseconds: 120));
-        final movingDesktopCenter = tester.getCenter(desktopAvatar);
         expect(
           tester.widget<Transform>(addedMemberScale).transform.storage[0],
           greaterThan(0.72),
-        );
-        expect(
-          (movingDesktopCenter - initialDesktopCenter).distance,
-          greaterThan(1),
         );
         expect(
           find.byKey(
@@ -7690,19 +7685,18 @@ void main() {
           find.byKey(const ValueKey('huddle-participant-spotlight')),
           findsOneWidget,
         );
-        expect(find.text('Added member'), findsOneWidget);
+        expect(find.text('Added member'), findsNWidgets(2));
         await tester.tapAt(const Offset(8, 8));
         await tester.pumpAndSettle();
 
         await tester.pumpAndSettle();
-        final settledDesktopCenter = tester.getCenter(desktopAvatar);
         expect(
-          (settledDesktopCenter - movingDesktopCenter).distance,
-          greaterThan(1),
-        );
-        expect(
-          (settledDesktopCenter - initialDesktopCenter).distance,
-          greaterThan(1),
+          tester.getSize(
+            find.byKey(
+              const ValueKey('huddle-speaking-ring-$addedMemberPubkey'),
+            ),
+          ),
+          tester.getSize(desktopAvatar),
         );
         expect(
           tester.widget<Transform>(addedMemberScale).transform.storage[0],

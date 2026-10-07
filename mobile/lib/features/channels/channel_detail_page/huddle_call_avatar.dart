@@ -257,6 +257,24 @@ class _HuddleCallAvatar extends HookConsumerWidget {
                   ),
                 ),
               ),
+              SizedBox(
+                height: _huddleParticipantLabelSpace,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: context.textTheme.labelLarge?.copyWith(
+                      color: active
+                          ? context.colors.primary
+                          : context.colors.onSurface,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
