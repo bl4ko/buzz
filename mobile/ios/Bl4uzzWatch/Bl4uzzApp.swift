@@ -22,6 +22,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
   @Published var busy = false
   @Published var reachable = false
   @Published var independent = false
+  @Published var synced = false
   private var generation = 0
   private var messageChannelID: String?
   private var relay: WatchRelay?
@@ -79,6 +80,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
     relay?.close()
     relay = nil
     independent = false
+    synced = false
     busy = false
     channels = []
     messages = []
@@ -113,6 +115,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
       }
       self.scope = scope
       self.channels = channels
+      self.synced = true
     }
   }
 
@@ -247,6 +250,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
         self.generation += 1
         self.busy = false
         self.channels = []
+        self.synced = false
         self.messages = []
         self.messageChannelID = nil
         self.scope = newScope
@@ -273,12 +277,14 @@ struct Bl4uzzApp: App {
           }
           if store.independent {
             Label("Direct connection", systemImage: "wifi").font(.footnote)
-          } else {
+          } else if !store.synced {
             Button("Connect without iPhone", systemImage: "applewatch") { confirmSetup = true }
               .disabled(store.busy || !store.reachable)
           }
-          Button("Refresh", systemImage: "arrow.clockwise") { store.refresh() }
-            .disabled(store.busy)
+          if !store.synced || store.error != nil {
+            Button("Refresh", systemImage: "arrow.clockwise") { store.refresh() }
+              .disabled(store.busy)
+          }
           if store.busy { ProgressView() }
           ForEach(store.channels) { channel in
             NavigationLink(channel.name) {
@@ -289,11 +295,28 @@ struct Bl4uzzApp: App {
           if (store.reachable || store.independent) && store.channels.isEmpty && !store.busy && store.error == nil {
             Text("No channels. Join a channel on your iPhone.")
           }
-          if store.independent {
-            Button("Sign out of watch", role: .destructive) { confirmSignOut = true }
-          }
         }
         .navigationTitle("Bl4uzz")
+        .toolbar {
+          ToolbarItem(placement: .topBarTrailing) {
+            NavigationLink {
+              List {
+                Button("Refresh", systemImage: "arrow.clockwise") { store.refresh() }
+                  .disabled(store.busy)
+                if !store.independent {
+                  Button("Connect without iPhone", systemImage: "applewatch") { confirmSetup = true }
+                    .disabled(store.busy || !store.reachable)
+                } else {
+                  Button("Sign out of watch", role: .destructive) { confirmSignOut = true }
+                }
+              }
+              .navigationTitle("Settings")
+            } label: {
+              Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("Settings")
+          }
+        }
         .onAppear { store.showChannels() }
       }
       .onChange(of: scenePhase) { _, phase in
