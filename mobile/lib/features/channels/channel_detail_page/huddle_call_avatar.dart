@@ -182,8 +182,8 @@ class _HuddleCallAvatar extends HookConsumerWidget {
                         child: Transform.scale(
                           key: ValueKey('huddle-speaking-halo-scale-$pubkey'),
                           scale: reducedMotion
-                              ? (active ? 1.15 : 1)
-                              : 1 + animatedHaloLevel * 1.55,
+                              ? 1
+                              : 1 + animatedHaloLevel * 0.12,
                           child: Container(
                             key: ValueKey('huddle-speaking-halo-$pubkey'),
                             width: speakingRingSize,
@@ -197,8 +197,12 @@ class _HuddleCallAvatar extends HookConsumerWidget {
                                       speakingRingSize * 0.3,
                                     )
                                   : null,
+                              border: Border.all(
+                                color: context.colors.primary,
+                                width: 3 * scale,
+                              ),
                               color: context.colors.primary.withValues(
-                                alpha: 0.07,
+                                alpha: 0.12,
                               ),
                             ),
                           ),

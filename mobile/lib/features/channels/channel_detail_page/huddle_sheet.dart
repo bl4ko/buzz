@@ -916,13 +916,11 @@ class _HuddleLeaveButton extends StatelessWidget {
           onPressed: onPressed == null ? null : _press,
           style: FilledButton.styleFrom(
             backgroundColor: context.colors.error,
-            foregroundColor: context.colors.onError,
+            foregroundColor: Colors.white,
             disabledBackgroundColor: context.colors.error.withValues(
               alpha: 0.4,
             ),
-            disabledForegroundColor: context.colors.onError.withValues(
-              alpha: 0.6,
-            ),
+            disabledForegroundColor: Colors.white.withValues(alpha: 0.6),
             minimumSize: const Size(96, 48),
             padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
             shape: const StadiumBorder(),
