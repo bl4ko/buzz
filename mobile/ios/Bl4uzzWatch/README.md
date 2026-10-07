@@ -2,7 +2,9 @@
 
 The SwiftUI watch app is part of the iPhone app archive. Its bundle ID is `com.bl4ko.buzz.watchkitapp`. It requires watchOS 10 or later.
 
-For independent use, open Bl4uzz on the paired iPhone and sign in to the community. On the watch, tap **Connect without iPhone**, then **Connect**. This step copies the current signing identity to the watch Keychain. After setup, the watch reads and sends through signed HTTPS requests over its own Wi-Fi or cellular connection. The paired iPhone can be unavailable. Cellular use requires a watch with cellular service.
+For independent use, open Bl4uzz on the paired iPhone and sign in to the community. On the watch, open **Settings** with the gear button, tap **Connect without iPhone**, then **Connect**. This step copies the current signing identity to the watch Keychain. After setup, the watch reads and sends through signed HTTPS requests over its own Wi-Fi or cellular connection. The paired iPhone can be unavailable. Cellular use requires a watch with cellular service.
+
+The channel screen refreshes when it opens. After a successful sync, **Refresh** and **Connect without iPhone** disappear from the channel list. Both remain in **Settings**. A failed read shows **Refresh** again. Account changes restore setup controls. **Sign out of watch** is in **Settings** after independent setup.
 
 The signing key stays in the watch Keychain with `WhenUnlockedThisDeviceOnly` access. It is not stored in preferences, application context, or logs. **Sign out of watch** removes the saved identity without signing out the iPhone. An account change, iPhone sign-out, or age restriction clears watch sign-in when the watch receives the new iPhone state. A disconnected watch cannot receive that state. To use another community, repeat setup with the iPhone.
 
