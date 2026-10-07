@@ -347,7 +347,8 @@ void huddleThreadTests() {
           expect(nativeCalls.contains('play'), threaded);
 
           await tester.tap(find.byKey(const ValueKey('huddle-chat')));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 1));
           expect(
             find.byKey(const ValueKey('huddle-chat-message-agent-final')),
             threaded ? findsOneWidget : findsNothing,

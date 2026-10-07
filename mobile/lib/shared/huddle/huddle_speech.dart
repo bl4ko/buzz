@@ -20,6 +20,7 @@ final class HuddleSpeech {
   final Duration firstCue;
   final Duration nextCue;
   final ValueNotifier<bool> agentSpeaking = ValueNotifier(false);
+  final ValueNotifier<bool> userSpeaking = ValueNotifier(false);
   void Function(String)? onTranscript;
   void Function(String)? onError;
   void Function(String)? onStatus;
@@ -59,12 +60,14 @@ final class HuddleSpeech {
       _clips.add(values!['audio'] as Uint8List);
       _turnTimer?.cancel();
       _turnTimer = Timer(turnEnd, _flush);
+      _syncUserSpeaking();
       await _drain();
     } else if (call.method == 'speaking' && values?['speaking'] is bool) {
       _speakingSince = values!['speaking'] as bool
           ? _speakingSince ?? DateTime.now()
           : null;
       _flush();
+      _syncUserSpeaking();
     } else if (call.method == 'error') {
       final message = values?['message'];
       if (message is String && message.trim().isNotEmpty) {
@@ -115,6 +118,7 @@ final class HuddleSpeech {
   Future<void> _drain() async {
     if (_transcribing) return;
     _transcribing = true;
+    _syncUserSpeaking();
     final generation = _generation;
     var failed = false;
     try {
@@ -139,11 +143,19 @@ final class HuddleSpeech {
       }
     } finally {
       _transcribing = false;
+      _syncUserSpeaking();
     }
     if (!_active || generation != _generation) return;
     if (!failed) onStatus?.call('Listening on this device');
     _flush();
   }
+
+  void _syncUserSpeaking() => userSpeaking.value =
+      _active &&
+      (_speakingSince != null ||
+          _transcribing ||
+          _clips.isNotEmpty ||
+          _heard.isNotEmpty);
 
   Duration get _held => _speakingSince == null
       ? Duration.zero
@@ -162,6 +174,7 @@ final class HuddleSpeech {
     }
     final text = _heard;
     _heard = '';
+    _syncUserSpeaking();
     onTranscript?.call(text);
   }
 
@@ -176,6 +189,7 @@ final class HuddleSpeech {
     _channel.setMethodCallHandler(_handleCall);
     await _channel.invokeMethod<void>('start', {'agentName': agentName});
     _active = true;
+    _syncUserSpeaking();
   }
 
   Future<void> stop() {
@@ -186,6 +200,7 @@ final class HuddleSpeech {
     _clips.clear();
     _heard = '';
     _speakingSince = null;
+    _syncUserSpeaking();
     if (!identical(_owner, this)) return Future.value();
     return _channel.invokeMethod<void>('stop');
   }
