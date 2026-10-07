@@ -112,6 +112,8 @@ class _Messages extends ChannelMessagesNotifier {
         content: '🐝' * 1000,
         tags: [
           ['h', channelId],
+          ['p', 'b' * 64],
+          ['p', 'c' * 64],
         ],
         sig: '',
       ),
@@ -287,6 +289,7 @@ void main() {
       expect(messages, hasLength(20));
       expect(messages.any((message) => (message as Map)['id'] == '24'), false);
       expect((messages.first as Map)['text'], '🐝' * 300);
+      expect((messages.first as Map)['notified'], ['cccccccc']);
       expect((messages.last as Map)['text'], 'Edited');
       expect(history.keys, unorderedEquals(['scope', 'messages']));
       messageSource.clearHistory(loaded: false);
