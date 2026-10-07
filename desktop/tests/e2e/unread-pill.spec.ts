@@ -86,6 +86,23 @@ async function emitUnreadMessages(
   }
 }
 
+// A channel that was never opened has no read frontier, so it opens at the
+// bottom and keeps the pill instead of jumping to its oldest unread message.
+async function emitNeverReadMessages(
+  page: import("@playwright/test").Page,
+  count: number,
+) {
+  const base = Math.floor(Date.now() / 1000) - 600;
+  for (let index = 0; index < count; index += 1) {
+    await emitMockMessage(
+      page,
+      "random",
+      `Never read message ${index + 1}`,
+      base + index,
+    );
+  }
+}
+
 // Scroll the timeline up so the viewport is no longer pinned to the bottom.
 // The pill auto-dismisses once the user reaches the bottom of the timeline, so
 // it only stays rendered while scrolled up. Scrolling part-way (rather than to
@@ -103,19 +120,13 @@ test.describe("unread pill & divider", () => {
     await installMockBridge(page);
     await page.goto("/");
 
-    // Open general, then switch to random so general becomes inactive
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await waitForMockLiveSubscription(page, "general");
+
+    await emitNeverReadMessages(page, 20);
 
     await page.getByTestId("channel-random").click();
     await expect(page.getByTestId("chat-title")).toHaveText("random");
-
-    await emitUnreadMessages(page, 20);
-
-    // Switch back to general — pill should appear.
-    await page.getByTestId("channel-general").click();
-    await expect(page.getByTestId("chat-title")).toHaveText("general");
 
     // Scroll up so the unreads sit below the fold: the pill is the
     // "jump to oldest unread" affordance and only stays on screen while the
@@ -177,15 +188,11 @@ test.describe("unread pill & divider", () => {
 
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await waitForMockLiveSubscription(page, "general");
+
+    await emitNeverReadMessages(page, 20);
 
     await page.getByTestId("channel-random").click();
     await expect(page.getByTestId("chat-title")).toHaveText("random");
-
-    await emitUnreadMessages(page, 20);
-
-    await page.getByTestId("channel-general").click();
-    await expect(page.getByTestId("chat-title")).toHaveText("general");
 
     // Scroll up so the pill is showing, matching scenario 01's starting state.
     await scrollTimelineUp(page);
@@ -198,9 +205,6 @@ test.describe("unread pill & divider", () => {
 
     // Pill should be dismissed
     await expect(pill).toHaveCount(0);
-
-    const divider = page.getByTestId("message-unread-divider");
-    await expect(divider).toBeVisible();
   });
 
   test("04-mark-unread-suppresses-pill", async ({ page }) => {
@@ -231,5 +235,40 @@ test.describe("unread pill & divider", () => {
     // Pill and divider should NOT appear (suppressed for forced-unread)
     await expect(page.getByTestId("message-unread-pill")).toHaveCount(0);
     await expect(page.getByTestId("message-unread-divider")).toHaveCount(0);
+  });
+
+  test("05-open-jumps-to-oldest-unread", async ({ page }) => {
+    await installMockBridge(page);
+    await page.goto("/");
+
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general");
+    await waitForMockLiveSubscription(page, "general");
+
+    await page.getByTestId("channel-random").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("random");
+
+    await emitUnreadMessages(page, 20);
+
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general");
+
+    const oldestUnread = page.getByText("Unread message 1", { exact: true });
+    await expect(oldestUnread).toBeInViewport();
+    await expect(
+      page
+        .locator("[class*=route-target-highlight-fade]")
+        .filter({ has: oldestUnread }),
+    ).toHaveCount(1);
+    await expect(page.getByTestId("message-unread-divider")).toBeInViewport();
+    await expect(page.getByTestId("message-unread-pill")).toHaveCount(0);
+
+    const { scrollTop, maxScrollTop } = await page
+      .getByTestId("message-timeline")
+      .evaluate((el) => ({
+        scrollTop: el.scrollTop,
+        maxScrollTop: el.scrollHeight - el.clientHeight,
+      }));
+    expect(scrollTop).toBeLessThan(maxScrollTop - 32);
   });
 });

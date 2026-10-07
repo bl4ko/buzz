@@ -125,6 +125,7 @@ type MessageTimelineProps = {
   firstUnreadMessageId?: string | null;
   /** Count of unread top-level messages at channel open. */
   unreadCount?: number;
+  openUnreadTargetId?: string | null;
   /** Per-thread unread counts keyed by thread root id. */
   threadUnreadCounts?: ReadonlyMap<string, number>;
 };
@@ -214,6 +215,7 @@ const MessageTimelineBase = React.forwardRef<
     splitThreadPanelOpen = false,
     firstUnreadMessageId = null,
     unreadCount = 0,
+    openUnreadTargetId = null,
     threadUnreadCounts,
   }: MessageTimelineProps,
   ref,
@@ -311,6 +313,29 @@ const MessageTimelineBase = React.forwardRef<
   });
   const showTimelineSkeleton = timelineBodySurface === "skeleton";
   const showTimelineError = timelineBodySurface === "error";
+  const timelineChannelId = channelId ?? null;
+  const [openUnreadJump, setOpenUnreadJump] = React.useState<{
+    channelId: string | null;
+    messageId: string | null;
+    jumped: boolean;
+  } | null>(null);
+  if (
+    !showTimelineSkeleton &&
+    openUnreadJump?.channelId !== timelineChannelId
+  ) {
+    setOpenUnreadJump({
+      channelId: timelineChannelId,
+      messageId:
+        targetMessageId || searchActiveMessageId ? null : openUnreadTargetId,
+      jumped: false,
+    });
+  }
+  const isOpenUnreadJumpChannel =
+    openUnreadJump?.channelId === timelineChannelId;
+  const pendingOpenUnreadTargetId =
+    isOpenUnreadJumpChannel && !openUnreadJump.jumped
+      ? openUnreadJump.messageId
+      : null;
   const [isSemanticallyAtBottom, setIsSemanticallyAtBottom] =
     React.useState(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset semantic tail state when the active channel changes
@@ -516,7 +541,8 @@ const MessageTimelineBase = React.forwardRef<
     !isUnreadPillDismissed &&
     unreadCount > 0 &&
     firstUnreadMessageId !== null &&
-    !showTimelineSkeleton;
+    !showTimelineSkeleton &&
+    !(isOpenUnreadJumpChannel && openUnreadJump.messageId);
   if (showUnreadPill) hasShownPillRef.current = true;
   const handleJumpToOldestUnread = React.useCallback(() => {
     setIsUnreadPillDismissed(true);
@@ -530,11 +556,11 @@ const MessageTimelineBase = React.forwardRef<
   // the match) and, when virtualized, converges on the target through the index
   // model — the row may be windowed out of the DOM.
   const prevSearchActiveRef = React.useRef<string | null>(null);
-  const pendingSearchTargetRef = React.useRef<string | null>(null);
+  const pendingJumpTargetRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (showTimelineSkeleton) return;
-    if (!searchActiveMessageId) {
-      pendingSearchTargetRef.current = null;
+    if (!searchActiveMessageId && prevSearchActiveRef.current) {
+      pendingJumpTargetRef.current = null;
     }
     if (
       !searchActiveMessageId ||
@@ -543,16 +569,33 @@ const MessageTimelineBase = React.forwardRef<
       prevSearchActiveRef.current = searchActiveMessageId;
       return;
     }
-    pendingSearchTargetRef.current = null;
+    pendingJumpTargetRef.current = null;
     prevSearchActiveRef.current = searchActiveMessageId;
     if (!jumpToMessage(searchActiveMessageId, { behavior: "smooth" })) {
-      pendingSearchTargetRef.current = searchActiveMessageId;
+      pendingJumpTargetRef.current = searchActiveMessageId;
     }
   }, [jumpToMessage, searchActiveMessageId, showTimelineSkeleton]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: drop a jump left from the previous channel
+  React.useEffect(() => {
+    pendingJumpTargetRef.current = null;
+  }, [channelId]);
+
+  React.useEffect(() => {
+    if (!pendingOpenUnreadTargetId || !timelineVirtualizerApi) return;
+    // rAF: run after the mount bottom pin
+    const frame = requestAnimationFrame(() => {
+      setOpenUnreadJump((jump) => jump && { ...jump, jumped: true });
+      if (!jumpToMessage(pendingOpenUnreadTargetId, { behavior: "auto" })) {
+        pendingJumpTargetRef.current = pendingOpenUnreadTargetId;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [jumpToMessage, pendingOpenUnreadTargetId, timelineVirtualizerApi]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: deferredMessages and virtualizerRenderVersion are intentional retry triggers — a search hit may be spliced into messages asynchronously, and in virtualized mode a phase-1 index jump only realizes the row; retry when the rendered range changes so the DOM-visible path can center and highlight it.
   React.useEffect(() => {
-    const target = pendingSearchTargetRef.current;
+    const target = pendingJumpTargetRef.current;
     if (!target || showTimelineSkeleton) return;
     if (
       useTimelineVirtualizer &&
@@ -567,7 +610,7 @@ const MessageTimelineBase = React.forwardRef<
       return;
     }
     if (jumpToMessage(target, { behavior: "auto" })) {
-      pendingSearchTargetRef.current = null;
+      pendingJumpTargetRef.current = null;
     }
   }, [
     deferredMessages,

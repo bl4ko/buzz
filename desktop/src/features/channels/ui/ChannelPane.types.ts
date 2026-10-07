@@ -82,6 +82,7 @@ export type ChannelPaneProps = {
   onRetryHuddleThreadReplies?: () => void;
   firstUnreadMessageId?: string | null;
   unreadCount?: number;
+  openUnreadTargetId?: string | null;
   canResetThreadPanelWidth: boolean;
   onCancelEdit?: () => void;
   onCancelThreadReply: () => void;

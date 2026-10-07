@@ -453,6 +453,7 @@ export function useAnchoredScroll({
             if (!virtualScrollToMessage(messageId, { behavior: "auto" })) {
               return false;
             }
+            virtualizerAtBottomRef.current = false;
             anchorRef.current = { kind: "message", messageId, topOffset: 0 };
             setIsAtBottom(false);
             return false;
@@ -473,6 +474,8 @@ export function useAnchoredScroll({
           })
         ) {
           return false;
+        } else {
+          virtualizerAtBottomRef.current = false;
         }
         anchorRef.current = { kind: "message", messageId, topOffset: 0 };
         setIsAtBottom(false);
