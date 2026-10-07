@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, sign, X509Certificate } from "node:crypto";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -385,7 +386,8 @@ async function release(build, upload) {
         "--check-signature",
         path.join(temporary, "Buzz-Desktop.pkg"),
       ]);
-      renameSync(path.join(temporary, "Buzz-Desktop.pkg"), pkg);
+      copyFileSync(path.join(temporary, "Buzz-Desktop.pkg"), `${pkg}.partial`);
+      renameSync(`${pkg}.partial`, pkg);
       writeFileSync(
         path.join(directory, "release-checks.json"),
         `${JSON.stringify(
