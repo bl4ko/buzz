@@ -447,7 +447,7 @@ async fn speech_inner(
     let request: Speech = serde_json::from_slice(&body).map_err(|_| {
         api_error(StatusCode::BAD_REQUEST, "invalid speech request").into_response()
     })?;
-    let voice = request.voice.as_deref().unwrap_or("am_michael");
+    let voice = request.voice.as_deref().unwrap_or("af_heart");
     if request.text.trim().is_empty()
         || request.text.chars().count() > 2000
         || !VOICES.contains(&voice)
