@@ -24,7 +24,7 @@ dependencies:
   mobile_scanner: ^7.0.0
   shared_preferences: ^2.5.5
   web_socket_channel: ^3.0.1
-  connectivity_plus: ^7.0.0
+  connectivity_plus: ^7.3.2
   nostr: ^2.0.0
   buzz_secp256k1:
     path: packages/buzz_secp256k1
