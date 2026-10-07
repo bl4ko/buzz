@@ -180,6 +180,46 @@ async fn remote_owned_discovery_and_membership_do_not_require_local_records() {
         "latest unsupported policy cannot fall back to an older allow"
     );
 
+    let hermes = Keys::generate();
+    let hermes_key = hermes.public_key().to_hex();
+    let hermes_auth =
+        buzz_sdk_pkg::nip_oa::compute_auth_tag(&owner, &hermes.public_key(), "").unwrap();
+    let hermes_auth: Vec<String> = serde_json::from_str(&hermes_auth).unwrap();
+    let hermes_profile = EventBuilder::new(Kind::Metadata, r#"{"display_name":"Hermes"}"#)
+        .tags([Tag::parse(hermes_auth).unwrap()])
+        .sign_with_keys(&hermes)
+        .unwrap();
+    let hermes_membership = EventBuilder::new(Kind::Custom(39002), "")
+        .tags([
+            Tag::parse(["d", "general"]).unwrap(),
+            Tag::parse(["p", &owner_key, "", "member"]).unwrap(),
+            Tag::parse(["p", &hermes_key, "", "member"]).unwrap(),
+        ])
+        .custom_created_at(nostr::Timestamp::from(
+            nostr::Timestamp::now().as_secs() + 3,
+        ))
+        .sign_with_keys(&relay)
+        .unwrap();
+    events
+        .lock()
+        .unwrap()
+        .extend([hermes_profile, hermes_membership]);
+    let attested = list_relay_agents_for_state(&state).await.unwrap();
+    assert_eq!(attested.len(), 1, "a denying policy still wins");
+    assert_eq!(attested[0].pubkey, hermes_key);
+    assert_eq!(attested[0].name, "Hermes");
+    assert_eq!(
+        attested[0].respond_to,
+        Some(crate::managed_agents::RespondTo::OwnerOnly)
+    );
+    assert_eq!(attested[0].channel_ids, vec!["general".to_string()]);
+    let requested = std::collections::HashSet::from([hermes_key.clone()]);
+    let admitted = list_relay_agents_for_selection(&state, Some(&requested), Some("general"))
+        .await
+        .unwrap();
+    assert_eq!(admitted.len(), 1);
+    assert_eq!(admitted[0].channel_ids, vec!["general".to_string()]);
+
     assert!(queries
         .lock()
         .unwrap()

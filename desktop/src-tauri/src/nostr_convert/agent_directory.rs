@@ -4,7 +4,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use nostr::Event;
 
-use crate::managed_agents::{agent_events::managed_agent_content_from_event, RelayAgentInfo};
+use crate::managed_agents::{
+    agent_events::managed_agent_content_from_event, RelayAgentInfo, RespondTo,
+};
 
 use super::{agents_from_events, first_tag_value, profile_valid_oa_owner_pubkey, tags_named};
 
@@ -102,8 +104,7 @@ pub fn relay_agents_from_directory_events(
     agents
 }
 
-/// Resolve each agent's owner from its latest signed NIP-OA profile.
-pub fn verified_agent_owners_from_profiles(events: &[Event]) -> HashMap<String, String> {
+fn latest_verified_owned_profiles(events: &[Event]) -> HashMap<String, (String, &Event)> {
     let mut latest_profiles: HashMap<String, &Event> = HashMap::new();
     for profile in events {
         let agent_pubkey = profile.pubkey.to_hex();
@@ -120,7 +121,48 @@ pub fn verified_agent_owners_from_profiles(events: &[Event]) -> HashMap<String, 
             if profile.kind != nostr::Kind::Metadata || profile.verify().is_err() {
                 return None;
             }
-            profile_valid_oa_owner_pubkey(profile).map(|owner| (agent_pubkey, owner))
+            profile_valid_oa_owner_pubkey(profile).map(|owner| (agent_pubkey, (owner, profile)))
+        })
+        .collect()
+}
+
+/// Resolve each agent's owner from its latest signed NIP-OA profile.
+pub fn verified_agent_owners_from_profiles(events: &[Event]) -> HashMap<String, String> {
+    latest_verified_owned_profiles(events)
+        .into_iter()
+        .map(|(agent_pubkey, (owner, _))| (agent_pubkey, owner))
+        .collect()
+}
+
+pub fn owner_attested_relay_agents(
+    profile_events: &[Event],
+    owner_pubkey: &str,
+) -> Vec<RelayAgentInfo> {
+    latest_verified_owned_profiles(profile_events)
+        .into_iter()
+        .filter(|(_, (owner, _))| owner == owner_pubkey)
+        .map(|(pubkey, (owner, profile))| {
+            let content: serde_json::Value =
+                serde_json::from_str(&profile.content).unwrap_or_default();
+            let name = ["display_name", "name"]
+                .into_iter()
+                .find_map(|key| {
+                    let value = content.get(key)?.as_str()?.trim();
+                    (!value.is_empty()).then(|| value.to_string())
+                })
+                .unwrap_or_else(|| pubkey.clone());
+            RelayAgentInfo {
+                pubkey,
+                owner_pubkey: Some(owner),
+                name,
+                agent_type: "agent".to_string(),
+                channels: Vec::new(),
+                channel_ids: Vec::new(),
+                capabilities: Vec::new(),
+                status: "unknown".to_string(),
+                respond_to: Some(RespondTo::OwnerOnly),
+                respond_to_allowlist: Vec::new(),
+            }
         })
         .collect()
 }
@@ -194,24 +236,7 @@ pub fn member_agent_channel_ids_from_events(
     relay_pubkey: &str,
     known_agent_pubkeys: &std::collections::HashSet<String>,
 ) -> HashMap<String, Vec<String>> {
-    let mut latest: HashMap<String, &Event> = HashMap::new();
-    for event in events {
-        if event.kind != nostr::Kind::Custom(39002)
-            || !event.pubkey.to_hex().eq_ignore_ascii_case(relay_pubkey)
-            || event.verify().is_err()
-        {
-            continue;
-        }
-        let Some(channel_id) = first_tag_value(event, "d") else {
-            continue;
-        };
-        if latest
-            .get(channel_id)
-            .is_none_or(|previous| event_is_newer(event, previous))
-        {
-            latest.insert(channel_id.to_string(), event);
-        }
-    }
+    let latest = latest_relay_memberships(events, relay_pubkey);
     let mut channel_ids: HashMap<String, BTreeSet<String>> = HashMap::new();
     for (channel_id, event) in latest {
         for tag in tags_named(event, "p") {
@@ -238,4 +263,41 @@ pub fn member_agent_channel_ids_from_events(
         .into_iter()
         .map(|(pubkey, ids)| (pubkey, ids.into_iter().collect()))
         .collect()
+}
+
+pub fn member_pubkeys_from_events(
+    events: &[Event],
+    relay_pubkey: &str,
+) -> std::collections::HashSet<String> {
+    latest_relay_memberships(events, relay_pubkey)
+        .values()
+        .flat_map(|event| tags_named(event, "p"))
+        .filter_map(|tag| nostr::PublicKey::from_hex(tag.get(1)?).ok())
+        .map(|pubkey| pubkey.to_hex())
+        .collect()
+}
+
+fn latest_relay_memberships<'a>(
+    events: &'a [Event],
+    relay_pubkey: &str,
+) -> HashMap<String, &'a Event> {
+    let mut latest: HashMap<String, &Event> = HashMap::new();
+    for event in events {
+        if event.kind != nostr::Kind::Custom(39002)
+            || !event.pubkey.to_hex().eq_ignore_ascii_case(relay_pubkey)
+            || event.verify().is_err()
+        {
+            continue;
+        }
+        let Some(channel_id) = first_tag_value(event, "d") else {
+            continue;
+        };
+        if latest
+            .get(channel_id)
+            .is_none_or(|previous| event_is_newer(event, previous))
+        {
+            latest.insert(channel_id.to_string(), event);
+        }
+    }
+    latest
 }

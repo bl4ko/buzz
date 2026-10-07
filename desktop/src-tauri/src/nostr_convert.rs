@@ -522,8 +522,8 @@ pub fn agents_from_events(events: &[Event]) -> Value {
 mod agent_directory;
 pub use agent_directory::{
     managed_agent_pubkeys_from_events, member_agent_channel_ids_from_events,
-    relay_agents_from_directory_events, relay_agents_from_managed_agent_events,
-    verified_agent_owners_from_profiles,
+    member_pubkeys_from_events, owner_attested_relay_agents, relay_agents_from_directory_events,
+    relay_agents_from_managed_agent_events, verified_agent_owners_from_profiles,
 };
 
 // ── kind:13534 (relay membership list) ──────────────────────────────────────

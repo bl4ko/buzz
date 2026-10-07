@@ -175,7 +175,7 @@ async fn list_relay_agents_for_selection(
     // and run outside the semaphore, so the targeted path's ceiling is the
     // batches plus two.
     let semaphore = tokio::sync::Semaphore::new(RELAY_DIRECTORY_MAX_CONCURRENCY);
-    let (member_agent_channel_ids, candidate_pubkeys, directory_events, profile_events) =
+    let (owned_candidates, membership_events, candidate_pubkeys, directory_events, profile_events) =
         if let Some(requested_pubkeys) = requested_pubkeys {
             // Targeted path: the caller already names the candidates, so
             // neither the owned-agent read nor the membership read gates the
@@ -205,15 +205,9 @@ async fn list_relay_agents_for_selection(
                     "relay agent owner-profile query failed",
                 ),
             )?;
-            let owned_candidates = nostr_convert::managed_agent_pubkeys_from_events(&owned_events);
-            let mut member_agent_channel_ids = nostr_convert::member_agent_channel_ids_from_events(
-                &membership_events,
-                &relay_pubkey,
-                &owned_candidates,
-            );
-            member_agent_channel_ids.retain(|pubkey, _| requested_pubkeys.contains(pubkey));
             (
-                member_agent_channel_ids,
+                nostr_convert::managed_agent_pubkeys_from_events(&owned_events),
+                membership_events,
                 candidate_pubkeys,
                 directory_events,
                 profile_events,
@@ -226,18 +220,14 @@ async fn list_relay_agents_for_selection(
             let owned_events = owned_query.await?;
             let membership_events = membership_query.await?;
             let owned_candidates = nostr_convert::managed_agent_pubkeys_from_events(&owned_events);
-            let member_agent_channel_ids = nostr_convert::member_agent_channel_ids_from_events(
-                &membership_events,
-                &relay_pubkey,
-                &owned_candidates,
-            );
-            let candidate_pubkeys: Vec<String> = member_agent_channel_ids
-                .keys()
-                .cloned()
-                .chain(owned_candidates)
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
+            // ponytail: profiles for every co-member, not just bot roles; restore bot-only discovery if communities grow large
+            let candidate_pubkeys: Vec<String> =
+                nostr_convert::member_pubkeys_from_events(&membership_events, &relay_pubkey)
+                    .into_iter()
+                    .chain(owned_candidates.iter().cloned())
+                    .collect::<std::collections::HashSet<_>>()
+                    .into_iter()
+                    .collect();
             if candidate_pubkeys.is_empty() {
                 return Ok(Vec::new());
             }
@@ -258,7 +248,8 @@ async fn list_relay_agents_for_selection(
                 ),
             )?;
             (
-                member_agent_channel_ids,
+                owned_candidates,
+                membership_events,
                 candidate_pubkeys,
                 directory_events,
                 profile_events,
@@ -279,11 +270,34 @@ async fn list_relay_agents_for_selection(
     )
     .await?;
 
+    let attested_agents =
+        nostr_convert::owner_attested_relay_agents(&profile_events, &viewer_pubkey);
+    let known_agent_pubkeys = owned_candidates
+        .into_iter()
+        .chain(attested_agents.iter().map(|agent| agent.pubkey.clone()))
+        .collect();
+    let mut member_agent_channel_ids = nostr_convert::member_agent_channel_ids_from_events(
+        &membership_events,
+        &relay_pubkey,
+        &known_agent_pubkeys,
+    );
+    if let Some(requested_pubkeys) = requested_pubkeys {
+        member_agent_channel_ids.retain(|pubkey, _| requested_pubkeys.contains(pubkey));
+    }
+
     let mut agents = nostr_convert::relay_agents_from_directory_events(
         &directory_events,
         &managed_agent_events,
         &profile_events,
     );
+    let policy_pubkeys = nostr_convert::managed_agent_pubkeys_from_events(&managed_agent_events);
+    for agent in attested_agents {
+        if !policy_pubkeys.contains(&agent.pubkey)
+            && !agents.iter().any(|known| known.pubkey == agent.pubkey)
+        {
+            agents.push(agent);
+        }
+    }
     // Marked builds reject legacy directory records that lack a verified
     // NIP-OA owner, but do not require that owner to equal the viewer. The
     // verified owner's signed respond_to policy remains the authorization
