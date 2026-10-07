@@ -8105,7 +8105,7 @@ void main() {
         );
         expect(
           leaveButton.style!.foregroundColor!.resolve(const {}),
-          leaveColors.onError,
+          Colors.white,
         );
         for (final key in [
           'huddle-speaker-toggle',
@@ -8293,8 +8293,12 @@ void main() {
         );
         final speakingHaloDecoration =
             speakingHalo.decoration! as ShapeDecoration;
-        expect(speakingHaloDecoration.shape, const CircleBorder());
-        expect(speakingHaloDecoration.color?.a, closeTo(0.07, 0.001));
+        expect(speakingHaloDecoration.shape, isA<CircleBorder>());
+        expect(
+          (speakingHaloDecoration.shape as CircleBorder).side.width,
+          greaterThan(0),
+        );
+        expect(speakingHaloDecoration.color?.a, closeTo(0.12, 0.001));
         await tester.pump(const Duration(milliseconds: 70));
         final mediumScaleMidTransition = tester
             .widget<Transform>(
@@ -8304,7 +8308,7 @@ void main() {
             .storage
             .first;
         expect(mediumScaleMidTransition, greaterThan(1));
-        expect(mediumScaleMidTransition, lessThan(1.772));
+        expect(mediumScaleMidTransition, lessThan(1.06));
         await tester.pump(const Duration(milliseconds: 70));
         final mediumSpeakingScale = tester
             .widget<Transform>(
@@ -8313,7 +8317,7 @@ void main() {
             .transform
             .storage
             .first;
-        expect(mediumSpeakingScale, closeTo(1.772, 0.01));
+        expect(mediumSpeakingScale, closeTo(1.06, 0.002));
 
         transport.emitRemoteAudio(levelDbov: -10, sequence: 2);
         await tester.pump(const Duration(milliseconds: 50));
@@ -8326,7 +8330,7 @@ void main() {
             .storage
             .first;
         expect(loudScaleMidTransition, greaterThan(mediumSpeakingScale));
-        expect(loudScaleMidTransition, lessThan(2.291));
+        expect(loudScaleMidTransition, lessThan(1.1));
         await tester.pump(const Duration(milliseconds: 70));
         final loudSpeakingScale = tester
             .widget<Transform>(
@@ -8335,9 +8339,9 @@ void main() {
             .transform
             .storage
             .first;
-        expect(loudSpeakingScale, closeTo(2.291, 0.01));
+        expect(loudSpeakingScale, closeTo(1.1, 0.002));
         expect(loudSpeakingScale, greaterThan(mediumSpeakingScale));
-        expect(loudSpeakingScale, lessThanOrEqualTo(2.55));
+        expect(loudSpeakingScale, lessThanOrEqualTo(1.12));
 
         expect(
           find.descendant(
