@@ -202,6 +202,56 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
+  test('user speech activity lasts until its turn is sent', () async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    final texts = ['', 'Hello Hermes'];
+    final speech = HuddleSpeech(
+      baseUrl: 'https://buzz.example',
+      nsec: nostr.Keys.generate().nsec,
+      channelId: 'child',
+      turnEnd: Duration.zero,
+      client: MockClient(
+        (_) async =>
+            http.Response(jsonEncode({'text': texts.removeAt(0)}), 200),
+      ),
+    );
+    final activity = <bool>[];
+    speech.userSpeaking.addListener(
+      () => activity.add(speech.userSpeaking.value),
+    );
+    final transcripts = <String>[];
+    speech.onTranscript = transcripts.add;
+    await speech.start();
+    Future<void> send(String method, Object arguments) {
+      final delivered = Completer<void>();
+      messenger.handlePlatformMessage(
+        channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, arguments),
+        ),
+        (_) => delivered.complete(),
+      );
+      return delivered.future;
+    }
+
+    for (final _ in texts.toList()) {
+      await send('speaking', {'speaking': true});
+      expect(speech.userSpeaking.value, isTrue);
+      await send('audio', {
+        'audio': Uint8List.fromList([1, 2]),
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(speech.userSpeaking.value, isFalse);
+    }
+    expect(transcripts, ['Hello Hermes']);
+    expect(activity, [true, false, true, false]);
+    await speech.stop();
+    speech.dispose();
+    messenger.setMockMethodCallHandler(channel, null);
+  });
+
   test('a pause inside one sentence becomes one transcript', () async {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

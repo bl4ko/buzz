@@ -201,6 +201,81 @@ void huddleCallLayoutTests() {
     );
   });
 
+  testWidgets('iPhone huddle shows speech dots and hides answered replies', (
+    tester,
+  ) async {
+    await _withIphoneHuddleCall(
+      tester,
+      size: const Size(390, 844),
+      body: (call) async {
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        Future<void> native(String method, Object arguments) async {
+          unawaited(
+            messenger.handlePlatformMessage(
+              _speechChannel.name,
+              const StandardMethodCodec().encodeMethodCall(
+                MethodCall(method, arguments),
+              ),
+              (_) {},
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 600));
+          await tester.pump();
+        }
+
+        const youDots = ValueKey('huddle-agent-voice-heard-dots');
+        const agentDots = ValueKey('huddle-agent-voice-reply-dots');
+        expect(find.byKey(agentDots), findsOneWidget);
+        final first = _threadReply(
+          id: 'agent-first',
+          pubkey: 'agent',
+          content: 'Deploy is healthy.',
+          rootId: 'layout-huddle',
+          createdAt: call.later,
+          voiceFinal: true,
+        );
+        await _pumpAgentReplies(tester, call, [first]);
+        expect(find.byKey(agentDots), findsNothing);
+        expect(
+          find.text('Pollen: Deploy is healthy.', findRichText: true),
+          findsOneWidget,
+        );
+
+        await native('speaking', {'speaking': true});
+        expect(find.byKey(youDots), findsOneWidget);
+        expect(_huddleLine('huddle-agent-voice-heard'), findsNothing);
+        expect(_huddleLine('huddle-agent-voice-reply'), findsNothing);
+
+        await native('audio', {
+          'audio': Uint8List.fromList([1, 2]),
+        });
+        expect(find.byKey(youDots), findsNothing);
+        expect(_huddleLine('huddle-agent-voice-heard'), findsOneWidget);
+        expect(_huddleLine('huddle-agent-voice-reply'), findsNothing);
+        expect(find.byKey(agentDots), findsOneWidget);
+
+        await _pumpAgentReplies(tester, call, [
+          first,
+          _threadReply(
+            id: 'agent-second',
+            pubkey: 'agent',
+            content: 'Still healthy.',
+            rootId: 'layout-huddle',
+            createdAt: call.later + 1,
+            voiceFinal: true,
+          ),
+        ]);
+        expect(find.byKey(agentDots), findsNothing);
+        expect(
+          find.text('Pollen: Still healthy.', findRichText: true),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
   testWidgets('iPhone huddle agent controls share one compact row', (
     tester,
   ) async {

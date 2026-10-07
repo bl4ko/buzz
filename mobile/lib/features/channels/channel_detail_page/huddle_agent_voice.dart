@@ -76,8 +76,12 @@ class _HuddleAgentVoice extends HookConsumerWidget {
     final voiceId = useState<String?>(null);
     final status = useState<String>('Add an agent to speak');
     final heardText = useState<String?>(null);
+    final answeredReply = useState<String?>(null);
     final microphoneMode = useState<String?>(null);
     final agentSpeaking = useValueListenable(speech.agentSpeaking);
+    final userSpeaking =
+        useValueListenable(speech.userSpeaking) &&
+        !ref.watch(huddleSessionProvider.select((session) => session.isMuted));
     final selecting = useRef(false);
     final selectedAt = useRef(0);
     final waitingSince = useRef<int?>(null);
@@ -199,6 +203,13 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         return;
       }
       status.value = 'Sending speech';
+      answeredReply.value = _huddleAgentReply(
+        chat.events(
+          ref.read(channelMessagesProvider(chat.channelId)).asData?.value ??
+              const <NostrEvent>[],
+        ),
+        agent,
+      )?.id;
       heardText.value = text;
       unawaited(
         chat
@@ -286,7 +297,7 @@ class _HuddleAgentVoice extends HookConsumerWidget {
       return null;
     }, [agent, selectedName]);
     final agentName = selectedName ?? 'Agent';
-    final reply = agent == null
+    final latestReply = agent == null
         ? null
         : ref.watch(
             channelMessagesProvider(chat.channelId).select(
@@ -296,6 +307,9 @@ class _HuddleAgentVoice extends HookConsumerWidget {
               ),
             ),
           );
+    final reply = latestReply?.id == answeredReply.value
+        ? null
+        : latestReply?.text;
     final mode = microphoneMode.value;
     final voiceIsolation = mode == 'voiceIsolation';
 
@@ -342,6 +356,27 @@ class _HuddleAgentVoice extends HookConsumerWidget {
         maxLines: 4,
         overflow: TextOverflow.ellipsis,
         style: context.textTheme.bodyMedium,
+      ),
+    );
+
+    Widget dots(String key, String speaker, String label) => Padding(
+      key: ValueKey(key),
+      padding: const EdgeInsets.only(top: Grid.xxs),
+      child: Row(
+        children: [
+          Text(
+            '$speaker: ',
+            style: context.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          BouncingDotsIndicator(
+            color: context.colors.primary,
+            semanticLabel: label,
+            dotSize: 8,
+            gap: 5,
+          ),
+        ],
       ),
     );
 
@@ -481,10 +516,20 @@ class _HuddleAgentVoice extends HookConsumerWidget {
                       ),
                     ),
                   ),
-                  if (heardText.value case final heard?)
-                    line('huddle-agent-voice-heard', 'You', heard),
-                  if (reply != null)
-                    line('huddle-agent-voice-reply', agentName, reply),
+                  if (userSpeaking)
+                    dots('huddle-agent-voice-heard-dots', 'You', 'Hearing you')
+                  else ...[
+                    if (heardText.value case final heard?)
+                      line('huddle-agent-voice-heard', 'You', heard),
+                    if (reply != null)
+                      line('huddle-agent-voice-reply', agentName, reply)
+                    else if (agent != null && heardText.value != null)
+                      dots(
+                        'huddle-agent-voice-reply-dots',
+                        agentName,
+                        '$agentName is answering',
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -495,7 +540,10 @@ class _HuddleAgentVoice extends HookConsumerWidget {
   }
 }
 
-String? _huddleAgentReply(Iterable<NostrEvent> events, String agent) {
+({String id, String text})? _huddleAgentReply(
+  Iterable<NostrEvent> events,
+  String agent,
+) {
   NostrEvent? latest;
   for (final event in events) {
     if (event.pubkey.toLowerCase() == agent &&
@@ -507,7 +555,7 @@ String? _huddleAgentReply(Iterable<NostrEvent> events, String agent) {
     }
   }
   final text = latest?.content.trim();
-  return text == null || text.isEmpty ? null : text;
+  return text == null || text.isEmpty ? null : (id: latest!.id, text: text);
 }
 
 List<AgentDirectoryEntry> huddleAgentCandidates({
