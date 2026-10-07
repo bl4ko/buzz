@@ -191,9 +191,9 @@ final class HuddleSpeech {
   }
 
   Future<List<HuddleVoice>> voices() async => const [
+    HuddleVoice('af_heart', 'Heart'),
     HuddleVoice('am_michael', 'Michael'),
     HuddleVoice('bm_george', 'George'),
-    HuddleVoice('af_heart', 'Heart'),
   ];
 
   Future<void> stopSpeaking() async {
