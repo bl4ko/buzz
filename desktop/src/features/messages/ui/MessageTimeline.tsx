@@ -126,6 +126,7 @@ type MessageTimelineProps = {
   /** Count of unread top-level messages at channel open. */
   unreadCount?: number;
   openUnreadTargetId?: string | null;
+  isNewestWindowRefreshed?: boolean;
   /** Per-thread unread counts keyed by thread root id. */
   threadUnreadCounts?: ReadonlyMap<string, number>;
 };
@@ -216,6 +217,7 @@ const MessageTimelineBase = React.forwardRef<
     firstUnreadMessageId = null,
     unreadCount = 0,
     openUnreadTargetId = null,
+    isNewestWindowRefreshed = true,
     threadUnreadCounts,
   }: MessageTimelineProps,
   ref,
@@ -321,6 +323,7 @@ const MessageTimelineBase = React.forwardRef<
   } | null>(null);
   if (
     !showTimelineSkeleton &&
+    isNewestWindowRefreshed &&
     openUnreadJump?.channelId !== timelineChannelId
   ) {
     setOpenUnreadJump({
@@ -542,7 +545,8 @@ const MessageTimelineBase = React.forwardRef<
     unreadCount > 0 &&
     firstUnreadMessageId !== null &&
     !showTimelineSkeleton &&
-    !(isOpenUnreadJumpChannel && openUnreadJump.messageId);
+    isOpenUnreadJumpChannel &&
+    !openUnreadJump.messageId;
   if (showUnreadPill) hasShownPillRef.current = true;
   const handleJumpToOldestUnread = React.useCallback(() => {
     setIsUnreadPillDismissed(true);
