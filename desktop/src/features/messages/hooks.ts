@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -254,6 +254,9 @@ export function useChannelSubscription(channel: Channel | null) {
   const queryClient = useQueryClient();
   const channelId = channel?.id ?? null;
   const channelType = channel?.channelType ?? null;
+  const [refreshedChannelId, setRefreshedChannelId] = useState<string | null>(
+    null,
+  );
   const refreshNewestWindow = useEffectEvent(async () => {
     if (!channelId) return;
     await refreshChannelWindowMessages(queryClient, channelId);
@@ -366,15 +369,19 @@ export function useChannelSubscription(channel: Channel | null) {
     // not, and the reconnect listener above re-syncs when it recovers.
     const refreshAfterSubscribe = (outcome: string) => {
       if (isDisposed) return;
-      void refreshNewestWindow().catch((error) => {
-        if (!isDisposed) {
-          console.error(
-            `Failed to refresh channel window after ${outcome}`,
-            channelId,
-            error,
-          );
-        }
-      });
+      void refreshNewestWindow()
+        .catch((error) => {
+          if (!isDisposed) {
+            console.error(
+              `Failed to refresh channel window after ${outcome}`,
+              channelId,
+              error,
+            );
+          }
+        })
+        .finally(() => {
+          if (!isDisposed) setRefreshedChannelId(channelId);
+        });
     };
     relayClient
       .subscribeToChannelLive(channelId, (event) => {
@@ -405,6 +412,8 @@ export function useChannelSubscription(channel: Channel | null) {
       }
     };
   }, [channelId, channelType]);
+
+  return refreshedChannelId === channelId;
 }
 
 export function useSendMessageMutation(

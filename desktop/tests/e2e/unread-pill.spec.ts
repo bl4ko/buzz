@@ -271,4 +271,45 @@ test.describe("unread pill & divider", () => {
       }));
     expect(scrollTop).toBeLessThan(maxScrollTop - 32);
   });
+
+  test("06-cached-channel-jumps-after-newest-window-refresh", async ({
+    page,
+  }) => {
+    await installMockBridge(page);
+    await page.goto("/");
+
+    await page.getByTestId("channel-deep-history").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("deep-history");
+    await waitForMockLiveSubscription(page, "deep-history");
+
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general");
+
+    const base = unreadTimestamp();
+    for (let index = 0; index < 30; index += 1) {
+      await emitMockMessage(
+        page,
+        "deep-history",
+        `Away message ${index + 1}`,
+        base + index,
+      );
+    }
+
+    await page.getByTestId("channel-deep-history").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("deep-history");
+
+    const oldestUnread = page.getByText("Away message 1", { exact: true });
+    await expect(oldestUnread).toBeInViewport();
+    await expect(
+      page
+        .locator("[class*=route-target-highlight-fade]")
+        .filter({ has: oldestUnread }),
+    ).toHaveCount(1);
+    // The newest-window refresh after opening replaces the cached window;
+    // the oldest unread must still be on screen once it has landed.
+    await page.waitForTimeout(1_500);
+    await expect(oldestUnread).toBeInViewport();
+    await expect(page.getByTestId("message-unread-divider")).toBeInViewport();
+    await expect(page.getByTestId("message-unread-pill")).toHaveCount(0);
+  });
 });

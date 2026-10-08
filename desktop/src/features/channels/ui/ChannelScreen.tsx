@@ -207,7 +207,7 @@ export function ChannelScreen({
     effectiveOpenThreadHeadId,
     threadScrollTargetId,
   );
-  useChannelSubscription(activeChannel);
+  const isNewestWindowRefreshed = useChannelSubscription(activeChannel);
   const { fetchOlder, hasOlderMessages, historyExhausted, isFetchingOlder } =
     useFetchOlderMessages(activeChannel);
   const latestActiveMessage = React.useMemo(() => {
@@ -957,6 +957,7 @@ export function ChannelScreen({
                   firstUnreadMessageId={firstUnreadMessageId}
                   unreadCount={unreadCount}
                   openUnreadTargetId={openUnreadTargetId}
+                  isNewestWindowRefreshed={isNewestWindowRefreshed}
                   targetMessageId={mainTimelineTargetMessageId}
                   threadAllMessages={displayedThreadAllMessages}
                   threadHeadMessage={displayedThreadHeadMessage}

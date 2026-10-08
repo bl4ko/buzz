@@ -118,6 +118,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   firstUnreadMessageId = null,
   unreadCount = 0,
   openUnreadTargetId = null,
+  isNewestWindowRefreshed,
   canResetThreadPanelWidth,
   onCancelEdit,
   onCancelThreadReply,
@@ -673,6 +674,7 @@ export const ChannelPane = React.memo(function ChannelPane({
               firstUnreadMessageId={firstUnreadMessageId}
               unreadCount={unreadCount}
               openUnreadTargetId={openUnreadTargetId}
+              isNewestWindowRefreshed={isNewestWindowRefreshed}
               onDelete={onDelete}
               onEdit={handleRoutedEdit}
               onMarkUnread={onMarkUnread}
