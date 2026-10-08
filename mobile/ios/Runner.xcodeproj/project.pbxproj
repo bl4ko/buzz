@@ -1299,7 +1299,7 @@
 		B14000000000000000000007 = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/21-DOT-DEV/swift-secp256k1.git";
-			requirement = {kind = exactVersion; version = 0.21.1; };
+			requirement = {kind = exactVersion; version = 0.23.2; };
 		};
 /* End XCRemoteSwiftPackageReference section */
 

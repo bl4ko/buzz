@@ -31,6 +31,6 @@ rm /tmp/bl4uzz-watch-draft-check
 
 Install the watchOS component through Xcode if the build reports a missing watch simulator runtime. Even a device build needs it to compile the watch app icon.
 
-The native relay check uses the production watch relay and shared signer sources in a temporary Swift package. Pass `--secp256k1 /path/to/swift-secp256k1` to use an existing checkout of version `0.21.1` without a download. Run a visible paired setup, independent read and send, failed send, sign-out, and reopening check in an isolated native test instance before TestFlight upload. Automated checks do not replace these steps.
+The native relay check uses the production watch relay and shared signer sources in a temporary Swift package. Pass `--secp256k1 /path/to/swift-secp256k1` to use an existing checkout of version `0.23.2` without a download. Run a visible paired setup, independent read and send, failed send, sign-out, and reopening check in an isolated native test instance before TestFlight upload. Automated checks do not replace these steps.
 
 Archive the `Runner` scheme for iOS to ship both platforms in one TestFlight build. Verify `Runner.app/Watch/Bl4uzz.app` is present in the archive. `Watch.xcconfig` reads the Flutter version/build and the same `AppOverrides.xcconfig` as the iPhone. Signing needs an Apple App ID and provisioning profile for the watch bundle ID under team `55S37D9HA7`; it needs no extra capabilities.

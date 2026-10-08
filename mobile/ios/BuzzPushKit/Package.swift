@@ -8,12 +8,13 @@ let package = Package(
         .library(name: "BuzzPushKit", targets: ["BuzzPushKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1.git", exact: "0.21.1")
+        .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1.git", exact: "0.23.2")
     ],
     targets: [
         .target(
             name: "BuzzPushKit",
-            dependencies: [.product(name: "P256K", package: "swift-secp256k1")]
+            dependencies: [.product(name: "P256K", package: "swift-secp256k1")],
+            swiftSettings: [.enableExperimentalFeature("CheckImplementationOnly")]
         ),
         .testTarget(
             name: "BuzzPushKitTests",
