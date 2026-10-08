@@ -30,13 +30,16 @@ class _RecordingReminderService extends ReminderService {
 
   @override
   Future<void> createReminder({
-    required ReminderTarget target,
-    required int notBefore,
+    ReminderTarget? target,
+    int? notBefore,
     String? note,
+    String status = 'pending',
+    String? dTag,
+    int? previousCreatedAt,
   }) async {
     final error = this.error;
     if (error != null) throw error;
-    submittedNotBefore.add(notBefore);
+    submittedNotBefore.add(notBefore!);
   }
 }
 
@@ -93,6 +96,21 @@ void main() {
       expect(find.text('Remind me about this message'), findsOneWidget);
       expect(find.text('Pick a date & time'), findsOneWidget);
       expect(service.submittedNotBefore, isEmpty);
+    });
+
+    testWidgets('custom time picker uses a 24-hour clock', (tester) async {
+      await _pumpSheet(tester, service: _RecordingReminderService());
+
+      await tester.ensureVisible(find.text('Pick a date & time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pick a date & time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+      expect(find.text('AM'), findsNothing);
+      expect(find.text('PM'), findsNothing);
     });
 
     testWidgets('preset submission failure shows stable copy without the '

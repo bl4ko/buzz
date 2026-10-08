@@ -2,15 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  formatFullDateTime,
   formatShortMonthDay,
   formatThreadSummaryLastReplyTime,
-  formatTimeWithoutDayPeriod,
+  formatTime,
   startOfLocalDaySeconds,
 } from "./dateFormatters.ts";
 
 function localUnixSeconds(year, monthIndex, day) {
   return new Date(year, monthIndex, day, 12).getTime() / 1_000;
 }
+
+test("message clocks and tooltips use 24-hour time", () => {
+  for (const hour of [0, 9, 12, 22]) {
+    const timestamp = new Date(2026, 8, 30, hour, 39).getTime() / 1_000;
+    const expected = `${String(hour).padStart(2, "0")}:39`;
+    assert.equal(formatTime(timestamp), expected);
+    assert.ok(formatFullDateTime(timestamp).endsWith(expected));
+  }
+});
 
 test("formatShortMonthDay abbreviates the month and omits the ordinal", () => {
   assert.equal(formatShortMonthDay(localUnixSeconds(2026, 4, 19)), "May 19");
@@ -22,12 +32,6 @@ test("no day carries an ordinal suffix", () => {
     const label = formatShortMonthDay(localUnixSeconds(2026, 4, day));
     assert.doesNotMatch(label, /\d(?:st|nd|rd|th)\b/, `ordinal in "${label}"`);
   }
-});
-
-test("formatTimeWithoutDayPeriod removes AM/PM suffixes", () => {
-  assert.equal(formatTimeWithoutDayPeriod("8:00 AM"), "8:00");
-  assert.equal(formatTimeWithoutDayPeriod("12:34\u202fPM"), "12:34");
-  assert.equal(formatTimeWithoutDayPeriod("16:20"), "16:20");
 });
 
 test("formatThreadSummaryLastReplyTime expands relative units", () => {

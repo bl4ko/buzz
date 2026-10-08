@@ -1,7 +1,6 @@
 import {
   formatFullDateTime,
   formatTime,
-  formatTimeWithoutDayPeriod,
 } from "@/features/messages/lib/dateFormatters";
 import { cn } from "@/shared/lib/cn";
 import { formatItemTimestamp } from "@/shared/lib/datetime";
@@ -28,13 +27,12 @@ const TIMESTAMP_TOOLTIP_DELAY_MS = 500;
  *
  * The two modes carry different information on purpose:
  *
- * - Header (default) — the full relative label ("Yesterday at 9:05 AM"). The day
+ * - Header (default) — the full relative label ("Yesterday at 09:05"). The day
  *   divider above the group says which day it is, but a divider scrolls out of
  *   view while its messages stay on screen, so a bare clock time on a row from
  *   last week has nothing to anchor it.
- * - `hideDayPeriod` — clock only, minus the AM/PM marker. This renders in a
- *   36px-wide gutter where the avatar would be, so it has room for "9:05" and
- *   nothing more.
+ * - `hideDayPeriod` — clock only. This renders in a 36px-wide gutter where the
+ *   avatar would be, so it has room for "09:05" and nothing more.
  */
 export function MessageTimestamp({
   className,
@@ -46,7 +44,7 @@ export function MessageTimestamp({
   hideDayPeriod?: boolean;
 }) {
   const displayTime = hideDayPeriod
-    ? formatTimeWithoutDayPeriod(formatTime(createdAt))
+    ? formatTime(createdAt)
     : formatItemTimestamp(createdAt, { withTime: true });
 
   return (

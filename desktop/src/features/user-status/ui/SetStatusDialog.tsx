@@ -44,16 +44,13 @@ const DURATIONS = [
 
 type DurationLabel = (typeof DURATIONS)[number];
 
-const HALF_HOUR_TIMES = Array.from({ length: 48 }, (_, index) => {
-  const hour = Math.floor(index / 2);
-  const minute = index % 2 === 0 ? 0 : 30;
-  const period = hour < 12 ? "AM" : "PM";
-  const displayHour = hour % 12 || 12;
-  return {
-    label: `${displayHour}:${minute.toString().padStart(2, "0")} ${period}`,
-    value: `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`,
-  };
-});
+const HALF_HOUR_TIMES = Array.from(
+  { length: 48 },
+  (_, index) =>
+    `${Math.floor(index / 2)
+      .toString()
+      .padStart(2, "0")}:${index % 2 === 0 ? "00" : "30"}`,
+);
 
 type SetStatusDialogProps = {
   open: boolean;
@@ -80,13 +77,6 @@ function defaultCustomDate() {
 
 function toLocalTimeValue(date: Date) {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
-}
-
-function formattedTime(date: Date) {
-  return date.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function endOfToday(from: Date) {
@@ -486,11 +476,7 @@ export function SetStatusDialog({
                     className="flex h-9 w-28 shrink-0 items-center rounded-md border border-input bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
                     type="button"
                   >
-                    <span>
-                      {HALF_HOUR_TIMES.find(
-                        (time) => time.value === toLocalTimeValue(customUntil),
-                      )?.label ?? formattedTime(customUntil)}
-                    </span>
+                    <span>{toLocalTimeValue(customUntil)}</span>
                     <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
                   </button>
                 </DropdownMenuTrigger>
@@ -505,17 +491,17 @@ export function SetStatusDialog({
                   {HALF_HOUR_TIMES.map((time) => (
                     <DropdownMenuItem
                       className="justify-between"
-                      key={time.value}
+                      key={time}
                       onSelect={() => {
                         setDurationTouched(true);
                         setSaveError("");
                         setCustomUntil((current) =>
-                          withCustomTime(current, time.value),
+                          withCustomTime(current, time),
                         );
                       }}
                     >
-                      {time.label}
-                      {time.value === toLocalTimeValue(customUntil) ? (
+                      {time}
+                      {time === toLocalTimeValue(customUntil) ? (
                         <Check className="h-4 w-4" />
                       ) : null}
                     </DropdownMenuItem>

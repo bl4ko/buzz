@@ -87,7 +87,10 @@ export function LaterScreen() {
                 {item.notBefore !== undefined ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Reminder:{" "}
-                    {new Date(item.notBefore * 1_000).toLocaleString()}
+                    {new Date(item.notBefore * 1_000).toLocaleString(
+                      undefined,
+                      { hourCycle: "h23" },
+                    )}
                   </p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2">

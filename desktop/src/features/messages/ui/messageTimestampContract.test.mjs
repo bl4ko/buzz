@@ -15,7 +15,7 @@ const source = readFileSync(
 
 test("a message header shows the relative label, including the time", () => {
   // Regression guard: this used to render a bare clock time, so a message from
-  // last week read "9:05 AM" once its day divider scrolled out of view.
+  // last week read "09:05" once its day divider scrolled out of view.
   assert.match(
     source,
     /: formatItemTimestamp\(createdAt, \{ withTime: true \}\)/,
@@ -24,10 +24,7 @@ test("a message header shows the relative label, including the time", () => {
 
 test("the continuation gutter stays clock-only", () => {
   // 36px of width (w-9). A relative label would not fit.
-  assert.match(
-    source,
-    /hideDayPeriod \? formatTimeWithoutDayPeriod\(formatTime\(createdAt\)\)/,
-  );
+  assert.match(source, /hideDayPeriod \? formatTime\(createdAt\)/);
 });
 
 test("both labels derive from createdAt, not a pre-formatted prop", () => {

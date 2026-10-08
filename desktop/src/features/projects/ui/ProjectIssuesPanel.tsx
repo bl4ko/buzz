@@ -260,7 +260,9 @@ function IssueRow({
           <span
             className="hidden w-20 shrink-0 text-right text-xs text-muted-foreground/55 sm:block"
             data-testid="project-issue-row-date"
-            title={new Date(issue.createdAt * 1_000).toLocaleString()}
+            title={new Date(issue.createdAt * 1_000).toLocaleString(undefined, {
+              hourCycle: "h23",
+            })}
           >
             {relativeTime(issue.createdAt)}
           </span>
@@ -342,7 +344,9 @@ export function ProjectIssueDetail({
           <span>Task created</span>
           <span
             className="shrink-0 whitespace-nowrap"
-            title={new Date(issue.createdAt * 1_000).toLocaleString()}
+            title={new Date(issue.createdAt * 1_000).toLocaleString(undefined, {
+              hourCycle: "h23",
+            })}
           >
             {relativeTime(issue.createdAt)}
           </span>

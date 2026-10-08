@@ -8,7 +8,7 @@ final _weekdayFormat = DateFormat('EEEE');
 final _weekdayMonthDayFormat = DateFormat('EEEE, MMMM d');
 final _monthDayYearFormat = DateFormat('MMMM d, y');
 final _shortMonthDayFormat = DateFormat('MMM d');
-final _messageTimeFormat = DateFormat('h:mm a', 'en_US');
+final _messageTimeFormat = DateFormat('HH:mm', 'en_US');
 
 /// Days in a week, past which the weekday name stops being unambiguous.
 const _weekdayBandDays = 7;
@@ -122,10 +122,10 @@ String formatThreadSummaryLastReplyTime(
 String _formatAgo(int value, String unit) =>
     '$value $unit${value == 1 ? '' : 's'} ago';
 
-/// Desktop-parity message clock time, e.g. "2:34 PM".
+/// Desktop-parity message clock time, e.g. "14:34".
 ///
 /// Deliberately clock-only at every band, unlike desktop's message header,
-/// which reads "Yesterday at 2:34 PM". Mobile timestamps sit inside a chat
+/// which reads "Yesterday at 14:34". Mobile timestamps sit inside a chat
 /// bubble on a narrow screen with the day divider a short scroll away, so this
 /// is the compact side of that split — not an oversight. Change it only
 /// alongside a layout that has room for a date.

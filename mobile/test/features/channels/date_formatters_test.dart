@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:buzz/features/channels/date_formatters.dart';
+import 'package:buzz/features/channels/ephemeral_channel_display.dart';
 
 /// Helper: build a unix-second timestamp from a local DateTime.
 int _ts(DateTime local) => local.millisecondsSinceEpoch ~/ 1000;
@@ -7,7 +10,7 @@ int _ts(DateTime local) => local.millisecondsSinceEpoch ~/ 1000;
 void main() {
   group('formatDayHeading', () {
     // Fix "now" so tests are deterministic.
-    final now = DateTime(2026, 4, 23, 14, 30); // Apr 23 2026, 2:30 PM local
+    final now = DateTime(2026, 4, 23, 14, 30); // Apr 23 2026, 14:30 local
 
     test('same day returns "Today"', () {
       final morning = _ts(DateTime(2026, 4, 23, 8, 0));
@@ -74,7 +77,7 @@ void main() {
       expect(labels, hasLength(3));
     });
 
-    test('midnight boundary: 11:59 PM today vs 12:01 AM tomorrow', () {
+    test('midnight boundary: 23:59 today vs 00:01 tomorrow', () {
       final lateTonight = _ts(DateTime(2026, 4, 23, 23, 59));
       final earlyTomorrow = _ts(DateTime(2026, 4, 24, 0, 1));
 
@@ -166,6 +169,30 @@ void main() {
         ),
         'on May 1',
       );
+    });
+  });
+
+  group('24-hour clock', () {
+    test('message and deadline times never use AM/PM', () {
+      for (final hour in [0, 9, 12, 22]) {
+        final local = DateTime(2026, 9, 30, hour, 39);
+        final clock = '${hour.toString().padLeft(2, '0')}:39';
+        expect(formatMessageTime(_ts(local)), clock);
+        expect(formatAbsoluteDeadline(local), 'Sep 30, $clock');
+      }
+    });
+
+    test('app source has no 12-hour clock formats', () {
+      final twelveHour = RegExp(
+        r"""h:mm|DateFormat\.jm|add_jm|hour % 12|['"](AM|PM)['"]|use24hFormat: false|alwaysUse24HourFormatOf""",
+      );
+      final offenders = [
+        for (final file in Directory('lib').listSync(recursive: true))
+          if (file is File && file.path.endsWith('.dart'))
+            for (final (index, line) in file.readAsLinesSync().indexed)
+              if (twelveHour.hasMatch(line)) '${file.path}:${index + 1}',
+      ];
+      expect(offenders, isEmpty);
     });
   });
 }

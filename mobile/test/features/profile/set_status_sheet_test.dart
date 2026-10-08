@@ -224,6 +224,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CupertinoDatePicker), findsOneWidget);
+    expect(
+      tester
+          .widget<CupertinoDatePicker>(find.byType(CupertinoDatePicker))
+          .use24hFormat,
+      isTrue,
+    );
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
 

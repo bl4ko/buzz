@@ -112,8 +112,10 @@ Future<int?> _pickCustomDateTime(BuildContext context) async {
 
   final time = await showBuzzDialog<TimeOfDay>(
     context: context,
-    builder: (_) =>
-        const TimePickerDialog(initialTime: TimeOfDay(hour: 9, minute: 0)),
+    builder: (context) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+      child: const TimePickerDialog(initialTime: TimeOfDay(hour: 9, minute: 0)),
+    ),
   );
   if (time == null) return null;
 

@@ -452,7 +452,7 @@ Future<DateTime?> _showNativeDateTimePicker(
                       mode: CupertinoDatePickerMode.dateAndTime,
                       minimumDate: minimum,
                       initialDateTime: safeInitial,
-                      use24hFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+                      use24hFormat: true,
                       onDateTimeChanged: (value) => selected = value,
                     ),
                   ),
@@ -477,6 +477,10 @@ Future<DateTime?> _showNativeDateTimePicker(
   final time = await showTimePicker(
     context: context,
     initialTime: TimeOfDay.fromDateTime(androidInitial),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+      child: child!,
+    ),
   );
   if (time == null) return null;
   final selected = DateTime(
@@ -490,4 +494,4 @@ Future<DateTime?> _showNativeDateTimePicker(
 }
 
 String _formatUntil(DateTime value) =>
-    DateFormat('EEE, MMM d \u00B7 h:mm a').format(value);
+    DateFormat('EEE, MMM d \u00B7 HH:mm').format(value);

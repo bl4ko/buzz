@@ -13,7 +13,7 @@ class ReminderTimePreset {
 
 int _nowSeconds() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-/// Next occurrence of [dayOffset] days from now at 9am local time. If that
+/// Next occurrence of [dayOffset] days from now at 09:00 local time. If that
 /// instant is already past, roll to the following day so the result is
 /// always in the future.
 int nextDayAt9am(int dayOffset, {DateTime? now}) {
@@ -50,11 +50,11 @@ final List<ReminderTimePreset> reminderTimePresets = [
     getTimestamp: () => _nowSeconds() + 3 * 60 * 60,
   ),
   ReminderTimePreset(
-    label: 'Tomorrow at 9am',
+    label: 'Tomorrow at 09:00',
     getTimestamp: () => nextDayAt9am(1),
   ),
   ReminderTimePreset(
-    label: 'Next Monday at 9am',
+    label: 'Next Monday at 09:00',
     getTimestamp: () => nextDayAt9am(daysUntilNextMonday(DateTime.now())),
   ),
 ];

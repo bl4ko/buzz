@@ -2,7 +2,9 @@ import { AlertTriangle } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/shared/lib/cn";
+import { isClockTime } from "@/shared/lib/datetime";
 import { Input } from "@/shared/ui/input";
+import { TimeInput } from "@/shared/ui/time-input";
 import { CronExpressionInput } from "./CronExpressionInput";
 import { FieldLabel, FormSelect } from "./workflowFormPrimitives";
 import type { TriggerConfig } from "./workflowFormTypes";
@@ -59,6 +61,7 @@ export function WorkflowScheduleFields({
   trigger: TriggerConfig;
 }) {
   const [forceCustomCron, setForceCustomCron] = React.useState(false);
+  const [timeDraft, setTimeDraft] = React.useState<string | null>(null);
   const parsedSchedule = scheduleFormFromTrigger(trigger);
   const schedule: ScheduleFormState = forceCustomCron
     ? {
@@ -214,12 +217,16 @@ export function WorkflowScheduleFields({
       {usesTime ? (
         <div className="space-y-1.5">
           <FieldLabel htmlFor="wf-trigger-time">Run time (UTC)</FieldLabel>
-          <Input
+          <TimeInput
             disabled={disabled}
             id="wf-trigger-time"
-            onChange={(event) => updateSchedule({ time: event.target.value })}
-            type="time"
-            value={schedule.time}
+            onBlur={() => setTimeDraft(null)}
+            onChange={(event) => {
+              const time = event.target.value;
+              setTimeDraft(time);
+              if (isClockTime(time)) updateSchedule({ time });
+            }}
+            value={timeDraft ?? schedule.time}
           />
         </div>
       ) : null}

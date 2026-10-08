@@ -425,7 +425,7 @@ export function ActivityPanel({
                     data-testid="project-commit-row-date"
                     title={new Date(
                       item.commit.timestamp * 1_000,
-                    ).toLocaleString()}
+                    ).toLocaleString(undefined, { hourCycle: "h23" })}
                   >
                     {relativeTime(item.commit.timestamp)}
                   </span>
