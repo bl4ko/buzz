@@ -14,6 +14,7 @@ class _MessageList extends HookConsumerWidget {
   final Set<String> initialOrdinaryUnreadMessageIds;
   final String? initialOldestOrdinaryUnreadMessageId;
   final Set<String> initialForcedUnreadMessageIds;
+  final bool initialChannelWasRead;
   final bool hasInitialUnread;
   final String channelId;
   final String? welcomeAgent;
@@ -39,6 +40,7 @@ class _MessageList extends HookConsumerWidget {
     required this.initialOrdinaryUnreadMessageIds,
     required this.initialOldestOrdinaryUnreadMessageId,
     required this.initialForcedUnreadMessageIds,
+    required this.initialChannelWasRead,
     required this.hasInitialUnread,
     required this.channelId,
     this.welcomeAgent,
@@ -107,6 +109,12 @@ class _MessageList extends HookConsumerWidget {
     // rebuilds this list to re-run the unread effect below. A count, not a
     // flag: a reconnect can reset the notifier and reach the oldest page again.
     final unreadBoundaryReachedOldestCount = useState(0);
+    final unreadAnchorId = useState<String?>(null);
+    final highlightedMessageId = useLandingHighlightTarget(
+      context,
+      unreadAnchorId.value,
+      duration: const Duration(seconds: 2),
+    );
     final hasUnreadDeepLink =
         initialMessageId != null || initialThreadRootId != null;
     final dayTimestampByReversedIndex = <int, int>{};
@@ -156,7 +164,6 @@ class _MessageList extends HookConsumerWidget {
     useEffect(
       () {
         if (!hasInitialUnread ||
-            hasUnreadDeepLink ||
             oldestUnreadMessageId.value != null ||
             unreadBoundaryLoadFailed.value ||
             entries.isEmpty) {
@@ -179,11 +186,13 @@ class _MessageList extends HookConsumerWidget {
             initialOldestOrdinaryUnreadMessageId != null
             ? hasLoadedOrdinaryTarget
             : hasLoadedForcedTarget;
+        final isTargetMissing =
+            hasKnownTarget && !hasLoadedFetchTarget && !notifier.reachedOldest;
+        if (isTargetMissing && (hasUnreadDeepLink || notifier.isSyncing)) {
+          return null;
+        }
         final canFetchTarget =
-            hasKnownTarget &&
-            !hasLoadedFetchTarget &&
-            !notifier.reachedOldest &&
-            unreadBoundaryFetchCount.value < 4;
+            isTargetMissing && unreadBoundaryFetchCount.value < 4;
         if (canFetchTarget) {
           unreadBoundaryFetchCount.value += 1;
           var cancelled = false;
@@ -204,9 +213,7 @@ class _MessageList extends HookConsumerWidget {
           return () => cancelled = true;
         }
 
-        if (hasKnownTarget &&
-            !hasLoadedFetchTarget &&
-            !notifier.reachedOldest) {
+        if (isTargetMissing) {
           unreadBoundaryLoadFailed.value = true;
         }
 
@@ -226,7 +233,17 @@ class _MessageList extends HookConsumerWidget {
             .firstOrNull;
         final candidates = [ordinaryUnread, forcedUnread].nonNulls.toList()
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        oldestUnreadMessageId.value = candidates.firstOrNull?.id;
+        final targetId = candidates.firstOrNull?.id;
+        oldestUnreadMessageId.value = targetId;
+        if (targetId != null &&
+            initialChannelWasRead &&
+            !hasUnreadDeepLink &&
+            !hasUserScrolled.value) {
+          isUnreadNavigationDismissed.value = true;
+          followsLatest.value = false;
+          isAtLatest.value = false;
+          unreadAnchorId.value = targetId;
+        }
         return null;
       },
       [
@@ -238,13 +255,18 @@ class _MessageList extends HookConsumerWidget {
         entries.length,
         allMessages.length, // A page of hidden notices adds no entry.
         notifier.reachedOldest,
+        notifier.isSyncing,
         unreadBoundaryLoadFailed.value,
       ],
     );
 
     final showUnreadNavigation =
         !isUnreadNavigationDismissed.value &&
+        !hasUnreadDeepLink &&
         oldestUnreadMessageId.value != null;
+    final unreadDividerMessageId = initialChannelWasRead
+        ? oldestUnreadMessageId.value
+        : null;
 
     int? reversedIndexOf(String? messageId) {
       if (messageId == null) return null;
@@ -255,6 +277,23 @@ class _MessageList extends HookConsumerWidget {
           ? null
           : displayEntries.length - 1 - chronologicalIndex;
     }
+
+    // Newer rows shift reversed indexes; hold the target until the user scrolls.
+    final unreadAnchorIndex = reversedIndexOf(unreadAnchorId.value);
+    useEffect(() {
+      final targetIndex = unreadAnchorIndex;
+      if (targetIndex == null) return null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted ||
+            !itemScrollController.isAttached ||
+            followsLatest.value ||
+            hasUserScrolled.value) {
+          return;
+        }
+        itemScrollController.jumpTo(index: targetIndex, alignment: 0.35);
+      });
+      return null;
+    }, [unreadAnchorIndex]);
 
     double latestAlignment() {
       final viewportHeight = timelineViewportHeight.value;
@@ -1008,6 +1047,7 @@ class _MessageList extends HookConsumerWidget {
                 final showDayDivider =
                     prevMessage == null ||
                     !isSameDay(prevMessage.createdAt, message.createdAt);
+                final showUnreadDivider = message.id == unreadDividerMessageId;
 
                 final showAuthor =
                     !message.isSystem &&
@@ -1016,6 +1056,7 @@ class _MessageList extends HookConsumerWidget {
                         prevMessage == null ||
                         prevMessage.isSystem ||
                         showDayDivider ||
+                        showUnreadDivider ||
                         prevMessage.pubkey.toLowerCase() !=
                             message.pubkey.toLowerCase() ||
                         (message.createdAt - prevMessage.createdAt) > 300);
@@ -1066,6 +1107,7 @@ class _MessageList extends HookConsumerWidget {
                             dayTimestamp: message.createdAt,
                             stickyDayTimestamp: stickyDayTimestamp,
                           ),
+                        if (showUnreadDivider) const _UnreadDivider(),
                         if (message.isSystem) ...[
                           _SystemMessageRow(
                             message: message,
@@ -1118,6 +1160,7 @@ class _MessageList extends HookConsumerWidget {
                               message.id,
                             ),
                             showAvatar: showAvatar,
+                            isHighlighted: message.id == highlightedMessageId,
                             hasReplies: entry.summary != null,
                             replyFooter:
                                 entry.summary == null &&
@@ -1204,6 +1247,37 @@ class _MessageList extends HookConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _UnreadDivider extends StatelessWidget {
+  const _UnreadDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final lineColor = context.colors.primary.withValues(alpha: 0.4);
+    return Padding(
+      key: const ValueKey('channel-unread-divider'),
+      padding: const EdgeInsets.symmetric(vertical: Grid.xxs + Grid.quarter),
+      child: Row(
+        children: [
+          Expanded(child: Divider(height: 1, thickness: 1, color: lineColor)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Grid.xxs),
+            child: Text(
+              'NEW',
+              semanticsLabel: 'New messages',
+              style: context.textTheme.labelSmall?.copyWith(
+                color: context.colors.primary,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(height: 1, thickness: 1, color: lineColor)),
+        ],
+      ),
     );
   }
 }

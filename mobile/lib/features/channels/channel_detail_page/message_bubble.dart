@@ -7,6 +7,7 @@ class _MessageBubble extends HookConsumerWidget {
   final bool showAvatar;
   final bool startsDay;
   final bool endsDay;
+  final bool isHighlighted;
   final bool hasReplies;
   final Widget? replyFooter;
   final Map<String, String> channelNames;
@@ -25,6 +26,7 @@ class _MessageBubble extends HookConsumerWidget {
     this.showAvatar = true,
     this.startsDay = false,
     this.endsDay = false,
+    this.isHighlighted = false,
     required this.hasReplies,
     this.replyFooter,
     required this.channelNames,
@@ -134,6 +136,11 @@ class _MessageBubble extends HookConsumerWidget {
       );
     }
 
+    final highlightColor = useLandingHighlightColor(
+      context,
+      isHighlighted: isHighlighted,
+    );
+
     final content = NotificationListener<MessageGalleryScrollNotification>(
       onNotification: (notification) {
         mediaOffset.value = notification.offset;
@@ -142,7 +149,8 @@ class _MessageBubble extends HookConsumerWidget {
       child: Padding(
         padding: EdgeInsets.only(top: showAuthor && !startsDay ? Grid.xs : 0),
         child: Material(
-          color: Colors.transparent,
+          key: ValueKey('message-highlight-${message.id}'),
+          color: highlightColor,
           borderRadius: BorderRadius.circular(Radii.md),
           // The media carousel intentionally continues through the list's trailing
           // gutter. InkWell still clips its ink to [borderRadius], while leaving

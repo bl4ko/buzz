@@ -80,6 +80,7 @@ import '../../shared/emoji/emoji_picker.dart';
 import 'ime_metrics_settle_observer.dart';
 import 'jump_to_latest_button.dart';
 import 'jump_to_latest_switcher.dart';
+import 'landing_highlight.dart';
 import 'local_message_send_animation_provider.dart';
 import 'local_message_send_transition.dart';
 import 'mobile_huddle_controller.dart';
@@ -346,6 +347,7 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
     final initialOrdinaryUnreadMessageIdsRef = useRef<Set<String>>(const {});
     final initialOldestOrdinaryUnreadMessageIdRef = useRef<String?>(null);
     final initialForcedUnreadMessageIdsRef = useRef<Set<String>>(const {});
+    final initialChannelWasReadRef = useRef(false);
     final didCaptureInitialReadAt = useRef(false);
     if (readState.isReady && !didCaptureInitialReadAt.value) {
       final ordinaryUnreadEvents = [
@@ -374,6 +376,8 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
           if (entry.value == channel.id && entry.key.startsWith('msg:'))
             entry.key.substring('msg:'.length),
       };
+      initialChannelWasReadRef.value =
+          readState.effectiveTimestamp(channel.id) != null;
       didCaptureInitialReadAt.value = true;
     }
     final initialOrdinaryUnreadMessageIds =
@@ -911,6 +915,8 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
                                   initialOldestOrdinaryUnreadMessageId,
                               initialForcedUnreadMessageIds:
                                   initialForcedUnreadMessageIds,
+                              initialChannelWasRead:
+                                  initialChannelWasReadRef.value,
                               hasInitialUnread:
                                   readState.isReady &&
                                   (readState.isForcedUnread(channel.id) ||
