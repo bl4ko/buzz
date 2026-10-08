@@ -478,6 +478,25 @@ Widget _buildNavigationTestable({
   );
 }
 
+double _channelItemLeadingEdge(WidgetTester tester, int reversedIndex) => tester
+    .widget<ScrollablePositionedList>(
+      find.byKey(const ValueKey('channel-message-list')),
+    )
+    .itemPositionsNotifier!
+    .itemPositions
+    .value
+    .singleWhere((position) => position.index == reversedIndex)
+    .itemLeadingEdge;
+
+Finder _unreadDividerIn(String messageId) => find.descendant(
+  of: find.byKey(ValueKey('channel-message-group-$messageId')),
+  matching: find.byKey(const ValueKey('channel-unread-divider')),
+);
+
+Color? _messageHighlight(WidgetTester tester, String messageId) => tester
+    .widget<Material>(find.byKey(ValueKey('message-highlight-$messageId')))
+    .color;
+
 /// Finder that searches for text within RichText spans. [find.text] only
 /// matches the top-level text property; this also searches nested TextSpans.
 Finder findRichText(String text) {
@@ -4070,7 +4089,7 @@ void main() {
       );
     });
 
-    testWidgets('jumps to the oldest unread with compact inverse controls', (
+    testWidgets('keeps the oldest unread control for a never-read channel', (
       tester,
     ) async {
       final messages = [
@@ -4101,7 +4120,7 @@ void main() {
         const ReadStateState(
           isReady: true,
           pubkey: 'self',
-          contexts: {_channelId: 1020},
+          contexts: {},
           version: 0,
         ),
       );
@@ -4118,6 +4137,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(findRichText('Message 39'), findsOneWidget);
+      expect(findRichText('Message 21'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('channel-unread-divider')),
+        findsNothing,
+      );
       final unreadButton = find.byKey(
         const ValueKey('channel-jump-to-oldest-unread'),
       );
@@ -4156,6 +4181,10 @@ void main() {
       expect(find.text('Latest'), findsNothing);
       expect(find.byIcon(BuzzIcons.arrowDown), findsOneWidget);
       expect(find.byTooltip('Jump to latest message'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('channel-unread-divider')),
+        findsNothing,
+      );
     });
 
     testWidgets('loads history through the oldest unread boundary', (
@@ -4218,17 +4247,150 @@ void main() {
           },
         ),
       );
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
+      final unreadButton = find.byKey(
+        const ValueKey('channel-jump-to-oldest-unread'),
       );
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(unreadButton, findsNothing);
+      }
       await tester.pumpAndSettle();
 
+      expect(messagesNotifier.fetchOlderCalls, 1);
+      expect(unreadButton, findsNothing);
+      expect(_channelItemLeadingEdge(tester, 99 - 21), closeTo(0.35, 0.01));
       expect(findRichText('Message 21'), findsOneWidget);
       expect(findRichText('Message 50'), findsNothing);
-      expect(messagesNotifier.fetchOlderCalls, 1);
+      expect(
+        find.byKey(const ValueKey('channel-jump-to-latest')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('channel-unread-divider')),
+        findsOneWidget,
+      );
+      expect(_unreadDividerIn('msg21'), findsOneWidget);
+      final dividerRect = tester.getRect(_unreadDividerIn('msg21'));
+      final targetRect = tester.getRect(
+        find.byKey(const ValueKey('message-row-msg21')),
+      );
+      final previousRect = tester.getRect(
+        find.byKey(const ValueKey('message-row-msg20')),
+      );
+      expect(dividerRect.bottom, lessThanOrEqualTo(targetRect.top));
+      expect(dividerRect.top, greaterThanOrEqualTo(previousRect.bottom));
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: _unreadDividerIn('msg21'),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        'NEW',
+      );
+
+      final highlight = _messageHighlight(tester, 'msg21')!;
+      expect(highlight.a, closeTo(0.12, 0.001));
+      expect(_messageHighlight(tester, 'msg20'), Colors.transparent);
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(_messageHighlight(tester, 'msg21'), highlight);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(_messageHighlight(tester, 'msg21'), Colors.transparent);
+      expect(_unreadDividerIn('msg21'), findsOneWidget);
     });
+
+    testWidgets(
+      'keeps the oldest unread in view while a reopened channel refreshes',
+      (tester) async {
+        NostrEvent message(int i) => _textMsg(
+          id: 'msg$i',
+          pubkey: 'alice',
+          content: 'Message $i',
+          createdAt: 1000 + i,
+        );
+        final messagesNotifier = _FakeMessagesNotifier(
+          [for (var i = 0; i < 60; i++) message(i)],
+          olderPages: [
+            [for (var i = -50; i < 0; i++) message(i)],
+          ],
+          syncing: true,
+        );
+        final channelsNotifier = _FakeChannelsNotifier(
+          [_testChannel],
+          observedUnread: {
+            _channelId: [
+              for (var i = 60; i < 63; i++)
+                makeObservedUnreadEvent(
+                  id: 'msg$i',
+                  createdAt: 1000 + i,
+                  rootId: null,
+                  highPriority: false,
+                  channelType: 'stream',
+                  isThreadedReply: false,
+                ),
+            ],
+          },
+        );
+        final readState = _SynchronousReadStateNotifier(
+          const ReadStateState(
+            isReady: true,
+            pubkey: 'self',
+            contexts: {_channelId: 1059},
+            version: 0,
+          ),
+        );
+
+        await tester.pumpWidget(
+          _buildTestable(
+            messages: const [],
+            messagesNotifier: messagesNotifier,
+            channelsNotifier: channelsNotifier,
+            readStateNotifier: readState,
+            users: const {
+              'alice': UserProfile(pubkey: 'alice', displayName: 'Alice'),
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(messagesNotifier.fetchOlderCalls, 0);
+        expect(
+          find.byKey(const ValueKey('channel-unread-divider')),
+          findsNothing,
+        );
+
+        messagesNotifier.syncing = false;
+        messagesNotifier.setMessages([for (var i = 0; i < 90; i++) message(i)]);
+        await tester.pumpAndSettle();
+
+        expect(messagesNotifier.fetchOlderCalls, 0);
+        expect(_channelItemLeadingEdge(tester, 89 - 60), closeTo(0.35, 0.01));
+        expect(_unreadDividerIn('msg60'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
+          findsNothing,
+        );
+
+        messagesNotifier.setMessages([
+          for (var i = 30; i < 120; i++) message(i),
+        ]);
+        await tester.pumpAndSettle();
+
+        expect(_channelItemLeadingEdge(tester, 119 - 60), closeTo(0.35, 0.01));
+        expect(_unreadDividerIn('msg60'), findsOneWidget);
+
+        messagesNotifier.setMessages([
+          for (var i = -50; i < 120; i++) message(i),
+        ]);
+        await tester.pumpAndSettle();
+
+        expect(_channelItemLeadingEdge(tester, 119 - 60), closeTo(0.35, 0.01));
+        expect(_unreadDividerIn('msg60'), findsOneWidget);
+      },
+    );
 
     testWidgets('does not load history for threaded-only unread events', (
       tester,
@@ -4294,6 +4456,11 @@ void main() {
         find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
         findsNothing,
       );
+      expect(
+        find.byKey(const ValueKey('channel-unread-divider')),
+        findsNothing,
+      );
+      expect(findRichText('Message 99'), findsOneWidget);
     });
 
     testWidgets('caps unread target history loading', (tester) async {
@@ -4493,13 +4660,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final unreadButton = find.byKey(
-        const ValueKey('channel-jump-to-oldest-unread'),
+      expect(
+        find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
+        findsNothing,
       );
-      expect(unreadButton, findsOneWidget);
-      await tester.tap(unreadButton);
-      await tester.pumpAndSettle();
       expect(findRichText('Reachable unread'), findsOneWidget);
+      expect(_unreadDividerIn('reachable-unread'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('channel-unread-divider')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('pages past a loaded forced unread for an older target', (
@@ -4566,12 +4736,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(messagesNotifier.fetchOlderCalls, 1);
-      await tester.tap(
-        find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
-      );
-      await tester.pumpAndSettle();
+      expect(_channelItemLeadingEdge(tester, 99 - 21), closeTo(0.35, 0.01));
       expect(findRichText('Message 21'), findsOneWidget);
       expect(findRichText('Message 75'), findsNothing);
+      expect(_unreadDividerIn('msg21'), findsOneWidget);
     });
 
     testWidgets('targets the oldest message-level forced unread', (
@@ -4610,13 +4778,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
-      );
-      await tester.pumpAndSettle();
-
+      expect(_channelItemLeadingEdge(tester, 39 - 5), closeTo(0.35, 0.01));
       expect(findRichText('Message 5'), findsOneWidget);
       expect(findRichText('Message 20'), findsNothing);
+      expect(_unreadDividerIn('msg5'), findsOneWidget);
     });
 
     testWidgets('ignores newer events absent from observed unread state', (
@@ -5614,6 +5779,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        expect(_channelItemLeadingEdge(tester, 39 - 20), closeTo(0.35, 0.01));
         expect(findRichText('Message 20'), findsOneWidget);
         expect(findRichText('Message 5'), findsNothing);
         expect(
@@ -5621,6 +5787,15 @@ void main() {
           findsNothing,
         );
         expect(messagesNotifier.fetchOlderCalls, 0);
+
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('message-row-msg5')),
+          find.byKey(const ValueKey('channel-message-list')),
+          const Offset(0, 120),
+        );
+        await tester.pumpAndSettle();
+        expect(_unreadDividerIn('msg5'), findsOneWidget);
+        expect(_messageHighlight(tester, 'msg5'), Colors.transparent);
       },
     );
 
@@ -15737,6 +15912,7 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
   final List<List<NostrEvent>> _olderPages;
   final bool failOlderFetch;
   final Map<String, ChannelWindowThreadSummary> summaries;
+  bool syncing;
   int fetchOlderCalls = 0;
 
   _FakeMessagesNotifier(
@@ -15746,6 +15922,7 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
     List<List<NostrEvent>> olderPages = const [],
     this.failOlderFetch = false,
     this.summaries = const {},
+    this.syncing = false,
   }) : _hasLoadedMessages = hasLoadedMessages,
        _olderPages = [...olderPages],
        super(channelId);
@@ -15763,9 +15940,12 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
   bool get reachedOldest => _olderPages.isEmpty && !failOlderFetch;
 
   @override
+  bool get isSyncing => syncing;
+
+  @override
   Future<bool> fetchOlder() async {
     fetchOlderCalls += 1;
-    if (failOlderFetch || _olderPages.isEmpty) return false;
+    if (syncing || failOlderFetch || _olderPages.isEmpty) return false;
     _messages = [..._olderPages.removeAt(0), ..._messages]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     state = AsyncData(_messages);

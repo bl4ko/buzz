@@ -862,6 +862,8 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
 
   bool get reachedOldest => _reachedOldest;
 
+  bool get isSyncing => _initInFlight;
+
   /// Loads specific deep-link targets that may fall outside the newest window.
   Future<void> loadEventsById(Iterable<String> eventIds) async {
     final ids = eventIds.where((id) => id.isNotEmpty).toSet();

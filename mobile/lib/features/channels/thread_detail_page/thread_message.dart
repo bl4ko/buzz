@@ -103,30 +103,10 @@ class _ThreadMessage extends HookConsumerWidget {
       );
     }
 
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final highlightController = useAnimationController(
-      duration: _landingHighlightTransitionDuration,
+    final highlightColor = useLandingHighlightColor(
+      context,
+      isHighlighted: isHighlighted,
     );
-    final highlightProgress = useAnimation(highlightController);
-    useEffect(() {
-      if (reducedMotion) {
-        highlightController.value = isHighlighted ? 1 : 0;
-      } else {
-        unawaited(
-          highlightController.animateTo(
-            isHighlighted ? 1 : 0,
-            duration: _landingHighlightTransitionDuration,
-            curve: Curves.easeOutCubic,
-          ),
-        );
-      }
-      return null;
-    }, [highlightController, isHighlighted, reducedMotion]);
-    final highlightColor = highlightProgress == 0
-        ? Colors.transparent
-        : context.colors.primary.withValues(
-            alpha: _landingHighlightOpacity * highlightProgress,
-          );
 
     return Stack(
       clipBehavior: Clip.none,

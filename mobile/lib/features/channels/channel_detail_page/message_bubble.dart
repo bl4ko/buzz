@@ -3,6 +3,7 @@ part of '../channel_detail_page.dart';
 class _MessageBubble extends HookConsumerWidget {
   final TimelineMessage message;
   final bool showAuthor;
+  final bool isHighlighted;
   final bool hasReplies;
   final Map<String, String> channelNames;
   final String currentChannelId;
@@ -16,6 +17,7 @@ class _MessageBubble extends HookConsumerWidget {
   const _MessageBubble({
     required this.message,
     required this.showAuthor,
+    this.isHighlighted = false,
     required this.hasReplies,
     required this.channelNames,
     required this.currentChannelId,
@@ -121,13 +123,19 @@ class _MessageBubble extends HookConsumerWidget {
       );
     }
 
+    final highlightColor = useLandingHighlightColor(
+      context,
+      isHighlighted: isHighlighted,
+    );
+
     return Stack(
       clipBehavior: Clip.none,
       children: [
         Padding(
           padding: EdgeInsets.only(top: showAuthor ? Grid.xs : 0),
           child: Material(
-            color: Colors.transparent,
+            key: ValueKey('message-highlight-${message.id}'),
+            color: highlightColor,
             borderRadius: BorderRadius.circular(Radii.md),
             // The media carousel intentionally continues through the list's trailing
             // gutter. InkWell still clips its ink to [borderRadius], while leaving

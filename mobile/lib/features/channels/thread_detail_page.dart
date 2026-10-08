@@ -38,6 +38,7 @@ import 'initial_thread_tail_settle.dart';
 import 'laid_out_viewport.dart';
 import 'jump_to_latest_button.dart';
 import 'jump_to_latest_switcher.dart';
+import 'landing_highlight.dart';
 import 'local_message_send_animation_provider.dart';
 import 'local_message_send_transition.dart';
 import '../profile/user_profile_sheet.dart';
@@ -63,9 +64,6 @@ part 'thread_detail_page/avatar.dart';
 part 'thread_detail_page/app_bar.dart';
 
 const _landingHighlightDuration = Duration(seconds: 3);
-const _landingHighlightDelay = Duration(milliseconds: 50);
-const _landingHighlightTransitionDuration = Duration(milliseconds: 300);
-const _landingHighlightOpacity = 0.12;
 
 /// Full-screen thread detail page.
 ///
@@ -171,67 +169,11 @@ class ThreadDetailPage extends HookConsumerWidget {
               threadHead,
             ...fetchedReplies,
           ];
-    final routeAnimation = ModalRoute.of(context)?.animation;
-    final reducedLandingHighlightMotion = MediaQuery.disableAnimationsOf(
-      context,
-    );
-    final highlightedMessageId = useState<String?>(null);
     final initialTargetReadyForHighlight = useState(false);
-    useEffect(
-      () {
-        final messageId = initialMessageId;
-        if (messageId == null || !initialTargetReadyForHighlight.value) {
-          return null;
-        }
-        var disposed = false;
-        Timer? revealTimer;
-        Timer? dismissTimer;
-
-        void revealHighlight() {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (disposed) return;
-            revealTimer = Timer(_landingHighlightDelay, () {
-              if (disposed) return;
-              highlightedMessageId.value = messageId;
-              dismissTimer = Timer(
-                _landingHighlightDuration +
-                    (reducedLandingHighlightMotion
-                        ? Duration.zero
-                        : _landingHighlightTransitionDuration),
-                () {
-                  if (!disposed) highlightedMessageId.value = null;
-                },
-              );
-            });
-          });
-        }
-
-        void handleRouteStatus(AnimationStatus status) {
-          if (status != AnimationStatus.completed) return;
-          routeAnimation?.removeStatusListener(handleRouteStatus);
-          revealHighlight();
-        }
-
-        if (routeAnimation == null ||
-            routeAnimation.status == AnimationStatus.completed) {
-          revealHighlight();
-        } else {
-          routeAnimation.addStatusListener(handleRouteStatus);
-        }
-
-        return () {
-          disposed = true;
-          routeAnimation?.removeStatusListener(handleRouteStatus);
-          revealTimer?.cancel();
-          dismissTimer?.cancel();
-        };
-      },
-      [
-        initialMessageId,
-        initialTargetReadyForHighlight.value,
-        reducedLandingHighlightMotion,
-        routeAnimation,
-      ],
+    final highlightedMessageId = useLandingHighlightTarget(
+      context,
+      initialTargetReadyForHighlight.value ? initialMessageId : null,
+      duration: _landingHighlightDuration,
     );
 
     // Index all messages by parentId so we can find direct children of any
@@ -890,7 +832,7 @@ class ThreadDetailPage extends HookConsumerWidget {
                   channelNames: channelNamesMap,
                   channelId: channelId,
                   currentPubkey: currentPubkey,
-                  highlightedMessageId: highlightedMessageId.value,
+                  highlightedMessageId: highlightedMessageId,
                   allMessages: allMsgs,
                   isMember: isMember,
                   isArchived: isArchived,
