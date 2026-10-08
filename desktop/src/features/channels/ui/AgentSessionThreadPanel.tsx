@@ -141,7 +141,7 @@ export function AgentSessionThreadPanel({
   const lastUpdatedTitle =
     latestActivityAt === null
       ? undefined
-      : `Last updated ${new Date(latestActivityAt).toLocaleString()}`;
+      : `Last updated ${new Date(latestActivityAt).toLocaleString(undefined, { hourCycle: "h23" })}`;
 
   const { fetchOlderArchived, hasOlderArchived } =
     useLoadArchivedObserverEvents(

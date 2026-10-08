@@ -350,7 +350,9 @@ export function ProjectEntityListRow({
           className="hidden w-24 shrink-0 whitespace-nowrap text-right text-xs text-muted-foreground/55 sm:block"
           data-projects-text-priority="secondary"
           data-testid={dateTestId}
-          title={new Date(dateSeconds * 1_000).toLocaleString()}
+          title={new Date(dateSeconds * 1_000).toLocaleString(undefined, {
+            hourCycle: "h23",
+          })}
         >
           {relativeTime(dateSeconds)}
         </span>

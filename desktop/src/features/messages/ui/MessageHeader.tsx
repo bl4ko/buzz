@@ -32,7 +32,7 @@ export function MessageHeaderRow({
  *
  * The header runs several independent facts together on one line, and without a
  * divider they read as one phrase: an agent message came out as "managed by You
- * 9:53 AM". A middot is what the rest of the app already uses for this
+ * 09:53". A middot is what the rest of the app already uses for this
  * (`MessageThreadSummaryRow`, project rows, the mention list).
  *
  * `aria-hidden` because the divider is punctuation for the eye only — the header

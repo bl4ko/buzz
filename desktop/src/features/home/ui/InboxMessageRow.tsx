@@ -3,7 +3,6 @@ import * as React from "react";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import type { InboxContextMessage } from "@/features/home/lib/inbox";
 import { toTimelineMessage } from "@/features/home/lib/inboxViewHelpers";
-import { formatTimeWithoutDayPeriod } from "@/features/messages/lib/dateFormatters";
 import { formatItemTimestamp } from "@/shared/lib/datetime";
 import type { TimelineMessage } from "@/features/messages/types";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
@@ -107,9 +106,7 @@ export function InboxMessageRow({
   );
   const isAuthorAgent = isKnownAgentPubkey(message.authorPubkey);
   const profileRole = isAuthorAgent ? "bot" : undefined;
-  const hoverTimestampLabel = formatTimeWithoutDayPeriod(
-    message.timeLabel ?? message.fullTimestampLabel,
-  );
+  const hoverTimestampLabel = message.timeLabel ?? message.fullTimestampLabel;
   // Derived here rather than plumbed in with the message: the thread pane has no
   // day divider to supply the date, and deriving on render means a row does not
   // keep saying "Today" after midnight. `fullTimestampLabel` stays the absolute

@@ -952,7 +952,10 @@ function SessionBoundaryDivider({
       : labelState === "most-recent"
         ? "Most recent observed session"
         : "Earlier observed session";
-  const formattedDate = new Date(sessionStartTimestamp).toLocaleString();
+  const formattedDate = new Date(sessionStartTimestamp).toLocaleString(
+    undefined,
+    { hourCycle: "h23" },
+  );
   return (
     <div
       className="flex items-center gap-2 px-3 py-2"

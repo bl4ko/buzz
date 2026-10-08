@@ -112,8 +112,9 @@ const fullTimeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
-  hour: "numeric",
+  hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
 });
 
 function tagValue(item: FeedItem, name: string) {

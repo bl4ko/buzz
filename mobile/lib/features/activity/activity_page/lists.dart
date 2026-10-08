@@ -154,9 +154,9 @@ String _inboxTimestamp(int unixSeconds, {DateTime? now}) {
   final dayDiff = today.difference(day).inDays;
 
   if (dayDiff == 0) {
-    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final hour = date.hour.toString().padLeft(2, '0');
     final minute = date.minute.toString().padLeft(2, '0');
-    return '$hour:$minute ${date.hour < 12 ? 'AM' : 'PM'}';
+    return '$hour:$minute';
   }
   if (dayDiff == 1) return 'Yesterday';
 

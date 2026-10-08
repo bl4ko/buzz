@@ -98,6 +98,21 @@ void main() {
       expect(service.submittedNotBefore, isEmpty);
     });
 
+    testWidgets('custom time picker uses a 24-hour clock', (tester) async {
+      await _pumpSheet(tester, service: _RecordingReminderService());
+
+      await tester.ensureVisible(find.text('Pick a date & time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pick a date & time'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+      expect(find.text('AM'), findsNothing);
+      expect(find.text('PM'), findsNothing);
+    });
+
     testWidgets('preset submission failure shows stable copy without the '
         'raw error', (tester) async {
       final service = _RecordingReminderService(

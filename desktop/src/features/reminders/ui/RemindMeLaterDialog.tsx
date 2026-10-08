@@ -21,6 +21,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
+import { TimeInput } from "@/shared/ui/time-input";
 
 export function RemindMeLaterDialog({
   open,
@@ -94,11 +95,10 @@ export function RemindMeLaterDialog({
               type="date"
               value={customDate}
             />
-            <Input
+            <TimeInput
               aria-label="Reminder time"
               className="w-[120px]"
               onChange={(e) => setCustomTime(e.target.value)}
-              type="time"
               value={customTime}
             />
           </div>

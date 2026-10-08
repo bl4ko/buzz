@@ -31,7 +31,7 @@ test("TIME_PRESETS_relative_offsets_match_their_labels", () => {
 });
 
 test("TIME_PRESETS_9am_presets_land_on_a_9am_boundary", () => {
-  for (const label of ["Tomorrow at 9am", "Next Monday at 9am"]) {
+  for (const label of ["Tomorrow at 09:00", "Next Monday at 09:00"]) {
     const preset = TIME_PRESETS.find((p) => p.label === label);
     const d = new Date(preset.getTimestamp() * 1_000);
     assert.equal(d.getHours(), 9);
@@ -40,7 +40,7 @@ test("TIME_PRESETS_9am_presets_land_on_a_9am_boundary", () => {
 });
 
 test("TIME_PRESETS_next_monday_lands_on_a_monday", () => {
-  const preset = TIME_PRESETS.find((p) => p.label === "Next Monday at 9am");
+  const preset = TIME_PRESETS.find((p) => p.label === "Next Monday at 09:00");
   const d = new Date(preset.getTimestamp() * 1_000);
   assert.equal(d.getDay(), 1); // Monday
 });

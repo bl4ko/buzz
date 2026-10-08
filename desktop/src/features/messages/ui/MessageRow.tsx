@@ -695,7 +695,7 @@ export const MessageRow = React.memo(
         ) : (
           authorNode
         )}
-        {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
+        {/* Author is not a segment: "Alice 09:53" needs no divider. */}
         <MessageMetaSegments
           segments={[
             { key: "owner", node: agentOwnerNode },

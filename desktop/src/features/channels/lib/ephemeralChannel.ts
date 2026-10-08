@@ -6,8 +6,9 @@ const relativeTimeFormatter = new Intl.RelativeTimeFormat("en-US", {
 const absoluteTimeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
-  hour: "numeric",
+  hour: "2-digit",
   minute: "2-digit",
+  hourCycle: "h23",
 });
 
 type EphemeralChannelLike = Pick<Channel, "ttlSeconds" | "ttlDeadline">;

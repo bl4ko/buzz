@@ -16,10 +16,11 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { Input } from "@/shared/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { TimeInput } from "@/shared/ui/time-input";
 
 /**
- * Clock-icon dropdown of snooze presets plus a "Custom…" popover with a native
- * date/time picker. Calls `onSnooze` with a future Unix timestamp (seconds).
+ * Clock-icon dropdown of snooze presets plus a "Custom…" popover with a date
+ * picker and a 24-hour time field. Calls `onSnooze` with a future Unix timestamp (seconds).
  * The custom surface uses the shared {@link parseCustomDateTime} guard so a
  * past time is rejected rather than firing immediately.
  */
@@ -83,11 +84,10 @@ export function SnoozeMenu({
                 type="date"
                 value={customDate}
               />
-              <Input
+              <TimeInput
                 aria-label="Snooze time"
                 className="w-[120px]"
                 onChange={(event) => setCustomTime(event.target.value)}
-                type="time"
                 value={customTime}
               />
             </div>

@@ -262,7 +262,9 @@ export function WorkflowDetailPanel({
                                 <span>
                                   {new Date(
                                     run.createdAt * 1000,
-                                  ).toLocaleString()}
+                                  ).toLocaleString(undefined, {
+                                    hourCycle: "h23",
+                                  })}
                                 </span>
                                 <span>
                                   {run.executionTrace.length}{" "}

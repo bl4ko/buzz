@@ -1,3 +1,5 @@
+import { isClockTime } from "@/shared/lib/datetime";
+
 /**
  * Shared reminder time presets — the single source of truth for both the
  * create dialog and the snooze dropdown. Each preset returns a Unix timestamp
@@ -13,8 +15,8 @@ function nowSeconds(): number {
 }
 
 /**
- * Next occurrence of `dayOffset` days from now at 9am local time. If that
- * instant is already past (e.g. it is after 9am and offset is 0), roll to the
+ * Next occurrence of `dayOffset` days from now at 09:00 local time. If that
+ * instant is already past (e.g. it is after 09:00 and offset is 0), roll to the
  * following day so the result is always in the future.
  */
 function nextDayAt9am(dayOffset: number): number {
@@ -32,9 +34,9 @@ export const TIME_PRESETS: TimePreset[] = [
   { label: "In 30 minutes", getTimestamp: () => nowSeconds() + 30 * 60 },
   { label: "In 1 hour", getTimestamp: () => nowSeconds() + 60 * 60 },
   { label: "In 3 hours", getTimestamp: () => nowSeconds() + 3 * 60 * 60 },
-  { label: "Tomorrow at 9am", getTimestamp: () => nextDayAt9am(1) },
+  { label: "Tomorrow at 09:00", getTimestamp: () => nextDayAt9am(1) },
   {
-    label: "Next Monday at 9am",
+    label: "Next Monday at 09:00",
     getTimestamp: () => {
       const daysUntilMonday = (8 - new Date().getDay()) % 7 || 7;
       return nextDayAt9am(daysUntilMonday);
@@ -54,11 +56,11 @@ export function todayDateString(): string {
 /**
  * Parse a `YYYY-MM-DD` + `HH:MM` pair into a future Unix timestamp (seconds),
  * or null if the inputs are malformed or not strictly in the future. The shared
- * guard for both create and snooze custom surfaces: the native time input has
+ * guard for both create and snooze custom surfaces: the time input has
  * no `min`, so a past time would otherwise fire immediately.
  */
 export function parseCustomDateTime(date: string, time: string): number | null {
-  if (!date || !time) return null;
+  if (!date || !isClockTime(time)) return null;
   const timestamp = Math.floor(new Date(`${date}T${time}`).getTime() / 1_000);
   if (Number.isNaN(timestamp)) return null;
   if (timestamp <= nowSeconds()) return null;

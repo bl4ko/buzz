@@ -21,6 +21,7 @@ function commitDateLabel(timestamp: number) {
   return new Date(timestamp * 1_000).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
+    hourCycle: "h23",
   });
 }
 
