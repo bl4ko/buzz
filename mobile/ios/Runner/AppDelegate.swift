@@ -74,7 +74,10 @@ import os.log
       registrar.register(IosMediaCarouselFactory(messenger: registrar.messenger()), withId: "buzz/ios_media_carousel")
     }
 
-    let messenger = engineBridge.applicationRegistrar.messenger()
+    let messenger = AttachedEngineMessenger(
+      messenger: engineBridge.applicationRegistrar.messenger(),
+      registrar: engineBridge.pluginRegistry.registrar(forPlugin: "BuzzAttachedEngineMessenger")
+    )
     let keyboardChannel = FlutterMethodChannel(
       name: "buzz/community_keyboard", binaryMessenger: messenger)
     communityKeyboardChannel = keyboardChannel
@@ -1078,6 +1081,49 @@ import os.log
         }
       }
     }
+  }
+}
+
+final class AttachedEngineMessenger: NSObject, FlutterBinaryMessenger {
+  private let messenger: FlutterBinaryMessenger
+  private let registrar: FlutterPluginRegistrar?
+  private var sawViewController = false
+
+  init(messenger: FlutterBinaryMessenger, registrar: FlutterPluginRegistrar?) {
+    self.messenger = messenger
+    self.registrar = registrar
+  }
+
+  // The engine attaches its view controller after setup and destroys its shell when it goes.
+  private func engineStopped() -> Bool {
+    if registrar?.viewController != nil {
+      sawViewController = true
+      return false
+    }
+    return sawViewController
+  }
+
+  func send(onChannel channel: String, message: Data?) {
+    send(onChannel: channel, message: message, binaryReply: nil)
+  }
+
+  func send(onChannel channel: String, message: Data?, binaryReply callback: FlutterBinaryReply?) {
+    if engineStopped() {
+      callback?(nil)
+      return
+    }
+    messenger.send(onChannel: channel, message: message, binaryReply: callback)
+  }
+
+  func setMessageHandlerOnChannel(
+    _ channel: String,
+    binaryMessageHandler handler: FlutterBinaryMessageHandler?
+  ) -> FlutterBinaryMessengerConnection {
+    messenger.setMessageHandlerOnChannel(channel, binaryMessageHandler: handler)
+  }
+
+  func cleanUpConnection(_ connection: FlutterBinaryMessengerConnection) {
+    messenger.cleanUpConnection(connection)
   }
 }
 
