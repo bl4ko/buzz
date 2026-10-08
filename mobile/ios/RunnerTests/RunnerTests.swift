@@ -823,6 +823,30 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(AppDelegate.pushAuthorizationStatusName(.ephemeral), "ephemeral")
   }
 
+  func testAttachedEngineMessengerDropsSendsAfterEngineTeardown() {
+    let channel = "buzz/teardown_test"
+    let engine = FlutterEngine(name: "teardown-test", project: nil, allowHeadlessExecution: false)
+    XCTAssertTrue(engine.run(withEntrypoint: "teardownTestEntrypoint"))
+    let registrar = engine.registrar(forPlugin: "TeardownTest")
+    let messenger = AttachedEngineMessenger(messenger: engine.binaryMessenger, registrar: registrar)
+    messenger.send(onChannel: channel, message: nil)
+    autoreleasepool {
+      let controller = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
+      XCTAssertNotNil(registrar?.viewController)
+      messenger.send(onChannel: channel, message: nil)
+      _ = controller
+    }
+    XCTAssertNil(registrar?.viewController)
+
+    var replies = 0
+    messenger.send(onChannel: channel, message: nil)
+    messenger.send(onChannel: channel, message: nil) { reply in
+      XCTAssertNil(reply)
+      replies += 1
+    }
+    XCTAssertEqual(replies, 1)
+  }
+
   func testHuddleActiveTalkerSelectorBoundsAndReactivates() {
     var selector = HuddleActiveTalkerSelector(capacity: 15)
 
