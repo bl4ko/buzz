@@ -155,6 +155,10 @@ buzz-ws-client = { path = "crates/buzz-ws-client" }
 buzz-relay-mesh = { path = "crates/buzz-relay-mesh" }
 buzz-datastore-tracing = { path = "crates/buzz-datastore-tracing" }
 
+# Xcode 27 strip misaligns some proc-macro dylibs and dyld refuses to load them.
+[profile.release.build-override]
+strip = "none"
+
 # CI profile — builds the relay for desktop e2e. Dependencies keep full
 # release optimization (warm from main's cache; they carry the runtime hot
 # path: tokio/sqlx/axum). Workspace crates build at opt-level 1 — enough for
