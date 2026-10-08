@@ -14,7 +14,7 @@ def main():
     dependency = (
         f".package(path: {json.dumps(str(args.secp256k1.resolve()))})"
         if args.secp256k1
-        else '.package(url: "https://github.com/21-DOT-DEV/swift-secp256k1.git", exact: "0.21.1")'
+        else '.package(url: "https://github.com/21-DOT-DEV/swift-secp256k1.git", exact: "0.23.2")'
     )
     with tempfile.TemporaryDirectory(prefix="bl4uzz-watch-check-") as directory:
         package = Path(directory)
