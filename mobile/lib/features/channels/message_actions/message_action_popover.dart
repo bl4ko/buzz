@@ -459,6 +459,7 @@ class _PopoverMessageAction {
     'edit' => 'pencil',
     'copyText' => 'doc.on.doc',
     'copyLink' => 'link',
+    'later' => 'bookmark',
     'remind' => 'clock',
     'followThread' => 'bell',
     'unfollowThread' => 'bell.slash',

@@ -24,5 +24,11 @@ void main() {
     ).allMatches(order).map((m) => m.group(1)!).toSet();
     expect(ids, contains('later'));
     expect(ids.difference(ordered), isEmpty);
+    final symbolStart = source.indexOf('String get iosSymbol');
+    final symbols = source.substring(
+      symbolStart,
+      source.indexOf('};', symbolStart),
+    );
+    expect(symbols, contains("'later' => 'bookmark'"));
   });
 }
