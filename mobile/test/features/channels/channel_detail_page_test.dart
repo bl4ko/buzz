@@ -4392,6 +4392,134 @@ void main() {
       },
     );
 
+    testWidgets('loads history up to a detached oldest unread before jumping', (
+      tester,
+    ) async {
+      NostrEvent message(int i) => _textMsg(
+        id: 'msg$i',
+        pubkey: 'alice',
+        content: 'Message $i',
+        createdAt: 1000 + i,
+      );
+      final messagesNotifier = _FakeMessagesNotifier(
+        [message(60), for (var i = 70; i < 120; i++) message(i)],
+        olderPages: [
+          [
+            for (var i = 10; i < 70; i++)
+              if (i != 60) message(i),
+          ],
+        ],
+        detachedIds: {'msg60'},
+      );
+      final channelsNotifier = _FakeChannelsNotifier(
+        [_testChannel],
+        observedUnread: {
+          _channelId: [
+            for (var i = 60; i < 120; i++)
+              makeObservedUnreadEvent(
+                id: 'msg$i',
+                createdAt: 1000 + i,
+                rootId: null,
+                highPriority: false,
+                channelType: 'stream',
+                isThreadedReply: false,
+              ),
+          ],
+        },
+      );
+      final readState = _SynchronousReadStateNotifier(
+        const ReadStateState(
+          isReady: true,
+          pubkey: 'self',
+          contexts: {_channelId: 1059},
+          version: 0,
+        ),
+      );
+
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          messagesNotifier: messagesNotifier,
+          channelsNotifier: channelsNotifier,
+          readStateNotifier: readState,
+          users: const {
+            'alice': UserProfile(pubkey: 'alice', displayName: 'Alice'),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(messagesNotifier.fetchOlderCalls, 1);
+      expect(messagesNotifier.detachedIds, isEmpty);
+      expect(find.byKey(const ValueKey('message-row-msg61')), findsOneWidget);
+      expect(_channelItemLeadingEdge(tester, 119 - 60), closeTo(0.35, 0.01));
+      expect(_unreadDividerIn('msg60'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+      'stays at the latest message when a detached unread cannot be loaded',
+      (tester) async {
+        NostrEvent message(int i) => _textMsg(
+          id: 'msg$i',
+          pubkey: 'alice',
+          content: 'Message $i',
+          createdAt: 1000 + i,
+        );
+        final messagesNotifier = _FakeMessagesNotifier(
+          [message(60), for (var i = 70; i < 120; i++) message(i)],
+          failOlderFetch: true,
+          detachedIds: {'msg60'},
+        );
+        final channelsNotifier = _FakeChannelsNotifier(
+          [_testChannel],
+          observedUnread: {
+            _channelId: [
+              makeObservedUnreadEvent(
+                id: 'msg60',
+                createdAt: 1060,
+                rootId: null,
+                highPriority: false,
+                channelType: 'stream',
+                isThreadedReply: false,
+              ),
+            ],
+          },
+        );
+        final readState = _SynchronousReadStateNotifier(
+          const ReadStateState(
+            isReady: true,
+            pubkey: 'self',
+            contexts: {_channelId: 1059},
+            version: 0,
+          ),
+        );
+
+        await tester.pumpWidget(
+          _buildTestable(
+            messages: const [],
+            messagesNotifier: messagesNotifier,
+            channelsNotifier: channelsNotifier,
+            readStateNotifier: readState,
+            users: const {
+              'alice': UserProfile(pubkey: 'alice', displayName: 'Alice'),
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(messagesNotifier.fetchOlderCalls, 1);
+        expect(_channelItemLeadingEdge(tester, 0), lessThan(0.2));
+        expect(
+          find.byKey(const ValueKey('channel-unread-divider')),
+          findsNothing,
+        );
+      },
+    );
+
     testWidgets('does not load history for threaded-only unread events', (
       tester,
     ) async {
@@ -15913,6 +16041,7 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
   final bool failOlderFetch;
   final Map<String, ChannelWindowThreadSummary> summaries;
   bool syncing;
+  final Set<String> detachedIds;
   int fetchOlderCalls = 0;
 
   _FakeMessagesNotifier(
@@ -15923,8 +16052,10 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
     this.failOlderFetch = false,
     this.summaries = const {},
     this.syncing = false,
+    Set<String> detachedIds = const {},
   }) : _hasLoadedMessages = hasLoadedMessages,
        _olderPages = [...olderPages],
+       detachedIds = {...detachedIds},
        super(channelId);
 
   @override
@@ -15943,11 +16074,15 @@ class _FakeMessagesNotifier extends ChannelMessagesNotifier {
   bool get isSyncing => syncing;
 
   @override
+  bool isDetachedDeepLinkEvent(String eventId) => detachedIds.contains(eventId);
+
+  @override
   Future<bool> fetchOlder() async {
     fetchOlderCalls += 1;
     if (syncing || failOlderFetch || _olderPages.isEmpty) return false;
     _messages = [..._olderPages.removeAt(0), ..._messages]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    detachedIds.clear();
     state = AsyncData(_messages);
     return true;
   }

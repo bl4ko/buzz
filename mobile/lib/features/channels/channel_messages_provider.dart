@@ -864,6 +864,14 @@ class ChannelMessagesNotifier extends Notifier<AsyncValue<List<NostrEvent>>> {
 
   bool get isSyncing => _initInFlight;
 
+  bool isDetachedDeepLinkEvent(String eventId) =>
+      _usingChannelWindow &&
+      _deepLinkEvents.containsKey(eventId) &&
+      !_windowStore.liveOverlay.any((event) => event.id == eventId) &&
+      !_windowStore.pages.any(
+        (page) => page.rows.any((row) => row.event.id == eventId),
+      );
+
   /// Loads specific deep-link targets that may fall outside the newest window.
   Future<void> loadEventsById(Iterable<String> eventIds) async {
     final ids = eventIds.where((id) => id.isNotEmpty).toSet();

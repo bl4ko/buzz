@@ -143,14 +143,14 @@ class _MessageList extends HookConsumerWidget {
           return null;
         }
 
+        bool isLoadedTarget(String id) =>
+            entries.any((entry) => entry.message.id == id) &&
+            !notifier.isDetachedDeepLinkEvent(id);
         final hasLoadedOrdinaryTarget =
             initialOldestOrdinaryUnreadMessageId != null &&
-            entries.any(
-              (entry) =>
-                  entry.message.id == initialOldestOrdinaryUnreadMessageId,
-            );
-        final hasLoadedForcedTarget = entries.any(
-          (entry) => initialForcedUnreadMessageIds.contains(entry.message.id),
+            isLoadedTarget(initialOldestOrdinaryUnreadMessageId!);
+        final hasLoadedForcedTarget = initialForcedUnreadMessageIds.any(
+          isLoadedTarget,
         );
         final hasKnownTarget =
             initialOldestOrdinaryUnreadMessageId != null ||
@@ -205,7 +205,8 @@ class _MessageList extends HookConsumerWidget {
         if (targetId != null &&
             initialChannelWasRead &&
             !hasUnreadDeepLink &&
-            !hasUserScrolled.value) {
+            !hasUserScrolled.value &&
+            !notifier.isDetachedDeepLinkEvent(targetId)) {
           isUnreadNavigationDismissed.value = true;
           followsLatest.value = false;
           isAtLatest.value = false;
