@@ -285,14 +285,7 @@ List<_PopoverMessageAction> _buildPopoverMessageActions({
           group: _PopoverMessageActionGroup.utility,
           onSelected: () {
             if (!context.mounted) return;
-            unawaited(
-              _saveForLater(
-                context,
-                ref,
-                message,
-                channelId,
-              ),
-            );
+            unawaited(_saveForLater(context, ref, message, channelId));
           },
         ),
       );
@@ -428,10 +421,11 @@ List<_PopoverMessageAction> _buildPopoverMessageActions({
     'edit': 2,
     'copyText': 3,
     'copyLink': 4,
-    'remind': 5,
-    'followThread': 6,
-    'unfollowThread': 6,
-    'delete': 7,
+    'later': 5,
+    'remind': 6,
+    'followThread': 7,
+    'unfollowThread': 7,
+    'delete': 8,
   };
   actions.sort(
     (left, right) => actionOrder[left.id]!.compareTo(actionOrder[right.id]!),
