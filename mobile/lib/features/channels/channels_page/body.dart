@@ -264,7 +264,6 @@ class _SliverChannelsList extends HookConsumerWidget {
     final dmChannels = unsortedDms.toList()
       ..sort((a, b) => dmRank[a.id]!.compareTo(dmRank[b.id]!));
 
-    final unreadsExpanded = useState(true);
     final starredExpanded = useState(true);
     final channelsExpanded = useState(true);
     final dmsExpanded = useState(true);
@@ -329,13 +328,7 @@ class _SliverChannelsList extends HookConsumerWidget {
     // Starred is exclusive: a starred channel lives only in the Starred section,
     // not in its custom section or the default Channels list.
     final starredStreamChannels = sortChannelsForList(
-      visibleChannels
-          .where(
-            (c) =>
-                starredChannelIds.contains(c.id) &&
-                !unreadChannelIds.contains(c.id),
-          )
-          .toList(),
+      visibleChannels.where((c) => starredChannelIds.contains(c.id)).toList(),
       sortState.sortModeFor('starred'),
     );
     final ungroupedStreamChannels = sortChannelsForList(
@@ -343,8 +336,7 @@ class _SliverChannelsList extends HookConsumerWidget {
           .where(
             (c) =>
                 !assignedChannelIds.contains(c.id) &&
-                !starredChannelIds.contains(c.id) &&
-                !unreadChannelIds.contains(c.id),
+                !starredChannelIds.contains(c.id),
           )
           .toList(),
       sortState.sortModeFor('channels'),
@@ -355,8 +347,7 @@ class _SliverChannelsList extends HookConsumerWidget {
         .where(
           (c) =>
               !assignedChannelIds.contains(c.id) &&
-              !starredChannelIds.contains(c.id) &&
-              !unreadChannelIds.contains(c.id),
+              !starredChannelIds.contains(c.id),
         )
         .toList();
     final sortedDmChannels =
@@ -391,25 +382,6 @@ class _SliverChannelsList extends HookConsumerWidget {
             const _EmptyState()
           else ...[
             // Starred channels (exclusive — pinned above all sections).
-            if (unreadChannelIds.isNotEmpty)
-              _ChannelSection(
-                title: 'Unreads',
-                expanded: unreadsExpanded.value,
-                onToggle: () => unreadsExpanded.value = !unreadsExpanded.value,
-                channels: sortChannelsForList(
-                  visibleChannels
-                      .where((c) => unreadChannelIds.contains(c.id))
-                      .toList(),
-                  ChannelSortMode.recent,
-                ),
-                unreadChannelIds: unreadChannelIds,
-                attentionChannelIds: attentionChannelIds,
-                mutedChannelIds: mutedChannelIds,
-                currentPubkey: currentPubkey,
-                emptyLabel: '',
-                sectionAssignments: sectionAssignments,
-                onSelectChannel: onSelectChannel,
-              ),
             if (starredStreamChannels.isNotEmpty)
               _ChannelSection(
                 title: 'Starred',
@@ -437,8 +409,7 @@ class _SliverChannelsList extends HookConsumerWidget {
                       .where(
                         (c) =>
                             sectionAssignments[c.id] == section.id &&
-                            !starredChannelIds.contains(c.id) &&
-                            !unreadChannelIds.contains(c.id),
+                            !starredChannelIds.contains(c.id),
                       )
                       .toList(),
                   sortState.sortModeFor(sectionSortGroupKey(section.id)),

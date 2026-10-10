@@ -321,7 +321,6 @@ List<PopupMenuEntry<String>> _sortMenuItems(
 class _ChannelSection extends StatelessWidget {
   final String title;
   final VoidCallback? onCreateSection;
-  final Map<String, String> sectionAssignments;
   final bool expanded;
   final VoidCallback onToggle;
   final List<Channel> channels;
@@ -337,7 +336,6 @@ class _ChannelSection extends StatelessWidget {
   const _ChannelSection({
     required this.title,
     this.onCreateSection,
-    this.sectionAssignments = const {},
     required this.expanded,
     required this.onToggle,
     required this.channels,
@@ -399,7 +397,6 @@ class _ChannelSection extends StatelessWidget {
                     currentPubkey: currentPubkey,
                     onTap: () => onSelectChannel(channel),
                     onMarkRead: null,
-                    sectionId: sectionAssignments[channel.id],
                   ),
             ],
           ),

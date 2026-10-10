@@ -3655,7 +3655,7 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
   });
 
-  testWidgets('Unreads groups unread channels and clears them after reading', (
+  testWidgets('unread channels stay in their section and turn bold', (
     tester,
   ) async {
     final channels = [
@@ -3701,7 +3701,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Unreads'), findsOneWidget);
+    expect(find.text('Unreads'), findsNothing);
+    expect(find.text('general'), findsOneWidget);
 
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
@@ -3727,7 +3728,6 @@ void main() {
     );
     readState.markContextRead('1', 20);
     await tester.pump();
-    expect(find.text('Unreads'), findsNothing);
 
     expect(
       tester.widget<Text>(find.text('general')).style?.fontWeight,
