@@ -474,7 +474,8 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
         BuzzPushNavigationTarget(
           eventID: event.id,
           communityID: community.id,
-          channelID: $0
+          channelID: $0,
+          threadRootID: threadRootID(of: event)
         )
       },
       senderPubkey: event.pubkey.lowercased(),
@@ -484,6 +485,11 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
       conversationRecipientCount: conversation?.recipientCount,
       notificationType: isApproval ? .approval : nil
     )
+  }
+
+  private static func threadRootID(of event: VerifiedNostrEvent) -> String? {
+    guard !event.tags.contains(["broadcast", "1"]) else { return nil }
+    return event.tags.last { $0.count >= 4 && $0[0] == "e" && $0[3] == "reply" }?[1]
   }
 
   private static func ephemeralProfile(

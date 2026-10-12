@@ -1122,10 +1122,12 @@ final class AttachedEngineMessenger: NSObject, FlutterBinaryMessenger {
 
 extension BuzzPushNavigationTarget {
   fileprivate var flutterArguments: [String: String] {
-    [
+    var arguments = [
       "eventId": eventID,
       "communityId": communityID,
       "channelId": channelID,
     ]
+    arguments["threadRootId"] = threadRootID
+    return arguments
   }
 }

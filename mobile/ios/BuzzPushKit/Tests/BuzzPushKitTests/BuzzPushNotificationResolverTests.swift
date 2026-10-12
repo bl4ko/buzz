@@ -63,6 +63,30 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     }
   }
 
+  func testThreadReplyTargetsItsThreadRoot() throws {
+    let rootID = String(repeating: "a", count: 64)
+    for (extraTags, expectedRoot) in [
+      ([] as [[String]], rootID as String?),
+      ([["broadcast", "1"]], nil),
+    ] {
+      let message = try Self.signedEvent(
+        privateKey: Self.profilePrivateKey,
+        createdAt: Self.now,
+        kind: 9,
+        tags: [["h", Self.channelID], ["e", rootID, "", "reply"]] + extraTags,
+        content: "Thread reply"
+      )
+      URLProtocolStub.handler = { request in
+        Self.response(request, status: 200, data: try JSONEncoder().encode([message]))
+      }
+      let result = try XCTUnwrap(resolve(makeResolver(
+        communitiesData: try snapshotData([community()])
+      )))
+      XCTAssertEqual(result.navigationTarget?.eventID, message.id)
+      XCTAssertEqual(result.navigationTarget?.threadRootID, expectedRoot)
+    }
+  }
+
   func testApprovalTagAddedAfterSigningIsRejected() throws {
     let message = try Self.signedEvent(
       privateKey: Self.profilePrivateKey,

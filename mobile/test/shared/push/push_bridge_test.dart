@@ -341,6 +341,34 @@ void main() {
     );
   });
 
+  test('routes a warm thread notification response to its thread', () async {
+    final response = Completer<ByteData?>();
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          _channel.name,
+          _channel.codec.encodeMethodCall(
+            MethodCall('notificationOpened', {
+              'eventId': 'REPLY-ID',
+              'communityId': 'community-id',
+              'channelId': 'CHANNEL/GENERAL',
+              'threadRootId': 'ROOT-ID',
+            }),
+          ),
+          response.complete,
+        );
+
+    await response.future;
+    expect(
+      pendingPushNotificationLink.value,
+      MessageDeepLink(
+        communityId: 'community-id',
+        channelId: 'CHANNEL/GENERAL',
+        messageId: 'REPLY-ID',
+        threadRootId: 'ROOT-ID',
+      ),
+    );
+  });
+
   test('rejects a notification response with an empty channel ID', () async {
     final response = Completer<ByteData?>();
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

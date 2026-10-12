@@ -19,6 +19,21 @@ import Testing
   #expect(target.channelID == "CHANNEL/GENERAL")
 }
 
+@Test func `Round-trip thread root through notification user info`() {
+  let target = BuzzPushNavigationTarget(
+    eventID: "reply-id",
+    communityID: "community-id",
+    channelID: "channel-id",
+    threadRootID: "root-id"
+  )
+
+  #expect(
+    BuzzPushNavigationTarget.decodeIfPresent(
+      from: [BuzzPushNavigationTarget.userInfoKey: target.userInfoValue]
+    ) == target
+  )
+}
+
 @Test func `Reject incomplete or malformed navigation target`() {
   #expect(
     BuzzPushNavigationTarget.decodeIfPresent(
@@ -50,6 +65,19 @@ import Testing
           "event_id": "message-id",
           "community_id": "community-id",
           "channel_id": "",
+        ]
+      ]
+    ) == nil
+  )
+
+  #expect(
+    BuzzPushNavigationTarget.decodeIfPresent(
+      from: [
+        BuzzPushNavigationTarget.userInfoKey: [
+          "event_id": "message-id",
+          "community_id": "community-id",
+          "channel_id": "channel-id",
+          "thread_root_id": "",
         ]
       ]
     ) == nil
