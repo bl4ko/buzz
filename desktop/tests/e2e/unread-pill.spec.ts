@@ -312,4 +312,74 @@ test.describe("unread pill & divider", () => {
     await expect(page.getByTestId("message-unread-divider")).toBeInViewport();
     await expect(page.getByTestId("message-unread-pill")).toHaveCount(0);
   });
+
+  test("07-tall-oldest-unread-releases-scroll", async ({ page }) => {
+    await installMockBridge(page);
+    await page.goto("/");
+
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general");
+    await waitForMockLiveSubscription(page, "general");
+
+    await page.getByTestId("channel-random").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("random");
+
+    const base = unreadTimestamp();
+    const alerts = Array.from(
+      { length: 60 },
+      (_, index) =>
+        `- Alert ${index + 1}\n  - Summary: disk usage high\n  - Severity: warning`,
+    ).join("\n");
+    await emitMockMessage(page, "general", `Tall alert\n\n${alerts}`, base);
+    for (let index = 0; index < 5; index += 1) {
+      await emitMockMessage(
+        page,
+        "general",
+        `After alert ${index + 1}`,
+        base + index + 1,
+      );
+    }
+
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general");
+
+    const timeline = page.getByTestId("message-timeline");
+    const tallRow = page
+      .locator("[data-message-id]")
+      .filter({ has: page.getByText("Tall alert", { exact: true }) });
+    await expect(tallRow).toBeInViewport();
+    const { rowHeight, viewportHeight } = await tallRow.evaluate((row) => ({
+      rowHeight: row.getBoundingClientRect().height,
+      viewportHeight:
+        row.closest<HTMLElement>('[data-testid="message-timeline"]')
+          ?.clientHeight ?? 0,
+    }));
+    expect(rowHeight).toBeGreaterThan(viewportHeight);
+    await expect(
+      page.locator("[class*=route-target-highlight-fade]").filter({
+        has: page.getByText("Tall alert", { exact: true }),
+      }),
+    ).toHaveCount(1);
+    await page.waitForTimeout(500);
+
+    const latest = page.getByTestId("message-scroll-to-latest");
+    await expect(latest).toBeVisible();
+    await latest.click();
+    await page.waitForTimeout(1_000);
+    const distanceFromBottom = await timeline.evaluate(
+      (el) => el.scrollHeight - el.clientHeight - el.scrollTop,
+    );
+    expect(distanceFromBottom).toBeLessThanOrEqual(32);
+    await expect(
+      page.getByText("After alert 5", { exact: true }),
+    ).toBeInViewport();
+
+    await timeline.hover();
+    await page.mouse.wheel(0, -600);
+    await page.waitForTimeout(1_000);
+    const afterWheel = await timeline.evaluate(
+      (el) => el.scrollHeight - el.clientHeight - el.scrollTop,
+    );
+    expect(afterWheel).toBeGreaterThan(300);
+  });
 });

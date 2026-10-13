@@ -3,6 +3,7 @@ import * as React from "react";
 import { classifyTimelineMessageDelta } from "@/features/messages/lib/timelineSnapshot";
 import {
   getPinnedCenterDrift,
+  isJumpTargetInViewport,
   settleProgrammaticBottomPin,
   shouldIgnorePinnedCenterScroll,
   shouldSettleForSplitPanel,
@@ -111,9 +112,10 @@ function isAtBottomNow(
 }
 
 function isInViewport(el: HTMLElement, container: HTMLElement): boolean {
-  const rect = el.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  return rect.top >= containerRect.top && rect.bottom <= containerRect.bottom;
+  return isJumpTargetInViewport(
+    el.getBoundingClientRect(),
+    container.getBoundingClientRect(),
+  );
 }
 
 /**
