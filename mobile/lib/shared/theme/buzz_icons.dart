@@ -293,6 +293,12 @@ abstract final class BuzzIcons {
   /// Tabler `phone-off`.
   static const phoneOff = IconData(0xecf5, fontFamily: 'BuzzTabler');
 
+  /// Tabler `pin`.
+  static const pin = IconData(0xec9c, fontFamily: 'BuzzTabler');
+
+  /// Tabler `pinned-off`.
+  static const pinOff = IconData(0xed5f, fontFamily: 'BuzzTabler');
+
   /// Tabler `plane`.
   static const plane = IconData(0xeb6f, fontFamily: 'BuzzTabler');
 

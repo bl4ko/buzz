@@ -364,6 +364,31 @@ List<_PopoverMessageAction> _buildPopoverMessageActions({
         },
       ),
     );
+    if (isMember && !isArchived) {
+      final pinned = ref
+          .read(channelMessagePinsProvider(channelId))
+          .isPinned(message.id);
+      actions.add(
+        _PopoverMessageAction(
+          id: pinned ? 'unpin' : 'pin',
+          title: pinned ? 'Unpin message' : 'Pin message',
+          icon: pinned ? BuzzIcons.pinOff : BuzzIcons.pin,
+          group: _PopoverMessageActionGroup.utility,
+          onSelected: () {
+            if (!context.mounted) return;
+            unawaited(
+              updateMessagePin(
+                context,
+                ref,
+                channelId: channelId,
+                messageId: message.id,
+                pinned: !pinned,
+              ),
+            );
+          },
+        ),
+      );
+    }
     actions.add(
       _PopoverMessageAction(
         id: 'copyText',
@@ -423,9 +448,11 @@ List<_PopoverMessageAction> _buildPopoverMessageActions({
     'copyLink': 4,
     'later': 5,
     'remind': 6,
-    'followThread': 7,
-    'unfollowThread': 7,
-    'delete': 8,
+    'pin': 7,
+    'unpin': 7,
+    'followThread': 8,
+    'unfollowThread': 8,
+    'delete': 9,
   };
   actions.sort(
     (left, right) => actionOrder[left.id]!.compareTo(actionOrder[right.id]!),
@@ -461,6 +488,8 @@ class _PopoverMessageAction {
     'copyLink' => 'link',
     'later' => 'bookmark',
     'remind' => 'clock',
+    'pin' => 'pin',
+    'unpin' => 'pin.slash',
     'followThread' => 'bell',
     'unfollowThread' => 'bell.slash',
     'delete' => 'trash',

@@ -43,6 +43,7 @@ import 'package:buzz/features/channels/ime_metrics_settle_observer.dart';
 import 'package:buzz/features/channels/local_message_send_animation_provider.dart';
 import 'package:buzz/features/channels/message_action_backdrop_state.dart';
 import 'package:buzz/features/channels/message_actions.dart';
+import 'package:buzz/features/channels/message_pins/message_pins_provider.dart';
 import 'package:buzz/features/channels/mobile_huddle_controller.dart';
 import 'package:buzz/features/channels/reaction_row.dart';
 import 'package:buzz/features/channels/message_mention_pill.dart';
@@ -271,6 +272,7 @@ Widget _buildTestable({
   String? huddleCurrentPubkey,
   SendMessage? sendMessage,
   http.Client? mediaClient,
+  ChannelMessagePins? messagePins,
   Widget? home,
 }) {
   final resolvedChannel = channel ?? _testChannel;
@@ -402,6 +404,10 @@ Widget _buildTestable({
         currentPubkeyProvider.overrideWith((ref) => huddleCurrentPubkey),
       if (sendMessage != null)
         sendMessageProvider.overrideWithValue(sendMessage),
+      if (messagePins != null)
+        channelMessagePinsProvider(
+          _channelId,
+        ).overrideWith(() => _FixedPinsNotifier(messagePins)),
       appLifecycleProvider.overrideWith(_TestAppLifecycleNotifier.new),
       // Compose bar drafts persist through SharedPreferences.
       savedPrefsProvider.overrideWithValue(_testPrefs),
@@ -10204,6 +10210,53 @@ void main() {
     });
   });
 
+  group('Pins', () {
+    testWidgets('marks only currently pinned rows', (tester) async {
+      NostrEvent pin(String id, String target, int at, String status) =>
+          NostrEvent(
+            id: id,
+            pubkey: 'bob',
+            createdAt: at,
+            kind: EventKind.streamMessagePinned,
+            tags: [
+              ['h', _channelId],
+              ['e', target],
+              ['status', status],
+            ],
+            content: '',
+            sig: '',
+          );
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: [
+            _textMsg(
+              id: 'msg1',
+              pubkey: 'alice',
+              content: 'Pinned text',
+              createdAt: 1000,
+            ),
+            _textMsg(
+              id: 'msg2',
+              pubkey: 'alice',
+              content: 'Unpinned text',
+              createdAt: 1100,
+            ),
+          ],
+          messagePins: reduceMessagePins([
+            pin('p1', 'msg1', 10, 'pinned'),
+            pin('p2', 'msg2', 10, 'pinned'),
+            pin('p3', 'msg2', 11, 'unpinned'),
+          ], channelId: _channelId),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('message-pinned-msg1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('message-pinned-msg2')), findsNothing);
+      expect(find.text('Pinned'), findsOneWidget);
+    });
+  });
+
   group('Edits', () {
     testWidgets('edited message shows updated content and (edited) label', (
       tester,
@@ -16124,6 +16177,15 @@ class _TestAppLifecycleNotifier extends AppLifecycleNotifier {
   AppLifecycleState build() => AppLifecycleState.resumed;
 
   void setLifecycle(AppLifecycleState value) => state = value;
+}
+
+class _FixedPinsNotifier extends ChannelMessagePinsNotifier {
+  _FixedPinsNotifier(this.pins) : super(_channelId);
+
+  final ChannelMessagePins pins;
+
+  @override
+  ChannelMessagePins build() => pins;
 }
 
 class _TrackingRelaySession extends RelaySessionNotifier {

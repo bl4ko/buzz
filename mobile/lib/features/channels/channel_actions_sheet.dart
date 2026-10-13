@@ -34,6 +34,8 @@ import 'channel_stars/channel_stars_provider.dart';
 import 'channels_provider.dart';
 import 'manage_channel_sheet.dart';
 import 'members_sheet.dart';
+import 'message_pins/message_pins_provider.dart';
+import 'message_pins/pinned_messages_page.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/read_state/read_state_provider.dart';
 import '../../shared/read_state/read_state_time.dart';

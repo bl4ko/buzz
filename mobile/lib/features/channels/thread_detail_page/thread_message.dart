@@ -35,6 +35,13 @@ class _ThreadMessage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
+    final isPinned =
+        !message.isSystem &&
+        ref.watch(
+          channelMessagePinsProvider(
+            channelId,
+          ).select((pins) => pins.isPinned(message.id)),
+        );
     final pk = message.pubkey.toLowerCase();
     final profile =
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
@@ -140,6 +147,15 @@ class _ThreadMessage extends HookConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (isPinned)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: messageAvatarSize + messageAvatarContentGap,
+                            top: Grid.half,
+                            bottom: Grid.quarter,
+                          ),
+                          child: MessagePinnedLabel(messageId: message.id),
+                        ),
                       RepaintBoundary(
                         key: messageSnapshotKey,
                         child: Row(

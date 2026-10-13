@@ -650,6 +650,16 @@ List<List<String>> buildDeleteMessageTags({
   ];
 }
 
+List<List<String>> buildMessagePinTags({
+  required String channelId,
+  required String eventId,
+  required bool pinned,
+}) => [
+  ['h', channelId],
+  ['e', eventId],
+  ['status', pinned ? 'pinned' : 'unpinned'],
+];
+
 /// Builds the signed kind:9007 tags used by mobile channel creation.
 List<List<String>> buildCreateChannelTags({
   required String channelId,

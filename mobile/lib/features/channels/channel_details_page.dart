@@ -118,6 +118,9 @@ class ChannelDetailsPage extends HookConsumerWidget {
         '$memberCount ${memberCount == 1 ? 'member' : 'members'}';
     final previewMembers = members.take(_channelMemberPreviewLimit).toList();
     final userCache = ref.watch(userCacheProvider);
+    final pinnedCount = resolvedChannel.isForum
+        ? 0
+        : ref.watch(channelPinnedMessagesProvider(resolvedChannel.id)).length;
     final memberLabels = watchChannelIdentityLabels(
       ref,
       resolvedChannel.id,
@@ -482,6 +485,15 @@ class ChannelDetailsPage extends HookConsumerWidget {
             key: const ValueKey('channel-details-channel-card'),
             verticalPadding: _channelDetailsSectionPadding,
             children: [
+              if (!resolvedChannel.isForum)
+                AppListRow(
+                  key: const ValueKey('channel-details-pinned-row'),
+                  icon: BuzzIcons.pin,
+                  title: 'Pinned messages',
+                  value: pinnedCount == 0 ? null : '$pinnedCount',
+                  trailing: const _ChannelDetailsChevron(),
+                  onTap: () => showPinnedMessagesPage(context, resolvedChannel),
+                ),
               AppListRow(
                 icon: BuzzIcons.folderInput,
                 title: 'Move to section…',

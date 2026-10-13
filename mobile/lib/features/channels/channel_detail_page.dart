@@ -66,6 +66,8 @@ import 'message_actions.dart';
 import 'message_action_backdrop_state.dart';
 import 'message_long_press_region.dart';
 import 'message_content.dart';
+import 'message_pins/message_pins_provider.dart';
+import 'message_pins/pinned_messages_page.dart';
 import 'message_mention_pill.dart';
 import 'message_skeleton_body.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';

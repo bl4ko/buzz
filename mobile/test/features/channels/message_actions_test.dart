@@ -21,8 +21,11 @@ import 'package:flutter/material.dart';
 import 'package:buzz/shared/widgets/native_message_presentation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:hooks_riverpod/misc.dart' show Override;
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'message_pins/pins_fixtures.dart';
 
 const _channelId = 'chan-1';
 
@@ -143,6 +146,7 @@ Future<void> _pumpSheet(
   bool nativePresentation = false,
   String? currentPubkey = 'self',
   bool listChannel = false,
+  List<Override> extraOverrides = const [],
 }) async {
   Future<void>? presentation;
   await tester.pumpWidget(
@@ -161,6 +165,7 @@ Future<void> _pumpSheet(
         reminderServiceProvider.overrideWithValue(reminderService),
         if (listChannel)
           channelsProvider.overrideWith(_ListedChannelsNotifier.new),
+        ...extraOverrides,
       ],
       child: MaterialApp(
         theme: AppTheme.light(),
@@ -2046,6 +2051,43 @@ void main() {
 
       expect(find.text('Mark unread'), findsNothing);
       expect(find.text('Mark read'), findsNothing);
+    });
+
+    testWidgets('Pin message publishes a pin event and then offers Unpin', (
+      tester,
+    ) async {
+      final prefs = await _mockPrefs();
+      final keys = nostr.Keys.generate();
+      final relay = PinsRelay();
+      await _pumpSheet(
+        tester,
+        message: _message(),
+        prefs: prefs,
+        extraOverrides: [
+          relayConfigProvider.overrideWith(() => PinsConfig(keys.nsec)),
+          relaySessionProvider.overrideWith(() => relay),
+        ],
+      );
+
+      expect(find.text('Unpin message'), findsNothing);
+      await tester.tap(find.text('Pin message'));
+      await tester.pumpAndSettle();
+
+      final published = relay.published.single;
+      expect(published.kind, EventKind.streamMessagePinned);
+      expect(published.tags, [
+        ['h', _channelId],
+        ['e', 'msg-1'],
+        ['status', 'pinned'],
+      ]);
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pin message'), findsNothing);
+      await tester.tap(find.text('Unpin message'));
+      await tester.pumpAndSettle();
+      expect(relay.published.last.tags.last, ['status', 'unpinned']);
+      expect(relay.published.last.createdAt, greaterThan(published.createdAt));
     });
 
     testWidgets('Follow thread toggles the effective root id', (tester) async {

@@ -143,6 +143,27 @@ Future<bool> _showNativeMessageActions({
           }
         },
       );
+      if (isMember && !isArchived) {
+        final pinned = ref
+            .read(channelMessagePinsProvider(channelId))
+            .isPinned(message.id);
+        action(
+          'pin',
+          pinned ? 'Unpin message' : 'Pin message',
+          pinned ? 'pin.slash' : 'pin',
+          () {
+            unawaited(
+              updateMessagePin(
+                context,
+                ref,
+                channelId: channelId,
+                messageId: message.id,
+                pinned: !pinned,
+              ),
+            );
+          },
+        );
+      }
       action('copy', 'Copy text', 'doc.on.doc', () {
         Clipboard.setData(ClipboardData(text: message.content));
       });

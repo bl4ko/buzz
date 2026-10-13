@@ -32,6 +32,13 @@ class _MessageBubble extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
+    final isPinned =
+        !message.isSystem &&
+        ref.watch(
+          channelMessagePinsProvider(
+            currentChannelId,
+          ).select((pins) => pins.isPinned(message.id)),
+        );
     final hasLocalReplies = ref.watch(
       threadLocalRepliesProvider(
         ThreadRepliesArgs(
@@ -171,6 +178,15 @@ class _MessageBubble extends HookConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (isPinned)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: messageAvatarSize + messageAvatarContentGap,
+                          top: Grid.half,
+                          bottom: Grid.quarter,
+                        ),
+                        child: MessagePinnedLabel(messageId: message.id),
+                      ),
                     RepaintBoundary(
                       key: messageSnapshotKey,
                       child: Row(

@@ -377,6 +377,28 @@ class ChannelActions {
     _ensureCommunityValid();
   }
 
+  Future<void> setMessagePinned({
+    required String channelId,
+    required String eventId,
+    required bool pinned,
+    int? createdAt,
+    void Function(NostrEvent event)? onSigned,
+  }) async {
+    _ensureCommunityValid();
+    await _signedEventRelay.submit(
+      kind: EventKind.streamMessagePinned,
+      content: '',
+      tags: buildMessagePinTags(
+        channelId: channelId,
+        eventId: eventId,
+        pinned: pinned,
+      ),
+      createdAt: createdAt,
+      onSigned: onSigned,
+    );
+    _ensureCommunityValid();
+  }
+
   static final Random _random = Random.secure();
 }
 
