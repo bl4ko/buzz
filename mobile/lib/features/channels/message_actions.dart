@@ -29,6 +29,8 @@ import '../activity/reminders_provider.dart' show remindersProvider;
 import 'channel_management_provider.dart';
 import 'channels_provider.dart';
 import '../../shared/emoji/emoji_picker.dart';
+import 'message_pins/message_pins_provider.dart';
+import 'message_pins/pinned_messages_page.dart';
 import 'reaction_row.dart';
 import '../../shared/emoji/recent_emoji_provider.dart';
 import '../../shared/read_state/message_read_state.dart';
@@ -251,6 +253,17 @@ Future<void> showMessageActions({
                         _FollowThreadTile(message: message),
                       ],
                     ),
+                    if (isMember && !isArchived)
+                      SheetActionSection(
+                        children: [
+                          _PinMessageTile(
+                            message: message,
+                            channelId: channelId,
+                            pageContext: context,
+                            pageRef: ref,
+                          ),
+                        ],
+                      ),
                     SheetActionSection(
                       children: [
                         // Export: take the content out of the conversation.
@@ -1025,4 +1038,44 @@ void _confirmDelete({
       ],
     ),
   );
+}
+
+class _PinMessageTile extends ConsumerWidget {
+  const _PinMessageTile({
+    required this.message,
+    required this.channelId,
+    required this.pageContext,
+    required this.pageRef,
+  });
+
+  final TimelineMessage message;
+  final String channelId;
+  final BuildContext pageContext;
+  final WidgetRef pageRef;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pinned = ref.watch(
+      channelMessagePinsProvider(
+        channelId,
+      ).select((pins) => pins.isPinned(message.id)),
+    );
+    return ListTile(
+      leading: Icon(pinned ? BuzzIcons.pinOff : BuzzIcons.pin),
+      title: Text(pinned ? 'Unpin message' : 'Pin message'),
+      onTap: () {
+        if (!_selectMessageAction(context)) return;
+        if (!pageContext.mounted) return;
+        unawaited(
+          updateMessagePin(
+            pageContext,
+            pageRef,
+            channelId: channelId,
+            messageId: message.id,
+            pinned: !pinned,
+          ),
+        );
+      },
+    );
+  }
 }

@@ -43,6 +43,13 @@ class _ThreadMessage extends HookConsumerWidget {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
     final swipeContentKey = useMemoized(GlobalKey.new, const []);
     final mediaOffset = useMessageMediaOffset(message.content, message.tags);
+    final isPinned =
+        !message.isSystem &&
+        ref.watch(
+          channelMessagePinsProvider(
+            channelId,
+          ).select((pins) => pins.isPinned(message.id)),
+        );
     final pk = message.pubkey.toLowerCase();
     final ownMessage = currentPubkey?.toLowerCase() == pk;
     final profile =
@@ -478,7 +485,22 @@ class _ThreadMessage extends HookConsumerWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          content,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isPinned)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: messageAvatarSize + messageAvatarContentGap,
+                    top: Grid.half,
+                    bottom: Grid.quarter,
+                  ),
+                  child: MessagePinnedLabel(messageId: message.id),
+                ),
+              content,
+            ],
+          ),
           if (showAuthor)
             Positioned(
               top: 0,

@@ -44,6 +44,13 @@ class _MessageBubble extends HookConsumerWidget {
     final messageSnapshotKey = useMemoized(GlobalKey.new, const []);
     final swipeContentKey = useMemoized(GlobalKey.new, const []);
     final mediaOffset = useMessageMediaOffset(message.content, message.tags);
+    final isPinned =
+        !message.isSystem &&
+        ref.watch(
+          channelMessagePinsProvider(
+            currentChannelId,
+          ).select((pins) => pins.isPinned(message.id)),
+        );
     final hasLocalReplies = ref.watch(
       threadLocalRepliesProvider(
         ThreadRepliesArgs(
@@ -524,7 +531,22 @@ class _MessageBubble extends HookConsumerWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          content,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isPinned)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: messageAvatarSize + messageAvatarContentGap,
+                    top: Grid.half,
+                    bottom: Grid.quarter,
+                  ),
+                  child: MessagePinnedLabel(messageId: message.id),
+                ),
+              content,
+            ],
+          ),
           if (showAuthor)
             Positioned(
               top: 0,

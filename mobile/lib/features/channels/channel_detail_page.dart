@@ -90,6 +90,8 @@ import 'message_long_press_region.dart';
 import 'message_content.dart';
 import '../../shared/widgets/message_attachment_corners.dart';
 import 'message_media_avatar.dart';
+import 'message_pins/message_pins_provider.dart';
+import 'message_pins/pinned_messages_page.dart';
 import 'message_skeleton_body.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';
 import '../../shared/read_state/read_state_provider.dart';
