@@ -3,6 +3,7 @@ import * as React from "react";
 import { classifyTimelineMessageDelta } from "@/features/messages/lib/timelineSnapshot";
 import {
   getPinnedCenterDrift,
+  isJumpTargetInViewport,
   settleProgrammaticBottomPin,
   shouldIgnorePinnedCenterScroll,
   shouldSettleForSplitPanel,
@@ -446,10 +447,7 @@ export function useAnchoredScroll({
         if (el) {
           const rect = el.getBoundingClientRect();
           const containerRect = container.getBoundingClientRect();
-          const isInViewport =
-            rect.top >= containerRect.top &&
-            rect.bottom <= containerRect.bottom;
-          if (!isInViewport) {
+          if (!isJumpTargetInViewport(rect, containerRect)) {
             if (!virtualScrollToMessage(messageId, { behavior: "auto" })) {
               return false;
             }

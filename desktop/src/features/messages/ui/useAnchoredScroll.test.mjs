@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getPinnedCenterDrift,
+  isJumpTargetInViewport,
   settleProgrammaticBottomPin,
   shouldIgnorePinnedCenterScroll,
   shouldSettleForSplitPanel,
@@ -166,4 +167,27 @@ test("pinned center real user scroll releases the anchor", () => {
     }),
     false,
   );
+});
+
+test("jump target in viewport: short rows must fit, tall rows must cover the center", () => {
+  const viewport = { top: 0, bottom: 600 };
+  const row = (top, height) => ({ top, bottom: top + height });
+  const cases = [
+    [row(100, 200), true],
+    [row(-10, 200), false],
+    [row(500, 200), false],
+    [row(-1800, 4200), true],
+    [row(-3800, 4200), true],
+    [row(250, 4200), true],
+    [row(301, 4200), false],
+    [row(-3901, 4200), false],
+    [row(700, 4200), false],
+  ];
+  for (const [rect, expected] of cases) {
+    assert.equal(
+      isJumpTargetInViewport(rect, viewport),
+      expected,
+      JSON.stringify(rect),
+    );
+  }
 });

@@ -69,3 +69,16 @@ export function shouldSettleVirtualizedBottom({
     (messagesArrived > 0 || messagesChanged)
   );
 }
+
+type VerticalRect = Pick<DOMRect, "top" | "bottom">;
+
+export function isJumpTargetInViewport(
+  rect: VerticalRect,
+  viewport: VerticalRect,
+): boolean {
+  if (rect.bottom - rect.top <= viewport.bottom - viewport.top) {
+    return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
+  }
+  const center = (viewport.top + viewport.bottom) / 2;
+  return rect.top <= center && rect.bottom >= center;
+}
