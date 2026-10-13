@@ -9,6 +9,7 @@ import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDi
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
 import { ChannelMembersBar } from "@/features/channels/ui/ChannelMembersBar";
+import { ChannelPinsButton } from "@/features/channels/ui/ChannelPinsButton";
 import {
   DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
   ProfileAvatarWithStatus,
@@ -130,6 +131,10 @@ export function ChannelScreenHeader({
   const actions =
     terminalButton || channelActions ? (
       <div className="flex items-center gap-1">
+        <ChannelPinsButton
+          channelId={activeChannel?.id}
+          currentPubkey={currentPubkey}
+        />
         {terminalButton}
         {channelActions}
       </div>

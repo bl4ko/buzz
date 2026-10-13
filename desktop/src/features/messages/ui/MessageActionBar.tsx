@@ -11,6 +11,8 @@ import {
   MailCheck,
   MailOpen,
   Pencil,
+  Pin,
+  PinOff,
   SmilePlus,
   Trash2,
 } from "lucide-react";
@@ -44,6 +46,7 @@ import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
 import { HashArrowIn } from "@/shared/ui/icons";
 import { DeleteMessageConfirmDialog } from "./DeleteMessageConfirmDialog";
+import { useMessagePinToggle } from "./ChannelPinsContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -123,6 +126,7 @@ function MoreActionsMenu({
 }) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const { saveForLater } = useRemindLater();
+  const pinToggle = useMessagePinToggle(channelId, message);
   const [isReportDialogOpen, setIsReportDialogOpen] = React.useState(false);
   // Transfer focus ownership only after the menu has finished closing.
   // During its exit animation Radix's pointer-leave handler can still focus
@@ -271,6 +275,20 @@ function MoreActionsMenu({
             >
               <Bookmark className="h-4 w-4" />
               Save for later
+            </DropdownMenuItem>
+          ) : null}
+
+          {pinToggle ? (
+            <DropdownMenuItem
+              data-testid={`pin-message-${message.id}`}
+              onClick={pinToggle.toggle}
+            >
+              {pinToggle.pinned ? (
+                <PinOff className="h-4 w-4" />
+              ) : (
+                <Pin className="h-4 w-4" />
+              )}
+              {pinToggle.pinned ? "Unpin message" : "Pin message"}
             </DropdownMenuItem>
           ) : null}
 

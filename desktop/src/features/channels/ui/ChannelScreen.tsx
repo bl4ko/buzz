@@ -55,6 +55,8 @@ import { useFetchOlderMessages } from "@/features/messages/useFetchOlderMessages
 import { useIndependentThreadPanel } from "@/features/messages/useIndependentThreadPanel";
 import { useThreadReplies } from "@/features/messages/useThreadReplies";
 import { useChannelTyping } from "@/features/messages/useChannelTyping";
+import { useChannelPins } from "@/features/messages/useChannelPins";
+import { ChannelPinsProvider } from "@/features/messages/ui/ChannelPinsContext";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useRelaySelfQuery } from "@/features/moderation/hooks";
@@ -201,6 +203,7 @@ export function ChannelScreen({
     });
   }, [activeChannelId, openThreadHeadId]);
   const messagesQuery = useChannelMessagesQuery(activeChannel);
+  const channelPins = useChannelPins(activeChannel?.channelType === "forum" ? null : (activeChannel?.id ?? null));
   const windowQuery = useChannelWindowQuery(activeChannel);
   const threadRepliesQuery = useThreadReplies(
     activeChannel,
@@ -783,6 +786,7 @@ export function ChannelScreen({
     ],
   );
   return (
+    <ChannelPinsProvider canPin={Boolean(activeChannel?.isMember && !activeChannel.archivedAt)} pins={channelPins}>
     <AgentSessionProvider onOpenAgentSession={handleOpenAgentSession}>
       <ProfilePanelProvider onOpenProfilePanel={handleOpenProfilePanel}>
         <WelcomeAgentCreateDialog
@@ -996,5 +1000,6 @@ export function ChannelScreen({
         />
       </ProfilePanelProvider>
     </AgentSessionProvider>
+    </ChannelPinsProvider>
   );
 }
