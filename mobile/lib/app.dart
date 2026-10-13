@@ -15,6 +15,7 @@ import 'features/age_gate/age_signal_provider.dart';
 import 'features/activity/activity_provider.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
+import 'features/activity/reminder_alerts.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
 import 'features/channels/channels_provider.dart';
@@ -356,6 +357,7 @@ class App extends HookConsumerWidget {
       ref.watch(observerRelayProvider);
       ref.watch(appLifecycleProvider);
       ref.watch(userStatusCacheProvider);
+      ref.watch(reminderAlertSyncProvider);
       if (ref.watch(activeCommunityProvider).value?.pushNotificationsEnabled ==
               true &&
           ref.watch(currentRelayPushDescriptorProvider).value != null) {

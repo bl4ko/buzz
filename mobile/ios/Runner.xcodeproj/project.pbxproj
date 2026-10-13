@@ -38,6 +38,7 @@
 		4A71C0212F4110100A17E01 /* MP4Canonicalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0222F4110100A17E01 /* MP4Canonicalizer.swift */; };
 		4A71C0232F4120100A17E01 /* NativeAttachmentPopoverMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0242F4120100A17E01 /* NativeAttachmentPopoverMenu.swift */; };
 		5A29F825F921BC532DC55281 /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26EA5E424035A56B0615635E /* WatchBridge.swift */; };
+		4A71C0252F4130100A17E01 /* ReminderAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0262F4130100A17E01 /* ReminderAlerts.swift */; };
 		660443E470AE6523D9D877D9 /* Bl4uzz.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BE58B7F77C593EB2E2C708BD /* Bl4uzz.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
@@ -57,6 +58,7 @@
 		BZZ00000000000000000026 /* PushEndpointGrantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ00000000000000000027 /* PushEndpointGrantStore.swift */; };
 		BZZ00000000000000000029 /* PushSnapshotBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ0000000000000000002A /* PushSnapshotBridge.swift */; };
 		BZZ0000000000000000002B /* BuzzCommunicationNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */; };
+		4A71C0272F4140100A17E01 /* ReminderAlertsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A71C0282F4140100A17E01 /* ReminderAlertsTests.swift */; };
 		C0AF00000000000000000001 /* NativeConfirmationDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AF00000000000000000002 /* NativeConfirmationDialog.swift */; };
 		C0AF00000000000000000021 /* NativePresenceMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AF00000000000000000022 /* NativePresenceMenu.swift */; };
 		C0AF00000000000000000011 /* NativeAddMembersSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AF00000000000000000012 /* NativeAddMembersSheet.swift */; };
@@ -124,6 +126,7 @@
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		26EA5E424035A56B0615635E /* WatchBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchBridge.swift; sourceTree = "<group>"; };
+		4A71C0262F4130100A17E01 /* ReminderAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderAlerts.swift; sourceTree = "<group>"; };
 		30CE81D3D1E0B195EF2A6390 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -183,6 +186,7 @@
 		BZZ00000000000000000027 /* PushEndpointGrantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEndpointGrantStore.swift; sourceTree = "<group>"; };
 		BZZ0000000000000000002A /* PushSnapshotBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushSnapshotBridge.swift; sourceTree = "<group>"; };
 		BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuzzCommunicationNotificationTests.swift; sourceTree = "<group>"; };
+		4A71C0282F4140100A17E01 /* ReminderAlertsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderAlertsTests.swift; sourceTree = "<group>"; };
 		C0AF00000000000000000002 /* NativeConfirmationDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeConfirmationDialog.swift; sourceTree = "<group>"; };
 		C0AF00000000000000000022 /* NativePresenceMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePresenceMenu.swift; sourceTree = "<group>"; };
 		C0AF00000000000000000012 /* NativeAddMembersSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAddMembersSheet.swift; sourceTree = "<group>"; };
@@ -249,6 +253,7 @@
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
 				AB1200132F40400100A17E01 /* NativeMessageImageLoaderTests.swift */,
 				BZZ0000000000000000002C /* BuzzCommunicationNotificationTests.swift */,
+				4A71C0282F4140100A17E01 /* ReminderAlertsTests.swift */,
 				331C80A0294A618700263BE5 /* Fixtures */,
 			);
 			path = RunnerTests;
@@ -358,6 +363,7 @@
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				26EA5E424035A56B0615635E /* WatchBridge.swift */,
+				4A71C0262F4130100A17E01 /* ReminderAlerts.swift */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -705,6 +711,7 @@
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
 				AB1200032F40400100A17E01 /* NativeMessageImageLoaderTests.swift in Sources */,
 				BZZ0000000000000000002B /* BuzzCommunicationNotificationTests.swift in Sources */,
+				4A71C0272F4140100A17E01 /* ReminderAlertsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -746,6 +753,7 @@
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				5A29F825F921BC532DC55281 /* WatchBridge.swift in Sources */,
+				4A71C0252F4130100A17E01 /* ReminderAlerts.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

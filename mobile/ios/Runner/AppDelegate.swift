@@ -47,6 +47,7 @@ import os.log
   private var nativeMessageActionSurfaceSupportChannel: FlutterMethodChannel?
   private var huddleMediaPlugin: HuddleMediaPlugin?
   private var watchBridge: WatchBridge?
+  private var reminderAlerts: ReminderAlerts?
 
   override func application(
     _ application: UIApplication,
@@ -65,6 +66,7 @@ import os.log
       registrar: engineBridge.pluginRegistry.registrar(forPlugin: "BuzzAttachedEngineMessenger")
     )
     watchBridge = WatchBridge(messenger: messenger)
+    reminderAlerts = ReminderAlerts(messenger: messenger)
     huddleMediaPlugin = HuddleMediaPlugin(messenger: messenger)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BuzzIosNavigationBar") {
       registrar.register(IosNavigationBarFactory(messenger: messenger, parent: registrar.viewController), withId: "buzz/ios_navigation_bar")
@@ -460,6 +462,22 @@ import os.log
   ) {
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
     apnsRegistrationBuffer.recordError(error.localizedDescription)
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    guard ReminderAlerts.isReminder(notification) else {
+      super.userNotificationCenter(
+        center,
+        willPresent: notification,
+        withCompletionHandler: completionHandler
+      )
+      return
+    }
+    completionHandler([.banner, .list, .sound])
   }
 
   override func userNotificationCenter(
