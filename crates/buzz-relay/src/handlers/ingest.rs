@@ -1385,6 +1385,69 @@ async fn validate_forum_vote_target(
     Ok(())
 }
 
+/// Validate kind:40004 tag shape and return the target event ID bytes.
+fn validate_pin_tags(event: &Event) -> Result<Vec<u8>, String> {
+    let mut targets = Vec::new();
+    let mut statuses = Vec::new();
+    for tag in event.tags.iter() {
+        let parts = tag.as_slice();
+        match parts.first().map(String::as_str) {
+            Some("e") if parts.get(3).is_some_and(|m| !m.is_empty()) => {
+                return Err("pin e tag must not carry a thread marker".to_string());
+            }
+            Some("e") => targets.push(parts.get(1).map(String::as_str)),
+            Some("status") => statuses.push(parts.get(1).map(String::as_str)),
+            _ => {}
+        }
+    }
+    let [target] = targets.as_slice() else {
+        return Err(format!(
+            "pin events must have exactly one e tag (got {})",
+            targets.len()
+        ));
+    };
+    let [status] = statuses.as_slice() else {
+        return Err(format!(
+            "pin events must have exactly one status tag (got {})",
+            statuses.len()
+        ));
+    };
+    if !matches!(status, Some("pinned" | "unpinned")) {
+        return Err("pin status must be pinned or unpinned".to_string());
+    }
+    target
+        .filter(|v| v.len() == 64)
+        .and_then(|v| hex::decode(v).ok())
+        .ok_or_else(|| "invalid pin target event ID".to_string())
+}
+
+/// Validate kind:40004 targets a live channel message in the pin's channel.
+async fn validate_pin_target(
+    community_id: CommunityId,
+    event: &Event,
+    state: &AppState,
+) -> Result<(), String> {
+    let target_bytes = validate_pin_tags(event)?;
+    let target_event = state
+        .db
+        .get_event_by_id_for_event_write(community_id, &target_bytes)
+        .await
+        .map_err(|e| format!("db error: {e}"))?
+        .ok_or_else(|| "pin target event not found".to_string())?;
+
+    let target_kind = event_kind_u32(&target_event.event);
+    if !matches!(
+        target_kind,
+        KIND_STREAM_MESSAGE | KIND_STREAM_MESSAGE_V2 | KIND_FORUM_POST
+    ) {
+        return Err("pin target must be a channel message".to_string());
+    }
+    match (extract_channel_id(event), target_event.channel_id) {
+        (Some(pin_ch), Some(target_ch)) if pin_ch == target_ch => Ok(()),
+        _ => Err("target event belongs to a different channel".to_string()),
+    }
+}
+
 /// Validate kind:40008 diff event metadata tags.
 fn validate_diff_event(event: &Event) -> Result<(), String> {
     // Content max 60KB
@@ -2918,6 +2981,12 @@ async fn ingest_event_inner(
 
     if kind_u32 == KIND_STREAM_MESSAGE_EDIT {
         validate_edit_ownership(tenant.community(), &event, state)
+            .await
+            .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
+    }
+
+    if kind_u32 == KIND_STREAM_MESSAGE_PINNED {
+        validate_pin_target(tenant.community(), &event, state)
             .await
             .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
     }
@@ -4566,6 +4635,70 @@ mod postgres_tests {
     fn count_e_tags_single_valid() {
         let event = make_event_with_tags(5, "", &[&["e", "a".repeat(64).as_str()]]);
         assert_eq!(count_e_tags(&event), 1);
+    }
+
+    #[test]
+    fn pin_tags_require_one_target_and_one_valid_status() {
+        let id = "a".repeat(64);
+        let other = "b".repeat(64);
+        let h = ["h", "00000000-0000-0000-0000-000000000001"];
+        type Case<'a> = (Vec<Vec<&'a str>>, Result<(), &'a str>);
+        let cases: Vec<Case> = vec![
+            (vec![vec!["e", &id], vec!["status", "pinned"]], Ok(())),
+            (vec![vec!["e", &id], vec!["status", "unpinned"]], Ok(())),
+            (vec![vec!["e", &id, ""], vec!["status", "pinned"]], Ok(())),
+            (
+                vec![vec!["status", "pinned"]],
+                Err("exactly one e tag (got 0)"),
+            ),
+            (
+                vec![vec!["e", &id], vec!["e", &other], vec!["status", "pinned"]],
+                Err("exactly one e tag (got 2)"),
+            ),
+            (vec![vec!["e", &id]], Err("exactly one status tag (got 0)")),
+            (
+                vec![
+                    vec!["e", &id],
+                    vec!["status", "pinned"],
+                    vec!["status", "unpinned"],
+                ],
+                Err("exactly one status tag (got 2)"),
+            ),
+            (
+                vec![vec!["e", &id], vec!["status", "archived"]],
+                Err("pinned or unpinned"),
+            ),
+            (
+                vec![vec!["e", &id], vec!["status"]],
+                Err("pinned or unpinned"),
+            ),
+            (
+                vec![vec!["e", "not-hex"], vec!["status", "pinned"]],
+                Err("invalid pin target"),
+            ),
+            (
+                vec![vec!["e", &id[..63]], vec!["status", "pinned"]],
+                Err("invalid pin target"),
+            ),
+            (
+                vec![vec!["e"], vec!["status", "pinned"]],
+                Err("invalid pin target"),
+            ),
+            (
+                vec![vec!["e", &id, "", "reply"], vec!["status", "pinned"]],
+                Err("thread marker"),
+            ),
+        ];
+        for (tags, expected) in cases {
+            let mut all: Vec<&[&str]> = vec![&h];
+            all.extend(tags.iter().map(Vec::as_slice));
+            let event = make_event_with_tags(KIND_STREAM_MESSAGE_PINNED, "", &all);
+            match (validate_pin_tags(&event), expected) {
+                (Ok(target), Ok(())) => assert_eq!(target, hex::decode(&id).unwrap(), "{tags:?}"),
+                (Err(err), Err(want)) => assert!(err.contains(want), "{tags:?}: {err}"),
+                (got, want) => panic!("{tags:?}: got {got:?}, want {want:?}"),
+            }
+        }
     }
 
     fn make_engram(tags: &[&[&str]], content: &str) -> Event {
@@ -7139,5 +7272,214 @@ mod postgres_tests {
             .expect("root metadata lookup")
             .expect("start is a thread root");
         assert_eq!(root.reply_count, 1);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn message_pin_targets_a_live_message_in_the_same_channel() {
+        use buzz_db::channel::{ChannelType, ChannelVisibility, MemberRole};
+        use nostr::Tag;
+
+        let state = ingest_state().await;
+        let host = format!("pins-{}.test", Uuid::new_v4().simple());
+        let community = state
+            .db
+            .ensure_configured_community(&host)
+            .await
+            .expect("ensure community")
+            .id;
+        let tenant = TenantContext::resolved(community, &host);
+        let (owner, member, outsider) = (
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+        );
+        let (channel, other_channel) = (Uuid::new_v4(), Uuid::new_v4());
+        for ch in [channel, other_channel] {
+            state
+                .db
+                .create_channel_with_id(
+                    community,
+                    ch,
+                    &format!("pins-{}", ch.simple()),
+                    ChannelType::Stream,
+                    ChannelVisibility::Private,
+                    None,
+                    owner.public_key().as_bytes(),
+                    None,
+                )
+                .await
+                .expect("create channel");
+        }
+        state
+            .db
+            .add_member(
+                community,
+                channel,
+                member.public_key().as_bytes(),
+                MemberRole::Member,
+                Some(owner.public_key().as_bytes()),
+            )
+            .await
+            .expect("add member");
+        let auth = |keys: &nostr::Keys| IngestAuth::Http {
+            pubkey: keys.public_key(),
+            scopes: vec![Scope::MessagesWrite],
+            auth_method: HttpAuthMethod::Nip98,
+        };
+        let h = |ch: Uuid| Tag::parse(["h", &ch.to_string()]).expect("h tag");
+        let message = |ch: Uuid, kind: u32| {
+            EventBuilder::new(Kind::Custom(kind as u16), "hello")
+                .tags([h(ch)])
+                .sign_with_keys(&owner)
+                .expect("sign message")
+        };
+        let pin = |keys: &nostr::Keys, ch: Uuid, target: &str, status: &str| {
+            EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE_PINNED as u16), "")
+                .tags([
+                    h(ch),
+                    Tag::parse(["e", target]).expect("e tag"),
+                    Tag::parse(["status", status]).expect("status tag"),
+                ])
+                .sign_with_keys(keys)
+                .expect("sign pin")
+        };
+
+        let target = message(channel, KIND_STREAM_MESSAGE);
+        let foreign = message(other_channel, KIND_STREAM_MESSAGE);
+        let reaction = EventBuilder::new(Kind::Custom(KIND_REACTION as u16), "+")
+            .tags([h(channel), Tag::event(target.id)])
+            .sign_with_keys(&owner)
+            .expect("sign reaction");
+        for event in [target.clone(), foreign.clone(), reaction.clone()] {
+            let ingested = ingest_event(&state, &tenant, event, auth(&owner))
+                .await
+                .expect("setup event is accepted");
+            assert!(ingested.accepted, "{}", ingested.message);
+        }
+
+        let pinned = pin(&member, channel, &target.id.to_hex(), "pinned");
+        let pinned_id = pinned.id;
+        assert!(
+            ingest_event(&state, &tenant, pinned, auth(&member))
+                .await
+                .expect("a member may pin another member's message")
+                .accepted
+        );
+        assert!(
+            ingest_event(
+                &state,
+                &tenant,
+                pin(&owner, channel, &target.id.to_hex(), "unpinned"),
+                auth(&owner),
+            )
+            .await
+            .expect("a member may unpin")
+            .accepted
+        );
+
+        let rejections = [
+            (
+                pin(&member, channel, &foreign.id.to_hex(), "pinned"),
+                &member,
+                "invalid: target event belongs to a different channel",
+            ),
+            (
+                pin(&member, channel, &"c".repeat(64), "pinned"),
+                &member,
+                "invalid: pin target event not found",
+            ),
+            (
+                pin(&member, channel, &reaction.id.to_hex(), "pinned"),
+                &member,
+                "invalid: pin target must be a channel message",
+            ),
+            (
+                pin(&member, channel, &pinned_id.to_hex(), "pinned"),
+                &member,
+                "invalid: pin target must be a channel message",
+            ),
+            (
+                pin(&member, channel, &target.id.to_hex(), "starred"),
+                &member,
+                "invalid: pin status must be pinned or unpinned",
+            ),
+        ];
+        for (event, keys, want) in rejections {
+            match ingest_event(&state, &tenant, event, auth(keys)).await {
+                Err(IngestError::Rejected(msg)) => assert_eq!(msg, want),
+                other => panic!("expected {want:?}, got {:?}", other.map(|r| r.message)),
+            }
+        }
+        assert!(
+            ingest_event(
+                &state,
+                &tenant,
+                pin(&outsider, channel, &target.id.to_hex(), "pinned"),
+                auth(&outsider),
+            )
+            .await
+            .is_err(),
+            "a non-member must not pin in a private channel"
+        );
+
+        let filter = serde_json::from_value(serde_json::json!({
+            "kinds": [KIND_STREAM_MESSAGE_PINNED],
+            "#h": [channel.to_string()],
+        }))
+        .expect("filter");
+        let query = crate::handlers::req::build_event_query_from_filter(
+            &filter,
+            member.public_key().as_bytes(),
+            &state,
+            community,
+        )
+        .await;
+        let stored = state.db.query_events(&query).await.expect("query pins");
+        let mut statuses: Vec<String> = stored
+            .iter()
+            .map(|e| {
+                e.event
+                    .tags
+                    .iter()
+                    .find(|t| t.kind().to_string() == "status")
+                    .and_then(|t| t.content())
+                    .expect("status")
+                    .to_string()
+            })
+            .collect();
+        statuses.sort();
+        assert_eq!(statuses, ["pinned", "unpinned"]);
+        let target_meta = state
+            .db
+            .get_thread_metadata_by_event(community, target.id.as_bytes())
+            .await
+            .expect("thread metadata lookup");
+        assert!(
+            target_meta.is_none_or(|m| m.reply_count == 0),
+            "pins must not count as thread replies"
+        );
+
+        state
+            .db
+            .soft_delete_event_and_update_thread(community, target.id.as_bytes(), None, None)
+            .await
+            .expect("soft delete target");
+        match ingest_event(
+            &state,
+            &tenant,
+            pin(&member, channel, &target.id.to_hex(), "pinned"),
+            auth(&member),
+        )
+        .await
+        {
+            Err(IngestError::Rejected(msg)) => {
+                assert_eq!(msg, "invalid: pin target event not found")
+            }
+            other => panic!(
+                "a deleted target must not be pinned, got {:?}",
+                other.map(|r| r.message)
+            ),
+        }
     }
 }
