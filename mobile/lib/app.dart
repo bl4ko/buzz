@@ -19,6 +19,7 @@ import 'package:uuid/uuid.dart';
 
 import 'features/age_gate/age_restriction_page.dart';
 import 'features/age_gate/age_signal_provider.dart';
+import 'features/activity/reminder_alerts.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
 import 'features/channels/channels_provider.dart';
@@ -379,6 +380,7 @@ class App extends HookConsumerWidget {
       ref.listen(activityProvider, (_, _) {});
       // Preserve initial read seeding even while Solo is hidden.
       ref.listen(meUnreadChannelIdsProvider, (_, _) {});
+      ref.listen(reminderAlertSyncProvider, (_, _) {});
     }
 
     // Start listening for buzz:// links immediately (even pre-auth) so a
