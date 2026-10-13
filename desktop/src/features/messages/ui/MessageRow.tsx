@@ -58,6 +58,8 @@ import {
 } from "./MessageHeader";
 import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
+import { MessagePinnedLine } from "./MessagePinnedLine";
+import { useChannelPinsContext } from "./ChannelPinsContext";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
@@ -217,6 +219,8 @@ export const MessageRow = React.memo(
     } = useReactionHandler(message, onToggleReaction);
     const { openReminder, activeReminderEventIds } = useRemindLater();
     const hasActiveReminder = activeReminderEventIds.has(message.id);
+    const isPinned =
+      useChannelPinsContext(channelId)?.isPinned(message.id) ?? false;
     // The hover/focus action rail is absolutely positioned over the row, so it
     // takes no layout space of its own. Measure its rendered footprint and
     // reserve it in the message-header row (see `headerNode`) so a long author
@@ -711,6 +715,12 @@ export const MessageRow = React.memo(
 
     const messageBodyNode = (
       <>
+        <MessagePinnedLine
+          channelId={channelId}
+          currentPubkey={currentPubkey}
+          messageId={message.id}
+          profiles={profiles}
+        />
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
         {renderBody()}
         <MessageNotifiedLine
@@ -932,7 +942,11 @@ export const MessageRow = React.memo(
                 : "px-2",
             "flex gap-2.5",
             isDisplayedAsContinuation ? "items-center" : "items-start",
-            hasActiveReminder ? "bg-blue-500/10" : "",
+            hasActiveReminder
+              ? "bg-blue-500/10"
+              : isPinned
+                ? "bg-amber-500/10"
+                : "",
             highlighted
               ? "-mx-4 rounded-none px-6 before:absolute before:-inset-y-1.5 before:inset-x-0 before:animate-[route-target-highlight-fade_2s_ease-out_forwards] before:bg-primary/10 before:content-[''] motion-reduce:before:animate-none sm:-mx-6 sm:px-8"
               : "",
