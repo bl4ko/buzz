@@ -115,6 +115,11 @@ async function expandReply(
   await expect.poll(() => replies.count()).toBeGreaterThan(before);
 }
 
+// A sidebar row click opens the oldest unread thread reply; history keeps the timeline view.
+async function returnToGeneral(page: import("@playwright/test").Page) {
+  await page.goBack();
+}
+
 test.describe("thread unread indicator", () => {
   test("01-thread-unread-badge", async ({ page }) => {
     await installMockBridge(page);
@@ -165,7 +170,7 @@ test.describe("thread unread indicator", () => {
     }
 
     // Switch back — thread summary should show unread badge
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
     const badge = page.getByTestId("thread-unread-badge");
@@ -211,7 +216,7 @@ test.describe("thread unread indicator", () => {
     }
 
     // Switch back and open the thread panel
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await page.getByTestId("message-thread-summary").first().click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
@@ -351,7 +356,7 @@ test.describe("thread unread indicator", () => {
     // Switch back, open the thread, and expand every level down to the
     // unread tail. Each expandReply asserts a row appeared, so green here
     // means the nesting genuinely rendered — not just that a divider exists.
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await page.getByTestId("message-thread-summary").first().click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
@@ -470,7 +475,7 @@ test.describe("thread unread indicator", () => {
 
     // Switch back and open the panel WITHOUT expanding p. The collapsed p row
     // must show its subtree unread count (the two unread descendants).
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await page.getByTestId("message-thread-summary").first().click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
@@ -548,7 +553,7 @@ test.describe("thread unread indicator", () => {
     });
 
     // Reopen WITHOUT expanding p: badge shows the single unread descendant.
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await page.getByTestId("message-thread-summary").first().click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
@@ -634,7 +639,7 @@ test.describe("thread unread indicator", () => {
       createdAt: base + 30,
     });
 
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await page.getByTestId("message-thread-summary").first().click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
@@ -700,7 +705,7 @@ test.describe("thread unread indicator", () => {
         createdAt: base + i,
       });
     }
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     const badge = page.getByTestId("thread-unread-badge");
     await expect(badge).toBeVisible();
@@ -711,7 +716,7 @@ test.describe("thread unread indicator", () => {
     // the channel marker had absorbed the replies, the badge would be gone now.
     await page.getByTestId("channel-random").click();
     await expect(page.getByTestId("chat-title")).toHaveText("random");
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await expect(badge).toBeVisible();
     await expect(badge).toContainText("3");
@@ -750,7 +755,7 @@ test.describe("thread unread indicator", () => {
       pubkey: TEST_IDENTITIES.alice.pubkey,
       createdAt: unreadTimestamp(),
     });
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
     // The crux: leave general. The unopened thread reply should still keep a
@@ -856,7 +861,7 @@ test.describe("thread unread indicator", () => {
         createdAt: base + i,
       });
     }
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     const badge = page.getByTestId("thread-unread-badge");
     await expect(badge).toBeVisible();
@@ -924,7 +929,7 @@ test.describe("thread unread indicator", () => {
     // Alice's root — proving the gate now honors mentions — and the count must
     // span the subtree (A + B = 2), proving the count walks past direct
     // children. Pre-fix: no badge; post-gate-only: badge "1"; both fixes: "2".
-    await page.getByTestId("channel-general").click();
+    await returnToGeneral(page);
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
     const badge = aliceSummary.getByTestId("thread-unread-badge");

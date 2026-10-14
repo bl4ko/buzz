@@ -201,7 +201,7 @@ test("a delivered message can be followed before its first reply and unfollowed"
     .toContain("First reply after follow");
   await expect(page.getByTestId(`channel-unread-dot-${CHANNEL}`)).toBeVisible();
 
-  await page.getByTestId(`channel-${CHANNEL}`).click();
+  await page.goBack();
   await expect(page.getByTestId("chat-title")).toHaveText(CHANNEL);
   await openMessageMenu(page, rootId);
   await unfollowItem.focus();

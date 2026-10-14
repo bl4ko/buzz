@@ -9,6 +9,10 @@ import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { buildInboxItems, type InboxItem } from "@/features/home/lib/inbox";
 import { getGroupedInboxItemIds } from "@/features/home/useHomeInboxReadState";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import {
+  clearThreadUnreadOverrides,
+  getChannelUnreadThreadFeedItems,
+} from "@/features/sidebar/lib/unreadThreadReplyTarget";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -267,11 +271,10 @@ export function ChannelActivityPopover({
   const { openAgentActivity } = useOpenAgentActivity();
   const { openReminder } = useRemindLater();
 
-  const unreadChannelFeedItems = React.useMemo(() => {
-    return unreadThreadFeedItems.filter(
-      (item) => item.channelId === channel.id,
-    );
-  }, [channel.id, unreadThreadFeedItems]);
+  const unreadChannelFeedItems = React.useMemo(
+    () => getChannelUnreadThreadFeedItems(unreadThreadFeedItems, channel.id),
+    [channel.id, unreadThreadFeedItems],
+  );
   const profilePubkeys = React.useMemo(
     () => [
       ...new Set([
@@ -353,20 +356,14 @@ export function ChannelActivityPopover({
   }, [hasContent]);
 
   const clearUnreadOverride = React.useCallback(
-    (item: InboxItem) => {
-      const clearedItemIds = new Set(getGroupedInboxItemIds(item));
-      for (const itemId of clearedItemIds) {
-        undoUnread(itemId);
-      }
-      const channelId = item.item.channelId ?? null;
-      const hasAnotherChannelOverride = locallyUnreadFeedItems.some(
-        (feedItem) =>
-          feedItem.channelId === channelId && !clearedItemIds.has(feedItem.id),
-      );
-      if (channelId && !hasAnotherChannelOverride) {
-        clearChannelUnreadSource(channelId, "inbox");
-      }
-    },
+    (item: InboxItem) =>
+      clearThreadUnreadOverrides({
+        channelId: item.item.channelId ?? null,
+        clearChannelUnreadSource,
+        itemIds: getGroupedInboxItemIds(item),
+        locallyUnreadFeedItems,
+        undoUnread,
+      }),
     [clearChannelUnreadSource, locallyUnreadFeedItems, undoUnread],
   );
 
