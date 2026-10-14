@@ -39,6 +39,11 @@ import { useDmResurfaceFromMessages } from "@/features/channels/useDmResurfaceFr
 import { useUnreadChannels } from "@/features/channels/useUnreadChannels";
 import { useMembershipNotifications } from "@/features/channels/useMembershipNotifications";
 import { useFeedItemState } from "@/features/home/useFeedItemState";
+import {
+  clearThreadUnreadOverrides,
+  getChannelUnreadThreadFeedItems,
+  getUnreadThreadReplyTarget,
+} from "@/features/sidebar/lib/unreadThreadReplyTarget";
 import { useThreadFollows } from "@/features/messages/lib/useThreadFollows";
 import {
   useHomeFeedNotifications,
@@ -437,6 +442,50 @@ export function AppShell() {
     threadActivityItems,
     mutedRootIds,
   });
+  const openSidebarChannel = React.useCallback(
+    (channelId: string) => {
+      const target =
+        channelId === selectedChannelId
+          ? null
+          : getUnreadThreadReplyTarget({
+              channelReadAt: getChannelReadAt(channelId),
+              hasTopLevelUnread: topLevelUnreadChannelIds.has(channelId),
+              items: getChannelUnreadThreadFeedItems(
+                unreadThreadFeedItems,
+                channelId,
+              ),
+            });
+      handleSidebarChannelSelect(
+        channelId,
+        target
+          ? () => {
+              clearThreadUnreadOverrides({
+                channelId,
+                clearChannelUnreadSource,
+                itemIds: target.itemIds,
+                locallyUnreadFeedItems,
+                undoUnread: feedItemState.undoUnread,
+              });
+              void goChannel(channelId, {
+                messageId: target.messageId,
+                threadRootId: target.threadRootId,
+              });
+            }
+          : undefined,
+      );
+    },
+    [
+      clearChannelUnreadSource,
+      feedItemState.undoUnread,
+      getChannelReadAt,
+      goChannel,
+      handleSidebarChannelSelect,
+      locallyUnreadFeedItems,
+      selectedChannelId,
+      topLevelUnreadChannelIds,
+      unreadThreadFeedItems,
+    ],
+  );
   const markAllChannelsRead = React.useCallback(() => {
     markAllReadSources({
       activeChannelId: activeChannel?.id ?? null,
@@ -883,7 +932,7 @@ export function AppShell() {
                             await goChannel(directMessage.id);
                           }}
                           onSelectAgents={() => void goAgents()}
-                          onSelectChannel={handleSidebarChannelSelect}
+                          onSelectChannel={openSidebarChannel}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}
                           searchFocusRequests={[

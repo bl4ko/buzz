@@ -366,7 +366,7 @@ export function useHuddlePresentation() {
     [goChannel, trackHuddleBackingChannel, viewHuddleChannel],
   );
   const handleSidebarChannelSelect = React.useCallback(
-    (channelId: string) => {
+    (channelId: string, openChannel?: () => void) => {
       if (
         isHuddleDrawerOpen &&
         channelId === activeHuddleChannelIdRef.current
@@ -374,7 +374,8 @@ export function useHuddlePresentation() {
         showHuddleInMainApp(channelId);
         return;
       }
-      void goChannel(channelId);
+      if (openChannel) openChannel();
+      else void goChannel(channelId);
     },
     [goChannel, isHuddleDrawerOpen, showHuddleInMainApp],
   );
