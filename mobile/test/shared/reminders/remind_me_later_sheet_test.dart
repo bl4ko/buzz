@@ -1,3 +1,5 @@
+import 'package:buzz/features/activity/reminders_provider.dart'
+    show Reminder, RemindersNotifier, remindersProvider;
 import 'package:buzz/shared/reminders/remind_me_later_sheet.dart';
 import 'package:buzz/shared/reminders/reminder_service.dart';
 import 'package:buzz/shared/relay/relay.dart';
@@ -43,6 +45,16 @@ class _RecordingReminderService extends ReminderService {
   }
 }
 
+class _CountingRemindersNotifier extends RemindersNotifier {
+  int refreshes = 0;
+
+  @override
+  Future<List<Reminder>> build() async => const [];
+
+  @override
+  Future<void> refresh() async => refreshes++;
+}
+
 ReminderCrypto _stubCrypto() {
   final keys = nostr.Keys.generate();
   return ReminderCrypto(keys.nsec, keys.public);
@@ -51,10 +63,16 @@ ReminderCrypto _stubCrypto() {
 Future<void> _pumpSheet(
   WidgetTester tester, {
   required ReminderService service,
+  _CountingRemindersNotifier? reminders,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [reminderServiceProvider.overrideWithValue(service)],
+      overrides: [
+        reminderServiceProvider.overrideWithValue(service),
+        remindersProvider.overrideWith(
+          () => reminders ?? _CountingRemindersNotifier(),
+        ),
+      ],
       child: MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
@@ -134,12 +152,14 @@ void main() {
       tester,
     ) async {
       final service = _RecordingReminderService();
-      await _pumpSheet(tester, service: service);
+      final reminders = _CountingRemindersNotifier();
+      await _pumpSheet(tester, service: service, reminders: reminders);
 
       await tester.tap(find.text('In 1 hour'));
       await tester.pumpAndSettle();
 
       expect(service.submittedNotBefore, hasLength(1));
+      expect(reminders.refreshes, 1);
       expect(find.text('Reminder set'), findsOneWidget);
     });
   });
