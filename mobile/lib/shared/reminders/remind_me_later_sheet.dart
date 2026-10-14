@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:buzz/shared/theme/buzz_icons.dart';
 
+import '../../features/activity/reminders_provider.dart' show remindersProvider;
 import '../theme/theme.dart';
 import '../widgets/sheet_action_section.dart';
 import '../widgets/modal_presentation.dart';
@@ -18,6 +19,7 @@ void showRemindMeLaterSheet({
   required ReminderTarget target,
 }) {
   final service = ref.read(reminderServiceProvider);
+  final reminders = ref.read(remindersProvider.notifier);
   final messenger = ScaffoldMessenger.of(context);
   if (service == null) {
     messenger.showFeedbackSnackBar(
@@ -34,6 +36,7 @@ void showRemindMeLaterSheet({
         const SnackBar(content: Text('Reminder set')),
         kind: ToastKind.success,
       );
+      await reminders.refresh();
     } catch (error) {
       // Stable user-facing copy; the relay/crypto detail goes to the log.
       debugPrint('[RemindMeLater] createReminder failed: $error');
