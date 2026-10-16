@@ -124,8 +124,8 @@ final class NotificationService: UNNotificationServiceExtension {
     guard let soundName = resolution.notificationSoundName else { return }
     content.subtitle = resolution.subtitle ?? "Approval required"
     content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
-    content.categoryIdentifier = BuzzApprovalCategory.identifier
-    if let target = resolution.approvalTarget {
+    if let category = resolution.categoryIdentifier, let target = resolution.approvalTarget {
+      content.categoryIdentifier = category
       content.userInfo[BuzzApprovalTarget.userInfoKey] = target.userInfo
     }
   }

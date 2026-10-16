@@ -28,6 +28,10 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
     notificationType == .approval ? "approval.wav" : nil
   }
 
+  public var categoryIdentifier: String? {
+    approvalTarget == nil ? nil : BuzzApprovalCategory.identifier
+  }
+
   public init(
     title: String,
     body: String,
