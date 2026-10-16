@@ -98,3 +98,32 @@ test("a canvas tab gets a generated canvas id and rename keeps id and value", as
     value: "https://a.example",
   });
 });
+
+test("a failed save keeps the dialog open with the input and shows an error", async () => {
+  submitted = [];
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () =>
+    root.render(
+      React.createElement(
+        ThemeProvider,
+        null,
+        React.createElement(AddChannelTabDialog, {
+          open: true,
+          initial: null,
+          onOpenChange: () => {},
+          onSubmit: async () => {
+            throw new Error("offline");
+          },
+        }),
+      ),
+    ),
+  );
+  await type("tab-title", "Grafana");
+  await type("tab-value", "https://grafana.xqx.uk");
+  await act(async () => byId("tab-submit").click());
+  assert.match(byId("tab-error").textContent, /Couldn't save/);
+  assert.equal(byId("tab-title").value, "Grafana");
+  assert.equal(byId("tab-value").value, "https://grafana.xqx.uk");
+});

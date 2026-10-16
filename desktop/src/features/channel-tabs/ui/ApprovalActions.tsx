@@ -9,10 +9,12 @@ export function ApprovalActions({
   reactions,
   disabled,
   onSelect,
+  error,
 }: {
   reactions: readonly { emoji: string; reactedByCurrentUser?: boolean }[];
   disabled: boolean;
   onSelect: (emoji: string) => void;
+  error?: string | null;
 }) {
   const decision = approvalDecision(reactions);
   if (decision) {
@@ -45,6 +47,14 @@ export function ApprovalActions({
       >
         {DENY_EMOJI} Deny
       </Button>
+      {error ? (
+        <span
+          className="self-center text-xs text-destructive"
+          data-testid="approval-error"
+        >
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }

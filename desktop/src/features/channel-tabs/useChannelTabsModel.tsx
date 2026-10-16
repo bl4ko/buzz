@@ -98,9 +98,11 @@ export function useChannelTabsModel({
     async (next: ChannelTab[]) => {
       try {
         await tabs?.save(next);
+        return true;
       } catch (error) {
         console.error("Failed to save channel tabs", error);
         toast.error("Couldn't save the tabs");
+        return false;
       }
     },
     [tabs],
@@ -124,11 +126,12 @@ export function useChannelTabsModel({
         initial={dialog.initial}
         onOpenChange={(open) => setDialog((state) => ({ ...state, open }))}
         onSubmit={async (tab) => {
-          await saveTabs(
+          const saved = await saveTabs(
             dialog.initial
               ? renameTab(allTabs, tab.id, tab.title)
               : addTab(allTabs, tab),
           );
+          if (!saved) throw new Error("Tab save failed");
           setDialog({ open: false, initial: null });
         }}
         open={dialog.open}

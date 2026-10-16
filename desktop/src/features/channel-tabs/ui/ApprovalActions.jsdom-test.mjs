@@ -56,3 +56,17 @@ test("a decided approval shows the decision and no buttons", async () => {
     "You approved",
   );
 });
+
+test("a failed approval keeps the buttons and shows the error", async () => {
+  await render({
+    reactions: [],
+    disabled: false,
+    onSelect: () => {},
+    error: "Couldn't update the reaction",
+  });
+  assert.ok(container.querySelector('[data-testid="approval-actions"]'));
+  assert.equal(
+    container.querySelector('[data-testid="approval-error"]').textContent,
+    "Couldn't update the reaction",
+  );
+});

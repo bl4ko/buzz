@@ -1,3 +1,4 @@
+import { Play } from "lucide-react";
 import * as React from "react";
 
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
@@ -91,12 +92,23 @@ export function ChannelFilesTab({
                 onClick={() => onOpenMessage(item)}
                 type="button"
               >
-                <img
-                  alt={item.name}
-                  className="aspect-square w-full rounded-md object-cover"
-                  loading="lazy"
-                  src={rewriteRelayUrl(item.thumb ?? item.url)}
-                />
+                {item.mime?.startsWith("video/") && !item.thumb ? (
+                  <span
+                    className="flex aspect-square w-full items-center justify-center rounded-md bg-muted"
+                    data-testid="files-video-placeholder"
+                    role="img"
+                    aria-label={item.name}
+                  >
+                    <Play className="h-6 w-6 text-muted-foreground" />
+                  </span>
+                ) : (
+                  <img
+                    alt={item.name}
+                    className="aspect-square w-full rounded-md object-cover"
+                    loading="lazy"
+                    src={rewriteRelayUrl(item.thumb ?? item.url)}
+                  />
+                )}
               </button>
             ))}
           </div>

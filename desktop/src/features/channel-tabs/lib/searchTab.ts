@@ -1,3 +1,4 @@
+import type { RelaySubscriptionFilter } from "@/shared/api/relayClientShared";
 import { parseSearchOperators } from "@/features/search/lib/parseSearchOperators";
 
 export function resolveSearchTab(
@@ -16,4 +17,24 @@ export function resolveSearchTab(
   return match
     ? { ...base, authors: [match.pubkey], unresolved: null }
     : { ...base, authors: undefined, unresolved: parsed.from };
+}
+
+export function authorOnlyFilter(
+  search: {
+    text: string;
+    authors: string[] | undefined;
+    since: number | null;
+    until: number | null;
+  },
+  channelId: string,
+): RelaySubscriptionFilter | null {
+  if (search.text.trim() !== "" || !search.authors) return null;
+  return {
+    kinds: [9, 40002],
+    "#h": [channelId],
+    authors: search.authors,
+    limit: 50,
+    ...(search.since === null ? {} : { since: search.since }),
+    ...(search.until === null ? {} : { until: search.until }),
+  };
 }
