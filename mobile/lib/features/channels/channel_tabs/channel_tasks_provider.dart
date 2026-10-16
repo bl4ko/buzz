@@ -108,6 +108,7 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
               authors: [me],
               tags: {
                 '#e': [askId],
+                '#h': [channelId],
               },
               limit: 50,
             ),

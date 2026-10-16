@@ -78,7 +78,12 @@ export function useChannelTasks(
   );
   const decisionFilter =
     channelId && me && askIds.length > 0
-      ? { kinds: [KIND_REACTION], authors: [me], "#e": askIds }
+      ? {
+          kinds: [KIND_REACTION],
+          authors: [me],
+          "#e": askIds,
+          "#h": [channelId],
+        }
       : null;
   const decisionKey = [
     "channel-task-decisions",

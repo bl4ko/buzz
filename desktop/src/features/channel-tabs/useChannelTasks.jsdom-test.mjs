@@ -128,9 +128,11 @@ test("owner decisions come from the owner's own reactions on the asks", async ()
     assert.deepEqual(transport.fetched[0].kinds, [7]);
     assert.deepEqual(transport.fetched[0].authors, [me]);
     assert.deepEqual(transport.fetched[0]["#e"], [ASK]);
+    assert.deepEqual(transport.fetched[0]["#h"], [CH]);
     assert.equal(owner.latest.decisions.get(ASK), undefined);
     assert.equal(owner.latest.awaitingCount, 1);
     const live = subscriptions.find((s) => s.filter.kinds[0] === 7);
+    assert.deepEqual(live.filter["#h"], [CH]);
     await act(async () => live.onEvent(reaction("r1", "❌", 12)));
     await owner.waitFor(() => owner.latest.decisions.get(ASK) === "deny");
     assert.equal(owner.latest.awaitingCount, 0);
