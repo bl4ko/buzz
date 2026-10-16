@@ -2464,6 +2464,42 @@ mod postgres_tests {
             );
         }
         expected_fences.extend(personal.fence_attachments);
+        let live_activity = surface(
+            MIGRATOR
+                .iter()
+                .find(|m| m.version == 66)
+                .expect("live activity migration")
+                .sql
+                .as_ref(),
+        );
+        for (table, definition) in &live_activity.tables {
+            assert_eq!(
+                schema.tables.get(table),
+                Some(definition),
+                "live activity table {table} differs"
+            );
+        }
+        for (function, definition) in &live_activity.functions {
+            assert_eq!(
+                schema.functions.get(function),
+                Some(definition),
+                "live activity function {function} differs"
+            );
+        }
+        for (trigger, definition) in &live_activity.triggers {
+            assert_eq!(
+                schema.triggers.get(trigger),
+                Some(definition),
+                "live activity trigger {trigger} differs"
+            );
+        }
+        for index in &live_activity.indexes {
+            assert!(
+                schema.indexes.contains(index),
+                "live activity index differs: {index}"
+            );
+        }
+        expected_fences.extend(live_activity.fence_attachments);
         expected_fences.extend(["artifact_heads", "artifact_revisions"].map(str::to_owned));
         // 0066 fences the NIP-FI issuer bindings table.
         assert!(MIGRATOR
