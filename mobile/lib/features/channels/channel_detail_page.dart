@@ -16,6 +16,7 @@ import '../../shared/huddle/huddle.dart';
 import '../../shared/identity_names/identity_names.dart';
 import '../../shared/identity_names/identity_names_provider.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/community/community_membership_provider.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
@@ -44,6 +45,16 @@ import 'channel_link_navigation.dart';
 import 'channel_management_provider.dart';
 import 'channel_sections/channel_sections_provider.dart';
 import 'channel_messages_provider.dart';
+import 'channel_tabs/approval_buttons.dart';
+import 'channel_tabs/channel_files_provider.dart';
+import 'channel_tabs/channel_tab_body.dart';
+import 'channel_tabs/channel_tab_editor_sheet.dart';
+import 'channel_tabs/channel_tab_items.dart';
+import 'channel_tabs/channel_tab_row.dart';
+import 'channel_tabs/channel_tabs_model.dart';
+import 'channel_tabs/channel_tabs_provider.dart';
+import 'channel_tabs/channel_tasks_provider.dart';
+import 'channel_tabs/thread_status.dart';
 import 'channel_typing_provider.dart';
 import 'channel_typing_indicator.dart';
 import 'channels_provider.dart';
@@ -620,6 +631,50 @@ class ChannelDetailPage extends HookConsumerWidget {
           .threadSummaries,
     );
 
+    final selectedTab = useState('messages');
+    useEffect(() {
+      selectedTab.value = 'messages';
+      return null;
+    }, [resolvedChannel.id]);
+    final tabsEnabled = !resolvedChannel.isForum;
+    final tasksState = tabsEnabled
+        ? ref.watch(channelTasksProvider(resolvedChannel.id))
+        : const ChannelTasksState();
+    final pinCount = tabsEnabled
+        ? ref.watch(channelPinnedMessagesProvider(resolvedChannel.id)).length
+        : 0;
+    final fileCount = tabsEnabled
+        ? (ref.watch(channelFilesProvider(resolvedChannel.id)).value?.length ??
+              0)
+        : 0;
+    final customTabs = tabsEnabled
+        ? ref.watch(channelTabsProvider(resolvedChannel.id)).latest.visible
+        : const <ChannelTab>[];
+    final me = ref.watch(currentPubkeyProvider)?.toLowerCase();
+    final myRole =
+        (ref.watch(channelMembersProvider(resolvedChannel.id)).value ??
+                const <ChannelMember>[])
+            .where((m) => m.pubkey.toLowerCase() == me)
+            .map((m) => m.role)
+            .firstOrNull;
+    final permissions = taskPermissions(
+      role: myRole,
+      isCommunityOwner:
+          ref.watch(currentCommunityRoleProvider).value ==
+          CommunityMemberRole.owner,
+    );
+    final tabItems = buildChannelTabItems(
+      taskCount: tasksState.tasks.length,
+      awaitingCount: tasksState.awaitingCount,
+      pinCount: pinCount,
+      fileCount: fileCount,
+      customTabs: customTabs,
+    );
+    final currentTab = resolveSelectedTab(tabItems, selectedTab.value);
+    final showTabRow =
+        tabsEnabled && (tabItems.length > 1 || permissions.canEditTabs);
+    final tabBarHeight = showTabRow ? channelTabRowHeight : 0.0;
+
     return FrostedScaffold(
       resizeToAvoidBottomInset:
           !usesFixedAndroidImeViewport || resolvedChannel.isForum,
@@ -660,6 +715,27 @@ class ChannelDetailPage extends HookConsumerWidget {
         ],
         iconColor: context.colors.primary,
         titleContentHeight: appBarTitleContentHeight,
+        bottom: showTabRow
+            ? ChannelTabRow(
+                items: tabItems,
+                selected: currentTab,
+                canEdit: permissions.canEditTabs,
+                onSelect: (key) => selectedTab.value = key,
+                onAdd: () => showChannelTabEditor(
+                  context,
+                  ref,
+                  channelId: resolvedChannel.id,
+                  initial: null,
+                ),
+                onCustomLongPress: (tab) => showChannelTabActions(
+                  context,
+                  ref,
+                  channelId: resolvedChannel.id,
+                  tab: tab,
+                ),
+              )
+            : null,
+        bottomHeight: tabBarHeight,
         titleStyle: channelTitleTextStyle,
         centerTitle: true,
         title: _ConversationAppBarTitle(
@@ -700,6 +776,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                                     context,
                                     titleContentHeight:
                                         appBarTitleContentHeight,
+                                    bottomHeight: tabBarHeight,
                                   ) +
                                   Grid.xs,
                               left: Grid.gutter,
@@ -724,6 +801,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                               .map((entry) => entry.message)
                               .toList(),
                           appBarTitleContentHeight: appBarTitleContentHeight,
+                          appBarBottomHeight: tabBarHeight,
                         ),
                         loadingSemanticsKey: const Key(
                           'channel-detail-connection-skeleton',
@@ -746,6 +824,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                               top: frostedAppBarHeight(
                                 context,
                                 titleContentHeight: appBarTitleContentHeight,
+                                bottomHeight: tabBarHeight,
                               ),
                             ),
                             child: LoadErrorView(
@@ -784,6 +863,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                               isArchived: resolvedChannel.isArchived,
                               appBarTitleContentHeight:
                                   appBarTitleContentHeight,
+                              appBarBottomHeight: tabBarHeight,
                               composerBottomInset: showsComposer
                                   ? composerDockHeight.value
                                   : 0,
@@ -867,6 +947,49 @@ class ChannelDetailPage extends HookConsumerWidget {
                             ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+            ),
+          if (currentTab != 'messages')
+            Positioned.fill(
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surface,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    top: frostedAppBarHeight(
+                      context,
+                      titleContentHeight: appBarTitleContentHeight,
+                      bottomHeight: channelTabRowHeight,
+                    ),
+                  ),
+                  child: ChannelTabBody(
+                    channel: resolvedChannel,
+                    selected: currentTab,
+                    permissions: permissions,
+                    onOpenMessage: (messageId, rootId) {
+                      selectedTab.value = 'messages';
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ChannelDetailPage(
+                            channel: resolvedChannel,
+                            initialMessageId: messageId,
+                            initialThreadRootId: rootId,
+                          ),
+                        ),
+                      );
+                    },
+                    onOpenThread: (rootId) {
+                      selectedTab.value = 'messages';
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ChannelDetailPage(
+                            channel: resolvedChannel,
+                            initialThreadRootId: rootId,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

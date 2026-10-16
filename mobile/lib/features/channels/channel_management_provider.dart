@@ -14,6 +14,9 @@ import '../../shared/utils/string_utils.dart';
 import '../profile/profile_provider.dart';
 import 'channel.dart';
 import 'channel_metadata_updates.dart';
+import 'channel_tabs/canvas_doc.dart';
+import 'channel_tabs/channel_tabs_model.dart';
+import 'channel_tabs/thread_status.dart';
 import 'channels_provider.dart';
 
 export 'channel_metadata_updates.dart';
