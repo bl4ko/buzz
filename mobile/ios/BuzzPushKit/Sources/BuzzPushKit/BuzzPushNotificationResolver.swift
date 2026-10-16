@@ -710,11 +710,30 @@ public enum BuzzPushStoredRelay {
   }
 
   public static func relayURL(communityID: String, snapshotURL: URL) -> String? {
+    snapshot(at: snapshotURL)?.communities.first { $0.id == communityID }?.relayURL?.absoluteString
+  }
+
+  public static func communityID(origin: String, appGroupIdentifier: String?) -> String? {
+    guard let url = snapshotURL(appGroupIdentifier: appGroupIdentifier) else { return nil }
+    return communityID(origin: origin, snapshotURL: url)
+  }
+
+  public static func communityID(origin: String, snapshotURL: URL) -> String? {
+    snapshot(at: snapshotURL)?.communities.first { BuzzLiveActivityOrigin.canonical($0.relayUrl) == origin }?.id
+  }
+
+  public static func snapshotURL(appGroupIdentifier: String?) -> URL? {
+    guard let appGroupIdentifier,
+      let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+    else { return nil }
+    return container.appendingPathComponent(BuzzPushPresentationCacheStore.fileName)
+  }
+
+  public static func snapshot(at snapshotURL: URL) -> PushLeaseSnapshot? {
     guard let values = try? snapshotURL.resourceValues(forKeys: [.fileSizeKey]),
       let size = values.fileSize, size <= BuzzPushPresentationCacheStore.maximumSnapshotBytes,
-      let data = try? Data(contentsOf: snapshotURL),
-      let snapshot = try? JSONDecoder().decode(PushLeaseSnapshot.self, from: data)
+      let data = try? Data(contentsOf: snapshotURL)
     else { return nil }
-    return snapshot.communities.first { $0.id == communityID }?.relayURL?.absoluteString
+    return try? JSONDecoder().decode(PushLeaseSnapshot.self, from: data)
   }
 }

@@ -40,6 +40,8 @@ public enum BuzzPushTranscript {
     public static let rotateEndpointDomain = "buzz.push.rotate-endpoint.v1"
     public static let revokeDelegationDomain = "buzz.push.revoke-delegation.v1"
     public static let revokeInstallationDomain = "buzz.push.revoke-installation.v1"
+    public static let liveActivityDomain = "buzz.push.live-activity.v1"
+    public static let liveActivityUpdateDomain = "buzz.push.live-activity-update.v1"
 
     /// Wire version pinned by NIP-PL. Every transcript carries `"v":1`.
     public static let wireVersion: Int64 = 1
@@ -175,6 +177,47 @@ public enum BuzzPushTranscript {
         return encode(domain: revokeInstallationDomain, object: o)
     }
 
+    public static func liveActivity(
+        gatewayOrigin: URL,
+        challengeId: UUID,
+        challenge: String,
+        installationHandle: UUID,
+        startToken: String?,
+        origins: [String]
+    ) throws -> Data {
+        var o = CanonicalObject()
+        o.int("v", wireVersion)
+        try o.string("audience", audience(gatewayOrigin, route: "v1/installations/live-activity"))
+        o.uuid("challenge_id", challengeId)
+        try o.string("challenge", challenge, field: "challenge")
+        o.uuid("installation_handle", installationHandle)
+        try o.optionalString("start_token", startToken)
+        try o.strings("origins", origins)
+        return encode(domain: liveActivityDomain, object: o)
+    }
+
+    public static func liveActivityUpdate(
+        gatewayOrigin: URL,
+        challengeId: UUID,
+        challenge: String,
+        installationHandle: UUID,
+        originHash: String,
+        updateToken: String?
+    ) throws -> Data {
+        var o = CanonicalObject()
+        o.int("v", wireVersion)
+        try o.string(
+            "audience",
+            audience(gatewayOrigin, route: "v1/installations/live-activity/update-token")
+        )
+        o.uuid("challenge_id", challengeId)
+        try o.string("challenge", challenge, field: "challenge")
+        o.uuid("installation_handle", installationHandle)
+        try o.string("origin_hash", originHash)
+        try o.optionalString("update_token", updateToken)
+        return encode(domain: liveActivityUpdateDomain, object: o)
+    }
+
     // MARK: Internals
 
     private static func encode(domain: String, object: CanonicalObject) -> Data {
@@ -229,6 +272,19 @@ public enum BuzzPushTranscript {
 
         mutating func string(_ key: String, _ value: String, field: String? = nil) throws {
             members.append("\"\(key)\":\"\(try Self.escape(value, field: field ?? key))\"")
+        }
+
+        mutating func optionalString(_ key: String, _ value: String?) throws {
+            guard let value else {
+                members.append("\"\(key)\":null")
+                return
+            }
+            try string(key, value)
+        }
+
+        mutating func strings(_ key: String, _ values: [String]) throws {
+            let items = try values.map { "\"\(try Self.escape($0, field: key))\"" }
+            members.append("\"\(key)\":[" + items.joined(separator: ",") + "]")
         }
 
         func encoded() -> String {

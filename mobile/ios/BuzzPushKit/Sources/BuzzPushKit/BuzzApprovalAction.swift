@@ -74,6 +74,10 @@ public enum BuzzPushSigningKeychain {
   public static let service = "buzz.push.nse.signing"
 
   public static func privateKey(communityID: String, accessGroup: String?) -> String? {
+    privateKey(service: service, communityID: communityID, accessGroup: accessGroup)
+  }
+
+  static func privateKey(service: String, communityID: String, accessGroup: String?) -> String? {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
