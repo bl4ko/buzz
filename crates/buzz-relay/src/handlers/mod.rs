@@ -62,6 +62,7 @@ pub mod side_effects;
 mod system_channel_postgres_tests;
 /// Per-filter query scope for system channels.
 pub(crate) mod system_channels;
+pub(crate) mod thread_status;
 
 /// Extract an optional TTL (in seconds) from a Nostr event's `ttl` tag,
 /// applying the server-side override when configured.
