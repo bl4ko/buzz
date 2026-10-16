@@ -181,3 +181,37 @@ List<List<String>> threadStatusTags({
 bool isApprovalRequest(List<List<String>> tags) => tags.any(
   (tag) => tag.length > 1 && tag[0] == 'notification' && tag[1] == 'approval',
 );
+
+enum OwnerDecision { approve, deny }
+
+Map<String, OwnerDecision> ownerDecisions(
+  Iterable<NostrEvent> events,
+  String me,
+) {
+  final owner = me.toLowerCase();
+  final first = <String, NostrEvent>{};
+  for (final event in events) {
+    final content = event.content.trim();
+    if (event.kind != EventKind.reaction ||
+        event.pubkey.toLowerCase() != owner ||
+        (content != approveEmoji && content != denyEmoji)) {
+      continue;
+    }
+    final targets = event.tags.where((t) => t.length > 1 && t[0] == 'e');
+    if (targets.isEmpty) continue;
+    final target = targets.last[1].toLowerCase();
+    final seen = first[target];
+    if (seen == null ||
+        event.createdAt < seen.createdAt ||
+        (event.createdAt == seen.createdAt &&
+            event.id.compareTo(seen.id) < 0)) {
+      first[target] = event;
+    }
+  }
+  return {
+    for (final entry in first.entries)
+      entry.key: entry.value.content.trim() == approveEmoji
+          ? OwnerDecision.approve
+          : OwnerDecision.deny,
+  };
+}

@@ -22,6 +22,7 @@ class ApprovalButtons extends StatefulWidget {
 
 class _ApprovalButtonsState extends State<ApprovalButtons> {
   String? _decision;
+  bool _pending = false;
 
   @override
   void didUpdateWidget(ApprovalButtons oldWidget) {
@@ -30,6 +31,7 @@ class _ApprovalButtonsState extends State<ApprovalButtons> {
   }
 
   Future<void> _send(String emoji) async {
+    setState(() => _pending = true);
     try {
       await widget.onReact(emoji);
       if (mounted) {
@@ -44,6 +46,7 @@ class _ApprovalButtonsState extends State<ApprovalButtons> {
         );
       }
     }
+    if (mounted) setState(() => _pending = false);
   }
 
   @override
@@ -62,11 +65,11 @@ class _ApprovalButtonsState extends State<ApprovalButtons> {
       spacing: Grid.xs,
       children: [
         OutlinedButton(
-          onPressed: () => _send(approveEmoji),
+          onPressed: _pending ? null : () => _send(approveEmoji),
           child: const Text('✅ Approve'),
         ),
         OutlinedButton(
-          onPressed: () => _send(denyEmoji),
+          onPressed: _pending ? null : () => _send(denyEmoji),
           child: const Text('❌ Deny'),
         ),
       ],

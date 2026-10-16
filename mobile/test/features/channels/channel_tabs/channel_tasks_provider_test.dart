@@ -8,14 +8,30 @@ import 'package:nostr/nostr.dart' as nostr;
 import '../message_pins/pins_fixtures.dart';
 import 'thread_status_test.dart' as fixtures;
 
+class TasksRelay extends PinsRelay {
+  TasksRelay({super.stored});
+
+  final callbacks = <void Function(NostrEvent)>[];
+
+  @override
+  Future<void Function()> subscribe(
+    NostrFilter filter,
+    void Function(NostrEvent) onEvent, {
+    void Function(String message)? onClosed,
+  }) {
+    callbacks.add(onEvent);
+    return super.subscribe(filter, onEvent, onClosed: onClosed);
+  }
+}
+
 void main() {
   late nostr.Keys keys;
-  late PinsRelay relay;
+  late TasksRelay relay;
   late ProviderContainer container;
 
   setUp(() {
     keys = nostr.Keys.generate();
-    relay = PinsRelay(
+    relay = TasksRelay(
       stored: [
         fixtures.status(
           'w',
@@ -43,12 +59,12 @@ void main() {
         (_, _) {},
       );
       await pumpEventQueue();
-      expect(relay.subscriptions.single.kinds, [EventKind.threadStatus]);
-      expect(relay.subscriptions.single.tags, {
+      expect(relay.subscriptions.first.kinds, [EventKind.threadStatus]);
+      expect(relay.subscriptions.first.tags, {
         '#h': [pinsChannelId],
       });
       expect(tasks.read().awaitingCount, 1);
-      relay.live!(
+      relay.callbacks.first(
         fixtures.status('p', 'in_progress', 20, channel: pinsChannelId),
       );
       expect(tasks.read().awaitingCount, 0);
@@ -82,4 +98,39 @@ void main() {
       expect(tasks.read().groups.done.single.eventId, published.id);
     },
   );
+
+  test('owner decisions come from the own reactions on the asks', () async {
+    final tasks = container.listen(
+      channelTasksProvider(pinsChannelId),
+      (_, _) {},
+    );
+    await pumpEventQueue();
+    final filter = relay.subscriptions.firstWhere(
+      (f) => f.kinds.contains(EventKind.reaction),
+    );
+    expect(filter.authors, [keys.public]);
+    expect(filter.tags, {
+      '#e': [fixtures.ask],
+    });
+    expect(relay.subscriptions.length, 2);
+    expect(tasks.read().decisions, isEmpty);
+    NostrEvent reaction(String id, String pubkey, String emoji, int at) =>
+        NostrEvent(
+          id: id,
+          pubkey: pubkey,
+          createdAt: at,
+          kind: EventKind.reaction,
+          tags: [
+            ['e', fixtures.ask],
+          ],
+          content: emoji,
+          sig: '',
+        );
+    relay.live!(reaction('r2', keys.public, '❌', 12));
+    expect(tasks.read().decisions[fixtures.ask], OwnerDecision.deny);
+    relay.live!(reaction('r1', keys.public, '✅', 11));
+    relay.live!(reaction('r3', 'f' * 64, '❌', 1));
+    expect(tasks.read().decisions[fixtures.ask], OwnerDecision.approve);
+    expect(tasks.read().awaitingCount, 1);
+  });
 }

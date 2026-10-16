@@ -26,7 +26,8 @@ class ChannelTasksView extends StatefulWidget {
 
 class _ChannelTasksViewState extends State<ChannelTasksView> {
   bool _showDone = false;
-  final Map<String, String> _decided = {};
+  final Map<String, OwnerDecision> _decided = {};
+  final Set<String> _pending = {};
 
   Future<void> _run(
     Future<void> Function() action,
@@ -45,11 +46,27 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
     }
   }
 
-  void _decide(String eventId, String label) =>
-      setState(() => _decided[eventId] = label);
+  Future<void> _send(String eventId, OwnerDecision decision) async {
+    setState(() => _pending.add(eventId));
+    await _run(
+      () => widget.onReact(
+        eventId,
+        decision == OwnerDecision.approve ? approveEmoji : denyEmoji,
+      ),
+      decision == OwnerDecision.approve
+          ? "Couldn't send approval"
+          : "Couldn't send denial",
+      onSuccess: () => _decided[eventId] = decision,
+    );
+    if (mounted) setState(() => _pending.remove(eventId));
+  }
 
   Widget _row(ThreadTask task) {
     final ask = task.ask;
+    final decision = ask == null
+        ? null
+        : widget.state.decisions[ask.eventId] ?? _decided[ask.eventId];
+    final pending = ask != null && _pending.contains(ask.eventId);
     return ListTile(
       title: Text(task.title),
       subtitle: ask == null ? null : Text(ask.text),
@@ -57,23 +74,19 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
       trailing: Wrap(
         spacing: Grid.xxs,
         children: [
-          if (ask != null && _decided[ask.eventId] != null)
-            Text(_decided[ask.eventId]!)
+          if (decision != null)
+            Text(decision == OwnerDecision.approve ? 'Approved' : 'Denied')
           else if (ask != null && widget.canSetStatus) ...[
             OutlinedButton(
-              onPressed: () => _run(
-                () => widget.onReact(ask.eventId, approveEmoji),
-                "Couldn't send approval",
-                onSuccess: () => _decide(ask.eventId, 'Approved'),
-              ),
+              onPressed: pending
+                  ? null
+                  : () => _send(ask.eventId, OwnerDecision.approve),
               child: const Text('✅'),
             ),
             OutlinedButton(
-              onPressed: () => _run(
-                () => widget.onReact(ask.eventId, denyEmoji),
-                "Couldn't send denial",
-                onSuccess: () => _decide(ask.eventId, 'Denied'),
-              ),
+              onPressed: pending
+                  ? null
+                  : () => _send(ask.eventId, OwnerDecision.deny),
               child: const Text('❌'),
             ),
           ],

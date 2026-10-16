@@ -134,4 +134,34 @@ void main() {
       isFalse,
     );
   });
+
+  test('ownerDecisions keeps the first owner decision per ask', () {
+    final me = 'd' * 64;
+    final ask2 = 'e' * 64;
+    NostrEvent reaction(
+      String id,
+      String pubkey,
+      String content,
+      int createdAt,
+      String target,
+    ) => NostrEvent(
+      id: id,
+      pubkey: pubkey,
+      createdAt: createdAt,
+      kind: EventKind.reaction,
+      tags: [
+        ['e', target],
+      ],
+      content: content,
+      sig: '',
+    );
+    final decisions = ownerDecisions([
+      reaction('1', 'f' * 64, '❌', 5, ask),
+      reaction('2', me, '👍', 6, ask),
+      reaction('3', me, '❌', 20, ask),
+      reaction('4', me, '✅', 10, ask),
+      reaction('5', me, '❌', 30, ask2),
+    ], me.toUpperCase());
+    expect(decisions, {ask: OwnerDecision.approve, ask2: OwnerDecision.deny});
+  });
 }

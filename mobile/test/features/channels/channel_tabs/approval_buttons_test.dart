@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:buzz/features/channels/channel_tabs/approval_buttons.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:flutter/material.dart';
@@ -82,5 +84,26 @@ void main() {
     expect(find.text("Couldn't send the decision"), findsOneWidget);
     expect(find.text('✅ Approve'), findsOneWidget);
     expect(find.text('Approved'), findsNothing);
+  });
+
+  testWidgets('both buttons are disabled while a send is pending', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    final sent = <String>[];
+    await tester.pumpWidget(
+      host('a', (emoji) {
+        sent.add(emoji);
+        return pending.future;
+      }),
+    );
+    await tester.tap(find.text('✅ Approve'));
+    await tester.pump();
+    await tester.tap(find.text('❌ Deny'));
+    await tester.pump();
+    expect(sent, ['✅']);
+    pending.complete();
+    await tester.pump();
+    expect(find.text('Approved'), findsOneWidget);
   });
 }

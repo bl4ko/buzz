@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -8,8 +11,9 @@ import 'subscribe_while_alive.dart';
 import 'thread_status.dart';
 
 class ChannelTasksState {
-  const ChannelTasksState([this.byRoot = const {}]);
+  const ChannelTasksState([this.byRoot = const {}, this.decisions = const {}]);
   final Map<String, ThreadTask> byRoot;
+  final Map<String, OwnerDecision> decisions;
   List<ThreadTask> get tasks => byRoot.values.toList();
   ThreadTaskGroups get groups => groupThreadTasks(byRoot.values);
   int get awaitingCount => groups.needsYou.length;
@@ -21,6 +25,11 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
   final String channelId;
   (String, String?)? _scope;
   ChannelTasksState _tasks = const ChannelTasksState();
+  final Map<String, NostrEvent> _reactions = {};
+  final Map<String, Object> _askSubscriptions = {};
+  final Map<String, void Function()> _askCancels = {};
+  bool _connected = false;
+  String? _me;
 
   @override
   ChannelTasksState build() {
@@ -32,6 +41,19 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
     if (scope != _scope) {
       _scope = scope;
       _tasks = const ChannelTasksState();
+      _reactions.clear();
+    }
+    _connected = connected;
+    _me = ref.watch(myPubkeyProvider)?.toLowerCase();
+    ref.onDispose(() {
+      for (final cancel in _askCancels.values) {
+        cancel();
+      }
+      _askCancels.clear();
+      _askSubscriptions.clear();
+    });
+    for (final task in _tasks.byRoot.values) {
+      _watchAsk(task);
     }
     if (connected) {
       subscribeWhileAlive(
@@ -54,7 +76,65 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
     if (task == null || task.channelId != channelId) return;
     final current = _tasks.byRoot[task.rootId];
     if (current != null && !task.isNewerThan(current)) return;
-    _tasks = ChannelTasksState({..._tasks.byRoot, task.rootId: task});
+    _tasks = ChannelTasksState({
+      ..._tasks.byRoot,
+      task.rootId: task,
+    }, _tasks.decisions);
+    state = _tasks;
+    _watchAsk(task);
+  }
+
+  void _watchAsk(ThreadTask task) {
+    final askId = task.ask?.eventId;
+    final me = _me;
+    if (!_connected ||
+        me == null ||
+        askId == null ||
+        _askSubscriptions.containsKey(askId)) {
+      return;
+    }
+    final token = Object();
+    _askSubscriptions[askId] = token;
+    unawaited(
+      ref
+          .read(relaySessionProvider.notifier)
+          .subscribe(
+            NostrFilter(
+              kinds: const [EventKind.reaction],
+              authors: [me],
+              tags: {
+                '#e': [askId],
+              },
+              limit: 50,
+            ),
+            _receiveReaction,
+          )
+          .then(
+            (cancel) {
+              if (identical(_askSubscriptions[askId], token)) {
+                _askCancels[askId] = cancel;
+              } else {
+                cancel();
+              }
+            },
+            onError: (Object _) {
+              if (identical(_askSubscriptions[askId], token)) {
+                _askSubscriptions.remove(askId);
+              }
+            },
+          ),
+    );
+  }
+
+  void _receiveReaction(NostrEvent event) {
+    final me = _me;
+    if (me == null || !ref.mounted || _reactions.containsKey(event.id)) {
+      return;
+    }
+    _reactions[event.id] = event;
+    final decisions = ownerDecisions(_reactions.values, me);
+    if (mapEquals(decisions, _tasks.decisions)) return;
+    _tasks = ChannelTasksState(_tasks.byRoot, decisions);
     state = _tasks;
   }
 
