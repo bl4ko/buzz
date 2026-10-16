@@ -23,6 +23,7 @@ import { writeTextToClipboard } from "@/shared/lib/clipboard";
 type ChatHeaderProps = {
   actions?: React.ReactNode;
   belowSystemChrome?: boolean;
+  belowHeader?: React.ReactNode;
   /** Ref to the outer chrome wrapper when `belowSystemChrome` is true. */
   chromeWrapperRef?: React.Ref<HTMLDivElement>;
   title: string;
@@ -89,6 +90,7 @@ function ChannelIcon({
 export function ChatHeader({
   actions,
   belowSystemChrome = false,
+  belowHeader,
   chromeWrapperRef,
   title,
   description,
@@ -175,7 +177,12 @@ export function ChatHeader({
   );
 
   if (!belowSystemChrome) {
-    return header;
+    return (
+      <>
+        {header}
+        {belowHeader}
+      </>
+    );
   }
 
   return (
@@ -190,6 +197,7 @@ export function ChatHeader({
       )}
     >
       {header}
+      {belowHeader}
     </div>
   );
 }
