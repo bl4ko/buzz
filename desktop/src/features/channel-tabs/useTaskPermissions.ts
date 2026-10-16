@@ -32,7 +32,7 @@ export function taskPermissions(input: {
     );
   };
   return {
-    canSetStatus: owners.has(me) || roles.get(me) === "owner",
+    canSetStatus: owners.has(me),
     canEditTabs: me !== "" && canEditTabsFor(me),
     canEditCanvas:
       owners.has(me) || (roles.has(me) && roles.get(me) !== "guest"),
