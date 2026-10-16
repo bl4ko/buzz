@@ -19,10 +19,11 @@ export function useChannelFilesAndLinks(
     queryKey: ["channel-files", channelId ?? "none"],
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) => fetchPage(channelId ?? "", pageParam),
-    getNextPageParam: (last) =>
-      last.length >= PAGE
-        ? Math.min(...last.map((event) => event.created_at))
-        : undefined,
+    getNextPageParam: (last, _all, lastParam) => {
+      if (last.length < PAGE) return undefined;
+      const oldest = Math.min(...last.map((event) => event.created_at));
+      return oldest === lastParam ? oldest - 1 : oldest;
+    },
     staleTime: 60_000,
   });
   const items = React.useMemo(
