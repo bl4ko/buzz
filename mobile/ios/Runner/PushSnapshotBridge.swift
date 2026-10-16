@@ -205,6 +205,7 @@ final class BuzzPushSnapshotBridge {
           signingKeys: signingKeys,
           accessGroup: self.keychainAccessGroup
         )
+        BuzzLiveActivities.refresh()
         Self.complete(result, value: nil)
       } catch {
         Self.complete(

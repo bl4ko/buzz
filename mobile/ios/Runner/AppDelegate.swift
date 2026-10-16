@@ -57,6 +57,11 @@ import os.log
     // Flutter. No age-related storage or platform request may delay launch.
     UNUserNotificationCenter.current().delegate = self
     UNUserNotificationCenter.current().setNotificationCategories([BuzzApprovalCategory.category()])
+    BuzzLiveActivities.start(
+      appGroupIdentifier: appGroupIdentifier,
+      endpointGrantStore: endpointGrantStore,
+      keychainAccessGroup: pushKeychainAccessGroup
+    )
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
