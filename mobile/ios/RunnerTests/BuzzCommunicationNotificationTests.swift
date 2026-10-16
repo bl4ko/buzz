@@ -519,6 +519,50 @@ final class BuzzPushNotificationResponseTests: XCTestCase {
     XCTAssertTrue(routedTargets.isEmpty)
     XCTAssertEqual(completions, 1)
   }
+
+  func testApprovalActionRunsNativelyAndCompletesAfterTheSend() {
+    let target = BuzzApprovalTarget(relayURL: "https://buzz.example", eventID: String(repeating: "a", count: 64), communityID: "c1")
+    var approvals: [(BuzzApprovalTarget, BuzzApprovalDecision)] = []
+    var finish: (() -> Void)?
+    var forwarded = 0
+    var completions = 0
+    BuzzPushNotificationResponseCoordinator.handle(
+      actionIdentifier: BuzzApprovalDecision.deny.rawValue,
+      userInfo: [BuzzApprovalTarget.userInfoKey: target.userInfo],
+      onTarget: { _ in XCTFail("approval actions must not navigate") },
+      onApproval: { target, decision, done in
+        approvals.append((target, decision))
+        finish = done
+      },
+      forwardToFlutter: { _ in forwarded += 1 },
+      completion: { completions += 1 }
+    )
+    XCTAssertEqual(approvals.first?.0, target)
+    XCTAssertEqual(approvals.first?.1, .deny)
+    XCTAssertEqual(forwarded, 0)
+    XCTAssertEqual(completions, 0)
+    finish?()
+    finish?()
+    XCTAssertEqual(completions, 1)
+  }
+
+  func testApprovalActionWithoutTargetFallsBackToFlutter() {
+    var forwarded = 0
+    var completions = 0
+    BuzzPushNotificationResponseCoordinator.handle(
+      actionIdentifier: BuzzApprovalDecision.approve.rawValue,
+      userInfo: [:],
+      onTarget: { _ in },
+      onApproval: { _, _, _ in XCTFail("no target, no approval") },
+      forwardToFlutter: { done in
+        forwarded += 1
+        done()
+      },
+      completion: { completions += 1 }
+    )
+    XCTAssertEqual(forwarded, 1)
+    XCTAssertEqual(completions, 1)
+  }
 }
 
 private final class MissingAppGroupDelegate: AppDelegate {
