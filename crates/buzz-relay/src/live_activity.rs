@@ -363,11 +363,10 @@ pub(crate) async fn run_job(
         .iter()
         .filter(|lease| snapshot.owners.contains(&lease.author))
     {
-        let previous = snapshot.states.iter().find(|row| {
-            row.author == lease.author
-                && row.installation_id == lease.installation_id
-                && row.lease_generation == lease.generation
-        });
+        let previous = snapshot
+            .states
+            .iter()
+            .find(|row| row.author == lease.author && row.installation_id == lease.installation_id);
         let view = snapshot.views.get(&lease.author);
         let action = decide(previous, view, refresh, now);
         let expires_at = lease.expires_at.min(now + REQUEST_TTL_SECS);
@@ -884,15 +883,53 @@ mod tests {
         assert!(outcome.disable.is_empty());
     }
 
+    fn renewed(view: &AskView, result: &str) -> LiveActivityStateRow {
+        LiveActivityStateRow {
+            lease_generation: 2,
+            ..stored(view, result)
+        }
+    }
+
     #[tokio::test]
-    async fn worker_ignores_state_of_older_lease_generation() {
+    async fn worker_keeps_state_across_lease_generations() {
+        let old = renewed(&view('a', 2), "updated");
+        let gateway = FakeGateway::new(Vec::new());
+        let outcome = run_job(&snapshot(vec![old.clone()]), false, 1, NOW, &gateway).await;
+        assert!(gateway.bodies().is_empty());
+        assert_eq!(outcome, JobOutcome::default());
+
         let gateway = FakeGateway::new(vec![GatewayReply::Updated]);
-        let mut old = stored(&view('a', 2), "updated");
-        old.lease_generation = 2;
-        let outcome = run_job(&snapshot(vec![old]), false, 1, NOW, &gateway).await;
-        assert_eq!(gateway.bodies()[0]["priority"], 10);
+        let mut input = snapshot(vec![old.clone()]);
+        input.views.insert(vec![1; 32], view('a', 3));
+        let outcome = run_job(&input, false, 1, NOW, &gateway).await;
+        assert_eq!(gateway.bodies()[0]["op"], "upsert");
+        assert_eq!(gateway.bodies()[0]["priority"], 5);
         assert_eq!(outcome.records[0].result, "updated");
-        assert_eq!(outcome.records[0].started_at, Some(NOW));
+        assert_eq!(outcome.records[0].started_at, old.started_at);
+        assert_eq!(outcome.records[0].lease_generation, 3);
+
+        let aged = LiveActivityStateRow {
+            started_at: Some(NOW - RESTART_AFTER_SECS),
+            ..old
+        };
+        let gateway = FakeGateway::new(vec![GatewayReply::Started]);
+        run_job(&snapshot(vec![aged]), false, 1, NOW, &gateway).await;
+        assert_eq!(gateway.bodies()[0]["op"], "restart");
+    }
+
+    #[tokio::test]
+    async fn worker_ends_card_after_lease_renewal() {
+        let mut input = snapshot(vec![renewed(&view('a', 2), "updated")]);
+        input.views.clear();
+        let gateway = FakeGateway::new(vec![GatewayReply::Ended]);
+        let outcome = run_job(&input, false, 1, NOW, &gateway).await;
+        let bodies = gateway.bodies();
+        assert_eq!(bodies.len(), 1);
+        assert_eq!(bodies[0]["op"], "end");
+        assert_eq!(bodies[0]["endpoint_grant"], "owner-grant");
+        assert_eq!(outcome.records.len(), 1);
+        assert_eq!(outcome.records[0].result, "ended");
+        assert_eq!(outcome.records[0].lease_generation, 3);
     }
 
     #[test]
