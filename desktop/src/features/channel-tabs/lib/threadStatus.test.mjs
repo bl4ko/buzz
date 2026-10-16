@@ -6,6 +6,7 @@ import {
   buildThreadStatusTags,
   groupThreadTasks,
   isApprovalRequest,
+  ownerDecisions,
   parseThreadStatusEvent,
   reduceThreadTasks,
 } from "./threadStatus.ts";
@@ -147,4 +148,31 @@ test("approval helpers", () => {
     approvalDecision([{ emoji: "✅", reactedByCurrentUser: false }]),
     null,
   );
+});
+
+test("ownerDecisions keeps the first owner decision per ask", () => {
+  const me = "d".repeat(64);
+  const ask2 = "c".repeat(64);
+  const reaction = (id, pubkey, content, createdAt, target) => ({
+    id,
+    pubkey,
+    created_at: createdAt,
+    kind: 7,
+    tags: [["e", target]],
+    content,
+    sig: "",
+  });
+  const decisions = ownerDecisions(
+    [
+      reaction("1", "e".repeat(64), "❌", 5, ASK),
+      reaction("2", me, "👍", 6, ASK),
+      reaction("3", me, "❌", 20, ASK),
+      reaction("4", me, "✅", 10, ASK),
+      reaction("5", me, "❌", 30, ask2),
+    ],
+    me.toUpperCase(),
+  );
+  assert.equal(decisions.get(ASK), "approve");
+  assert.equal(decisions.get(ask2), "deny");
+  assert.equal(decisions.size, 2);
 });

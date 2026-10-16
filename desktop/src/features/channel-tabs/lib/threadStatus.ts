@@ -1,5 +1,5 @@
 import type { RelayEvent } from "@/shared/api/types";
-import { KIND_THREAD_STATUS } from "@/shared/constants/kinds";
+import { KIND_REACTION, KIND_THREAD_STATUS } from "@/shared/constants/kinds";
 
 export const TASK_STATUSES = [
   "open",
@@ -150,4 +150,35 @@ export function approvalDecision(
   if (reactions.some((r) => r.emoji === DENY_EMOJI && r.reactedByCurrentUser))
     return "deny";
   return null;
+}
+
+export type OwnerDecision = "approve" | "deny";
+
+export function ownerDecisions(
+  events: readonly RelayEvent[],
+  pubkey: string,
+): Map<string, OwnerDecision> {
+  const me = pubkey.toLowerCase();
+  const first = new Map<string, RelayEvent>();
+  for (const event of events) {
+    const content = event.content.trim();
+    if (event.kind !== KIND_REACTION || event.pubkey.toLowerCase() !== me)
+      continue;
+    if (content !== APPROVE_EMOJI && content !== DENY_EMOJI) continue;
+    const target = rows(event, "e").at(-1)?.[1]?.toLowerCase();
+    if (!target) continue;
+    const seen = first.get(target);
+    if (
+      !seen ||
+      event.created_at < seen.created_at ||
+      (event.created_at === seen.created_at && event.id < seen.id)
+    )
+      first.set(target, event);
+  }
+  return new Map(
+    [...first].map(([target, event]) => [
+      target,
+      event.content.trim() === APPROVE_EMOJI ? "approve" : "deny",
+    ]),
+  );
 }

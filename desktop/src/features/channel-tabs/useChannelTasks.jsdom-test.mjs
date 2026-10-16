@@ -95,3 +95,47 @@ test("a reconnect refetches", async () => {
   await act(async () => transport.reconnect());
   await h.waitFor(() => h.latest.tasks.length === 1);
 });
+
+test("owner decisions come from the owner's own reactions on the asks", async () => {
+  const me = "d".repeat(64);
+  const subscriptions = [];
+  const reaction = (id, content, createdAt) => ({
+    id,
+    pubkey: me,
+    created_at: createdAt,
+    kind: 7,
+    tags: [["e", ASK]],
+    content,
+    sig: "",
+  });
+  const transport = tasksTransport([
+    status("w", ROOT, "awaiting_owner", 10, "Merge PR 7?"),
+  ]);
+  transport.reactions = [];
+  transport.fetchEvents = async (filter) => {
+    transport.fetched.push(filter);
+    return transport.reactions;
+  };
+  transport.subscribeLive = async (filter, onEvent) => {
+    subscriptions.push({ filter, onEvent });
+    return () => {};
+  };
+  const owner = createHookHarness((t) => useChannelTasks(CH, t, me));
+  try {
+    await owner.mount(transport);
+    await owner.waitFor(() => owner.latest?.tasks.length === 1);
+    await owner.waitFor(() => transport.fetched.length === 1);
+    assert.deepEqual(transport.fetched[0].kinds, [7]);
+    assert.deepEqual(transport.fetched[0].authors, [me]);
+    assert.deepEqual(transport.fetched[0]["#e"], [ASK]);
+    assert.equal(owner.latest.decisions.get(ASK), undefined);
+    const live = subscriptions.find((s) => s.filter.kinds[0] === 7);
+    await act(async () => live.onEvent(reaction("r1", "❌", 12)));
+    await owner.waitFor(() => owner.latest.decisions.get(ASK) === "deny");
+    transport.reactions = [reaction("r0", "✅", 11), reaction("r1", "❌", 12)];
+    await act(async () => owner.latest.refreshDecisions());
+    await owner.waitFor(() => owner.latest.decisions.get(ASK) === "approve");
+  } finally {
+    await owner.unmount();
+  }
+});
