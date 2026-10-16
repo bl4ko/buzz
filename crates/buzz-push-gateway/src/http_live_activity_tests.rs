@@ -662,6 +662,20 @@ async fn la_upsert_starts_with_start_token() {
 }
 
 #[tokio::test]
+async fn la_start_is_always_priority_10() {
+    let h = harness(true).await;
+    h.seed(None, false).await;
+    let mut body: serde_json::Value =
+        serde_json::from_slice(&h.delivery("upsert", ORIGIN, state(1))).unwrap();
+    body["priority"] = 5.into();
+    assert_eq!(
+        h.deliver(serde_json::to_vec(&body).unwrap()).await,
+        status("started")
+    );
+    assert_eq!(h.la.sent(), [(start_hex(), "start".to_owned(), 10)]);
+}
+
+#[tokio::test]
 async fn la_upsert_updates_with_update_token() {
     let h = harness(true).await;
     h.seed(Some(now() - 100), true).await;
