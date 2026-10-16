@@ -27,6 +27,7 @@ pub(crate) const START_FINGERPRINT_DOMAIN: &[u8] = b"buzz.push.la-start.v1";
 pub(crate) const UPDATE_FINGERPRINT_DOMAIN: &[u8] = b"buzz.push.la-update.v1";
 pub(crate) const CARD_LIFETIME_SECONDS: i64 = 8 * 3600;
 pub(crate) const START_RETRY_SECONDS: i64 = 30 * 60;
+const START_PRIORITY: u8 = 10;
 
 pub(crate) fn token_fingerprint(domain: &[u8], token: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
@@ -401,7 +402,11 @@ impl Job {
             origin: &self.origin,
             state,
         };
-        match self.send(&token, &event, self.attempt).await {
+        let attempt = LiveActivityAttempt {
+            priority: START_PRIORITY,
+            ..self.attempt
+        };
+        match self.send(&token, &event, attempt).await {
             Finished::Outcome(DeliveryOutcome::Accepted) => {
                 let recorded = self
                     .s
