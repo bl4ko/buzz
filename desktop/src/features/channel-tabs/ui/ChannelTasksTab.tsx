@@ -85,7 +85,7 @@ function TaskRow({
           {decision === "approve" ? "Approved" : "Denied"}
         </span>
       ) : null}
-      {ask && !decision ? (
+      {ask && !decision && canSetStatus ? (
         <>
           <Button
             data-testid="task-approve"

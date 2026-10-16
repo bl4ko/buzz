@@ -96,9 +96,12 @@ test("groups, ask, approve, deny, done, and open", async () => {
   );
 });
 
-test("Done buttons need the owner", async () => {
+test("Done, Approve, and Deny buttons need the owner", async () => {
   await render(false);
   assert.equal(container.querySelector('[data-testid="task-done"]'), null);
+  assert.equal(q("task-approve"), null);
+  assert.equal(q("task-deny"), null);
+  assert.match(q("tasks-group-needs-you").textContent, /Merge PR 7\?/);
 });
 
 test("a decision replaces the buttons and a failed publish shows an error", async () => {
