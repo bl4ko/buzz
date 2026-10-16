@@ -269,6 +269,10 @@ struct Bl4uzzApp: App {
   @State private var confirmSetup = false
   @State private var confirmSignOut = false
 
+  init() {
+    WatchApprovalActions.shared.register()
+  }
+
   var body: some Scene {
     WindowGroup {
       NavigationStack {
