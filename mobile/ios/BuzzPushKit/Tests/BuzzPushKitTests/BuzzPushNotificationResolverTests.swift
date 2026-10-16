@@ -32,6 +32,23 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     super.tearDown()
   }
 
+
+  func testSameSecondApprovalIsPreferredOverOtherMessages() throws {
+    let message = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey, createdAt: Self.now, kind: 9, tags: [["h", "c"]]
+    )
+    let approval = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey, createdAt: Self.now, kind: 9,
+      tags: [["h", "c"], ["notification", "approval"]]
+    )
+    let older = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey, createdAt: Self.now - 1, kind: 9,
+      tags: [["h", "c"], ["notification", "approval"]]
+    )
+    XCTAssertTrue(BuzzPushNotificationResolver.isPreferred(approval, over: message))
+    XCTAssertFalse(BuzzPushNotificationResolver.isPreferred(message, over: approval))
+    XCTAssertTrue(BuzzPushNotificationResolver.isPreferred(message, over: older))
+  }
   func testResolveReturnsNilWhenCommunitiesDataIsMissing() {
     let result = resolve(makeResolver(communitiesData: nil))
 

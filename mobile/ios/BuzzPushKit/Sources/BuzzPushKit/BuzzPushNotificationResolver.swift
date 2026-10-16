@@ -141,9 +141,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
       }
     }
     group.notify(queue: .global(qos: .userInitiated)) {
-      let newestFirst = candidates.sorted {
-        $0.0.createdAt == $1.0.createdAt ? $0.0.id < $1.0.id : $0.0.createdAt > $1.0.createdAt
-      }
+      let newestFirst = candidates.sorted { Self.isPreferred($0.0, over: $1.0) }
       guard let newest = self.firstUnpresented(newestFirst, communities: communities) else {
         completion(nil)
         return
@@ -160,6 +158,14 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
   /// The claim is made before presentation: if presenting then fails or expires, that
   /// push shows the generic text and the message isn't offered again, which is better
   /// than repeating a message in later notifications.
+  /// Newest first; a same-second approval request wins, then the lower ID.
+  static func isPreferred(_ lhs: VerifiedNostrEvent, over rhs: VerifiedNostrEvent) -> Bool {
+    if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+    let lhsApproval = lhs.tags.contains(["notification", "approval"])
+    if lhsApproval != rhs.tags.contains(["notification", "approval"]) { return lhsApproval }
+    return lhs.id < rhs.id
+  }
+
   private func firstUnpresented(
     _ newestFirst: [(VerifiedNostrEvent, PushLeaseCommunity, BuzzRelayAssertion?)],
     communities: [PushLeaseCommunity]
