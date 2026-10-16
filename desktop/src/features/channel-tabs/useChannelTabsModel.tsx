@@ -3,6 +3,7 @@ import * as React from "react";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useToggleReactionMutation } from "@/features/messages/hooks";
 
+import type { FileLinkItem } from "./lib/filesAndLinks";
 import {
   buildChannelTabItems,
   type ChannelTabKey,
@@ -59,6 +60,17 @@ export function useChannelTabsModel({
     },
     [channelId, goChannel, setSelected],
   );
+  const onOpenMessage = React.useCallback(
+    (item: FileLinkItem) => {
+      if (!channelId) return;
+      setSelected("messages");
+      void goChannel(channelId, {
+        messageId: item.messageId,
+        threadRootId: item.rootId ?? undefined,
+      });
+    },
+    [channelId, goChannel, setSelected],
+  );
   const onReact = React.useCallback(
     async (eventId: string, emoji: string) => {
       await reaction.mutateAsync({ eventId, emoji, remove: false });
@@ -86,6 +98,8 @@ export function useChannelTabsModel({
         channelId={channelId}
         currentPubkey={currentPubkey}
         onOpenThread={onOpenThread}
+        files={files}
+        onOpenMessage={onOpenMessage}
         onReact={onReact}
         selected={current}
         tasks={tasks}
