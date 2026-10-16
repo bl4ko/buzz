@@ -958,6 +958,8 @@ pub fn emit_live_thread_summary(
                 None
             }
         };
+        // Same tags/content shape as the channel-window page overlay in
+        // `api/bridge.rs` — one contract, two delivery doors.
         let content = crate::thread_summary::thread_summary_content(&summary, status.as_ref());
         let tags = [
             Tag::parse(["e", &root_hex]),
