@@ -1,0 +1,105 @@
+{
+  "description": "Golden APNs liveactivity payloads built by crates/buzz-push-gateway/src/live_activity.rs payload(). Clients decode each `expected` body; `content-state` must decode into BuzzApprovalsActivityAttributes.ContentState with a default JSONDecoder. `origin_hashes` are SHA-256 of the exact origin bytes; `invalid_origins` must be rejected.",
+  "attributes_type": "BuzzApprovalsActivityAttributes",
+  "cases": [
+    {
+      "name": "start_basic",
+      "event": "start",
+      "now": 1760620000,
+      "origin": "https://buzz.bl4ko.com",
+      "state": {
+        "askEventID": "b5cf9dd3310c2b7194f3fdec2e859a8ffc626213a1787c63e7584dbadda734a3",
+        "caseID": "BUZZ-42",
+        "ask": "Deploy relay 0.5.28 to prod?",
+        "agent": "Zeus",
+        "channel": "tasks-test",
+        "openCount": 1,
+        "askedAt": 1760619970
+      },
+      "expected": "{\"aps\":{\"timestamp\":1760620000,\"event\":\"start\",\"attributes-type\":\"BuzzApprovalsActivityAttributes\",\"attributes\":{\"origin\":\"https://buzz.bl4ko.com\"},\"content-state\":{\"askEventID\":\"b5cf9dd3310c2b7194f3fdec2e859a8ffc626213a1787c63e7584dbadda734a3\",\"caseID\":\"BUZZ-42\",\"ask\":\"Deploy relay 0.5.28 to prod?\",\"agent\":\"Zeus\",\"channel\":\"tasks-test\",\"openCount\":1,\"askedAt\":1760619970},\"stale-date\":1760627200,\"relevance-score\":100,\"input-push-token\":1,\"alert\":{\"title\":\"Needs you\",\"body\":\"Deploy relay 0.5.28 to prod?\"}}}",
+      "expected_bytes": 511
+    },
+    {
+      "name": "start_multibyte_120_chars",
+      "event": "start",
+      "now": 1760620000,
+      "origin": "https://buzz.bl4ko.com",
+      "state": {
+        "askEventID": "43ef78e235ef77dd38cd3ad5fa23fea4e74305c2f9b75f2bd4f9508245f0694b",
+        "caseID": "INC-2026.10_7",
+        "ask": "Odobriš žžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžž🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝",
+        "agent": "Žana 🐝",
+        "channel": "šola-čebel",
+        "openCount": 2,
+        "askedAt": 1760619995
+      },
+      "expected": "{\"aps\":{\"timestamp\":1760620000,\"event\":\"start\",\"attributes-type\":\"BuzzApprovalsActivityAttributes\",\"attributes\":{\"origin\":\"https://buzz.bl4ko.com\"},\"content-state\":{\"askEventID\":\"43ef78e235ef77dd38cd3ad5fa23fea4e74305c2f9b75f2bd4f9508245f0694b\",\"caseID\":\"INC-2026.10_7\",\"ask\":\"Odobriš žžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžž🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝\",\"agent\":\"Žana 🐝\",\"channel\":\"šola-čebel\",\"openCount\":2,\"askedAt\":1760619995},\"stale-date\":1760627200,\"relevance-score\":100,\"input-push-token\":1,\"alert\":{\"title\":\"Needs you\",\"body\":\"Odobriš žžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžžž🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝🐝\"}}}",
+      "expected_bytes": 1175
+    },
+    {
+      "name": "update_count_only",
+      "event": "update",
+      "now": 1760620060,
+      "state": {
+        "askEventID": "b5cf9dd3310c2b7194f3fdec2e859a8ffc626213a1787c63e7584dbadda734a3",
+        "caseID": "BUZZ-42",
+        "ask": "Deploy relay 0.5.28 to prod?",
+        "agent": "Zeus",
+        "channel": "tasks-test",
+        "openCount": 3,
+        "askedAt": 1760619970
+      },
+      "expected": "{\"aps\":{\"timestamp\":1760620060,\"event\":\"update\",\"content-state\":{\"askEventID\":\"b5cf9dd3310c2b7194f3fdec2e859a8ffc626213a1787c63e7584dbadda734a3\",\"caseID\":\"BUZZ-42\",\"ask\":\"Deploy relay 0.5.28 to prod?\",\"agent\":\"Zeus\",\"channel\":\"tasks-test\",\"openCount\":3,\"askedAt\":1760619970},\"stale-date\":1760627260,\"relevance-score\":100}}",
+      "expected_bytes": 322
+    },
+    {
+      "name": "update_no_case_id",
+      "event": "update",
+      "now": 1760620120,
+      "state": {
+        "askEventID": "43ef78e235ef77dd38cd3ad5fa23fea4e74305c2f9b75f2bd4f9508245f0694b",
+        "caseID": null,
+        "ask": "Rotate the \"buzz\" APNs key?",
+        "agent": "b921c593",
+        "channel": "ops",
+        "openCount": 1,
+        "askedAt": 1760620100
+      },
+      "expected": "{\"aps\":{\"timestamp\":1760620120,\"event\":\"update\",\"content-state\":{\"askEventID\":\"43ef78e235ef77dd38cd3ad5fa23fea4e74305c2f9b75f2bd4f9508245f0694b\",\"ask\":\"Rotate the \\\"buzz\\\" APNs key?\",\"agent\":\"b921c593\",\"channel\":\"ops\",\"openCount\":1,\"askedAt\":1760620100},\"stale-date\":1760627320,\"relevance-score\":100}}",
+      "expected_bytes": 301
+    },
+    {
+      "name": "end",
+      "event": "end",
+      "now": 1760620180,
+      "expected": "{\"aps\":{\"timestamp\":1760620180,\"event\":\"end\",\"content-state\":{\"askEventID\":\"\",\"ask\":\"\",\"agent\":\"\",\"channel\":\"\",\"openCount\":0,\"askedAt\":1760620180},\"dismissal-date\":1760620180}}",
+      "expected_bytes": 176
+    }
+  ],
+  "origin_hashes": [
+    {
+      "origin": "https://buzz.bl4ko.com",
+      "sha256": "4711f18ac134e45b229e29b2bb3e3537488b8123b4d80045337a0411dfed59db"
+    },
+    {
+      "origin": "https://buzz.bl4ko.com:8443",
+      "sha256": "eef9323221c3dac317be3d7811825f6fe1a7999a7ca0fd241a5cddb9fa397b60"
+    },
+    {
+      "origin": "https://10.1.6.76:3000",
+      "sha256": "6220ddabe5fd8f935f29ca4fc3daba092ddc38a5fc325efa3962f37bf4f76571"
+    }
+  ],
+  "invalid_origins": [
+    "http://buzz.bl4ko.com",
+    "https://Buzz.bl4ko.com",
+    "https://buzz.bl4ko.com/",
+    "https://buzz.bl4ko.com/path",
+    "https://buzz.bl4ko.com:443",
+    "https://buzz.bl4ko.com:0",
+    "https://user@buzz.bl4ko.com",
+    "https://buzz.bl4ko.com?x=1",
+    "wss://buzz.bl4ko.com",
+    "https://"
+  ]
+}
