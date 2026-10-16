@@ -1,5 +1,12 @@
 # Chart release notes
 
+## 0.4.1
+
+Adds optional `application.apnsAuthKey` (`secretName`, `secretKey`,
+`keyId`, `teamId`). When set, the chart mounts the APNs token auth key and
+renders the Live Activity credential variables. The empty default preserves
+existing manifests.
+
 ## 0.4.0
 
 - Replace `profiles.dogfood` with `application` and use unprefixed application/APNs environment variables. Requires the matching buzz-push-v1 gateway image and fresh authority store.
