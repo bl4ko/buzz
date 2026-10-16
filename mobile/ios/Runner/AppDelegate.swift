@@ -499,6 +499,7 @@ import os.log
           await BuzzApprovalActionHandler.handle(
             target: target,
             decision: decision,
+            storedRelayURL: { BuzzPushStoredRelay.relayURL(communityID: $0, appGroupIdentifier: self.appGroupIdentifier) },
             loadKey: { BuzzPushSigningKeychain.privateKey(communityID: $0, accessGroup: accessGroup) },
             send: { try await BuzzApprovalReactionSender().send($0, decision: $1, privateKeyHex: $2) },
             notifyFailure: { body in

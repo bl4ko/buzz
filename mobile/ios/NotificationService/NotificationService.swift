@@ -176,6 +176,7 @@ final class NotificationService: UNNotificationServiceExtension {
     fallback.sound = .default
     var userInfo = fallback.userInfo
     userInfo.removeValue(forKey: BuzzPushNavigationTarget.userInfoKey)
+    userInfo.removeValue(forKey: BuzzApprovalTarget.userInfoKey)
     fallback.userInfo = userInfo
     return fallback
   }

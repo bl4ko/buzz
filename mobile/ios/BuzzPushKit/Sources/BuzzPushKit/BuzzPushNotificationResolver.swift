@@ -677,3 +677,24 @@ extension PushLeaseCommunity {
     return components.url
   }
 }
+
+public enum BuzzPushStoredRelay {
+  public static func relayURL(communityID: String, appGroupIdentifier: String?) -> String? {
+    guard let appGroupIdentifier,
+      let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+    else { return nil }
+    return relayURL(
+      communityID: communityID,
+      snapshotURL: container.appendingPathComponent(BuzzPushPresentationCacheStore.fileName)
+    )
+  }
+
+  public static func relayURL(communityID: String, snapshotURL: URL) -> String? {
+    guard let values = try? snapshotURL.resourceValues(forKeys: [.fileSizeKey]),
+      let size = values.fileSize, size <= BuzzPushPresentationCacheStore.maximumSnapshotBytes,
+      let data = try? Data(contentsOf: snapshotURL),
+      let snapshot = try? JSONDecoder().decode(PushLeaseSnapshot.self, from: data)
+    else { return nil }
+    return snapshot.communities.first { $0.id == communityID }?.relayURL?.absoluteString
+  }
+}

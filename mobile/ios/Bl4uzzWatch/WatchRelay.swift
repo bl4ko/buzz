@@ -144,7 +144,7 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
         let emoji = message["emoji"] as? String, emoji == "\u{2705}" || emoji == "\u{274C}"
       else { throw WatchRelayError.invalidSetup }
       let event = try NostrHTTPAuth.signedEvent(kind: 7, tags: [["e", id]], content: emoji, privateKeyHex: credentials.privateKeyHex)
-      let response = try await post("events", body: JSONEncoder().encode(event))
+      let response = try await post("events", body: JSONEncoder().encode(event), timeout: 15)
       guard let result = try JSONSerialization.jsonObject(with: response) as? [String: Any],
         result["accepted"] as? Bool == true, result["event_id"] as? String == event.id
       else { throw WatchRelayError.unconfirmed }
@@ -166,10 +166,11 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
     return key
   }
 
-  private func post(_ path: String, body: Data) async throws -> Data {
+  private func post(_ path: String, body: Data, timeout: TimeInterval? = nil) async throws -> Data {
     let url = credentials.relayURL.appendingPathComponent(path)
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
+    if let timeout { request.timeoutInterval = timeout }
     request.httpBody = body
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(

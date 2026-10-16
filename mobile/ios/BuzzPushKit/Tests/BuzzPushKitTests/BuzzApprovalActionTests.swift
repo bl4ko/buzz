@@ -45,7 +45,11 @@ final class BuzzApprovalActionTests: XCTestCase {
     plain["relay_url"] = "http://buzz.example"
     XCTAssertNil(BuzzApprovalTarget.decodeIfPresent(from: [BuzzApprovalTarget.userInfoKey: plain]))
     plain["relay_url"] = "http://127.0.0.1:3095"
-    XCTAssertNotNil(BuzzApprovalTarget.decodeIfPresent(from: [BuzzApprovalTarget.userInfoKey: plain]))
+    #if DEBUG
+      XCTAssertNotNil(BuzzApprovalTarget.decodeIfPresent(from: [BuzzApprovalTarget.userInfoKey: plain]))
+    #else
+      XCTAssertNil(BuzzApprovalTarget.decodeIfPresent(from: [BuzzApprovalTarget.userInfoKey: plain]))
+    #endif
   }
 
   func testReactionIsASignedKind7WithOnlyTheTargetTag() throws {
@@ -62,6 +66,7 @@ final class BuzzApprovalActionTests: XCTestCase {
     var matching = true
     ApprovalHTTPStub.handler = { request in
       XCTAssertEqual(request.url?.absoluteString, "https://buzz.example/events")
+      XCTAssertEqual(request.timeoutInterval, 15)
       XCTAssertTrue(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Nostr ") == true)
       var data = request.httpBody ?? Data()
       if request.httpBody == nil, let stream = request.httpBodyStream {
@@ -88,14 +93,42 @@ final class BuzzApprovalActionTests: XCTestCase {
 
   func testFailedApprovalPostsLocalFailureNotice() async {
     var notices: [String] = []
-    await BuzzApprovalActionHandler.handle(target: target, decision: .approve, loadKey: { _ in nil }, send: { _, _, _ in XCTFail("no key, no send") }, notifyFailure: { notices.append($0) })
+    await BuzzApprovalActionHandler.handle(target: target, decision: .approve, storedRelayURL: { _ in self.target.relayURL }, loadKey: { _ in nil }, send: { _, _, _ in XCTFail("no key, no send") }, notifyFailure: { notices.append($0) })
     struct Refused: Error {}
-    await BuzzApprovalActionHandler.handle(target: target, decision: .deny, loadKey: { _ in self.key }, send: { _, _, _ in throw Refused() }, notifyFailure: { notices.append($0) })
-    await BuzzApprovalActionHandler.handle(target: target, decision: .deny, loadKey: { _ in self.key }, send: { _, _, _ in }, notifyFailure: { notices.append($0) })
+    await BuzzApprovalActionHandler.handle(target: target, decision: .deny, storedRelayURL: { _ in self.target.relayURL }, loadKey: { _ in self.key }, send: { _, _, _ in throw Refused() }, notifyFailure: { notices.append($0) })
+    await BuzzApprovalActionHandler.handle(target: target, decision: .deny, storedRelayURL: { _ in self.target.relayURL }, loadKey: { _ in self.key }, send: { _, _, _ in }, notifyFailure: { notices.append($0) })
     XCTAssertEqual(notices.count, 2)
     let request = BuzzApprovalFailureNotice.request(body: notices[0])
     XCTAssertEqual(request.content.title, "Approval not sent")
     XCTAssertEqual(request.content.body, "Open Buzz and try again.")
+  }
+
+  func testRelayThatDiffersFromTheStoredOneIsRefusedBeforeSigning() async {
+    var notices: [String] = []
+    var keyLoads = 0
+    await BuzzApprovalActionHandler.handle(
+      target: target, decision: .approve,
+      storedRelayURL: { _ in "https://other.example" },
+      loadKey: { _ in keyLoads += 1; return self.key },
+      send: { _, _, _ in XCTFail("mismatched relay must not be contacted") },
+      notifyFailure: { notices.append($0) })
+    await BuzzApprovalActionHandler.handle(
+      target: target, decision: .approve,
+      storedRelayURL: { _ in nil },
+      loadKey: { _ in keyLoads += 1; return self.key },
+      send: { _, _, _ in XCTFail("unknown community must not be contacted") },
+      notifyFailure: { notices.append($0) })
+    XCTAssertEqual(notices.count, 2)
+    XCTAssertEqual(keyLoads, 0)
+  }
+
+  func testStoredRelayLookupReadsTheSnapshot() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("approval-snapshot-\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let snapshot = PushLeaseSnapshot(communities: [PushLeaseCommunity(id: "community-1", name: "Home", relayUrl: "wss://buzz.example/", pubkey: nil, policies: [])])
+    try JSONEncoder().encode(snapshot).write(to: url)
+    XCTAssertEqual(BuzzPushStoredRelay.relayURL(communityID: "community-1", snapshotURL: url), "https://buzz.example")
+    XCTAssertNil(BuzzPushStoredRelay.relayURL(communityID: "other", snapshotURL: url))
   }
 
   func testCategoryOffersApproveAndDeny() {
