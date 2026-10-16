@@ -72,9 +72,14 @@ void main() {
     expect(log, ['react:✅:b', 'react:❌:b', 'done:1', 'open:2']);
   });
 
-  testWidgets('no Done buttons without owner rights', (tester) async {
+  testWidgets('no Done, Approve, or Deny buttons without owner rights', (
+    tester,
+  ) async {
     await pump(tester, canSetStatus: false);
     expect(find.text('Done'), findsNothing);
+    expect(find.text('✅'), findsNothing);
+    expect(find.text('❌'), findsNothing);
+    expect(find.text('Merge PR 7?'), findsOneWidget);
   });
 
   Widget host(
@@ -84,7 +89,7 @@ void main() {
     home: Scaffold(
       body: ChannelTasksView(
         state: tasks,
-        canSetStatus: false,
+        canSetStatus: true,
         onReact: onReact,
         onDone: (_) async {},
         onOpenThread: (_) {},
