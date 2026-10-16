@@ -82,6 +82,7 @@ pub mod telemetry;
 pub mod tenant;
 #[cfg(test)]
 mod test_support;
+mod thread_summary;
 /// Relay-side tunnel session directory and routing.
 pub mod tunnel;
 /// Webhook secret generation and constant-time comparison.
