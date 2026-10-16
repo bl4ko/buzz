@@ -49,37 +49,25 @@ enum BuzzPushNotificationResponseCoordinator {
 
 enum BuzzPushKeychain {
   static let service = "buzz.push.nse.signing"
+  static let items: [(service: String, accessible: CFString)] = [
+    (service, kSecAttrAccessibleAfterFirstUnlock),
+    (BuzzLiveActivitySigningKeychain.service, kSecAttrAccessibleWhenUnlockedThisDeviceOnly),
+  ]
 
   static func replace(signingKeys: [String: String], accessGroup: String?) throws {
-    var query = baseQuery(accessGroup: accessGroup)
-    let deletionStatus = SecItemDelete(query as CFDictionary)
-    guard deletionStatus == errSecSuccess || deletionStatus == errSecItemNotFound else {
-      throw NSError(
-        domain: NSOSStatusErrorDomain, code: Int(deletionStatus),
-        userInfo: [
-          NSLocalizedDescriptionKey: SecCopyErrorMessageString(deletionStatus, nil)
-            ?? "Keychain deletion failed" as CFString
-        ]
-      )
-    }
+    try deleteAll(accessGroup: accessGroup)
     for (communityID, privateKeyHex) in signingKeys {
-      query[kSecAttrAccount as String] = communityID
-      query[kSecValueData as String] = Data(privateKeyHex.utf8)
-      query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-      let status = SecItemAdd(query as CFDictionary, nil)
-      guard status == errSecSuccess else {
-        SecItemDelete(baseQuery(accessGroup: accessGroup) as CFDictionary)
-        throw NSError(
-          domain: NSOSStatusErrorDomain, code: Int(status),
-          userInfo: [
-            NSLocalizedDescriptionKey: SecCopyErrorMessageString(status, nil)
-              ?? "Keychain write failed" as CFString
-          ]
-        )
+      for item in items {
+        var query = baseQuery(service: item.service, accessGroup: accessGroup)
+        query[kSecAttrAccount as String] = communityID
+        query[kSecValueData as String] = Data(privateKeyHex.utf8)
+        query[kSecAttrAccessible as String] = item.accessible
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+          try? deleteAll(accessGroup: accessGroup)
+          throw keychainError(status, fallback: "Keychain write failed")
+        }
       }
-      query.removeValue(forKey: kSecValueData as String)
-      query.removeValue(forKey: kSecAttrAccessible as String)
-      query.removeValue(forKey: kSecAttrAccount as String)
     }
   }
 
@@ -106,6 +94,15 @@ enum BuzzPushKeychain {
     }
   }
 
+  private static func deleteAll(accessGroup: String?) throws {
+    for item in items {
+      let status = SecItemDelete(baseQuery(service: item.service, accessGroup: accessGroup) as CFDictionary)
+      guard status == errSecSuccess || status == errSecItemNotFound else {
+        throw keychainError(status, fallback: "Keychain deletion failed")
+      }
+    }
+  }
+
   private static func keychainError(_ status: OSStatus, fallback: String) -> NSError {
     NSError(
       domain: NSOSStatusErrorDomain, code: Int(status),
@@ -115,7 +112,7 @@ enum BuzzPushKeychain {
     )
   }
 
-  private static func baseQuery(accessGroup: String?) -> [String: Any] {
+  private static func baseQuery(service: String, accessGroup: String?) -> [String: Any] {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: service,
