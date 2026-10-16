@@ -42,8 +42,8 @@ fn now() -> i64 {
     1_750_000_000
 }
 
-fn hash_hex(origin: &str) -> String {
-    hex::encode(origin_hash(origin).unwrap())
+fn hash_for(origin: &str, relay: &Keys) -> [u8; 32] {
+    bound_origin_hash(origin, &relay.public_key().to_hex()).unwrap()
 }
 
 #[derive(Default)]
@@ -200,6 +200,20 @@ async fn harness(credentials: bool) -> Harness {
     }
 }
 
+fn delivery_with(grant: &str, op: &str, origin: &str, state: serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "v": 1,
+        "endpoint_grant": grant,
+        "request_id": Uuid::new_v4(),
+        "expires_at": now() + 60,
+        "origin": origin,
+        "op": op,
+        "priority": 10,
+        "state": state,
+    }))
+    .unwrap()
+}
+
 fn state(open_count: u16) -> serde_json::Value {
     serde_json::json!({
         "askEventID": "ab".repeat(32),
@@ -213,6 +227,47 @@ fn state(open_count: u16) -> serde_json::Value {
 }
 
 impl Harness {
+    fn hash(&self, origin: &str) -> [u8; 32] {
+        hash_for(origin, &self.relay)
+    }
+
+    fn hash_hex(&self, origin: &str) -> String {
+        hex::encode(self.hash(origin))
+    }
+
+    async fn foreign_relay(&self) -> (Keys, String) {
+        let relay = Keys::generate();
+        let delegation_id = Uuid::new_v4();
+        self.state
+            .authority
+            .upsert_delegation(Delegation {
+                id: delegation_id,
+                installation_id: self.installation,
+                relay_pubkey: relay.public_key().to_hex(),
+                endpoint_epoch: 1,
+                generation: 1,
+                not_before: now(),
+                expires_at: now() + 600,
+                revoked: false,
+            })
+            .await
+            .unwrap();
+        let grant = self
+            .state
+            .grant_keyring
+            .issue(&EndpointGrant {
+                v: 1,
+                delegation_id,
+                relay_pubkey: relay.public_key().to_hex(),
+                app_profile: AppProfile::BuzzIosDogfood,
+                endpoint_epoch: 1,
+                generation: 1,
+                expires_at: now() + 600,
+            })
+            .unwrap();
+        (relay, grant)
+    }
+
     async fn challenge(&self) -> (Uuid, String) {
         let id = Uuid::new_v4();
         let value = *Uuid::new_v4().as_bytes();
@@ -351,14 +406,14 @@ impl Harness {
     async fn target(&self, origin: &str) -> Option<LiveActivityTarget> {
         self.state
             .authority
-            .live_activity_target(self.installation, origin_hash(origin).unwrap(), now())
+            .live_activity_target(self.installation, self.hash(origin), now())
             .await
             .unwrap()
     }
 
     async fn seed(&self, started_at: Option<i64>, update: bool) {
         let authority = &self.state.authority;
-        let hash = origin_hash(ORIGIN).unwrap();
+        let hash = self.hash(ORIGIN);
         authority
             .replace_live_activity_registration(
                 self.installation,
@@ -394,17 +449,12 @@ impl Harness {
     }
 
     fn delivery(&self, op: &str, origin: &str, state: serde_json::Value) -> Vec<u8> {
-        serde_json::to_vec(&serde_json::json!({
-            "v": 1,
-            "endpoint_grant": self.grant,
-            "request_id": Uuid::new_v4(),
-            "expires_at": now() + 60,
-            "origin": origin,
-            "op": op,
-            "priority": 10,
-            "state": state,
-        }))
-        .unwrap()
+        delivery_with(&self.grant, op, origin, state)
+    }
+
+    async fn deliver_as(&self, relay: &Keys, body: Vec<u8>) -> (StatusCode, serde_json::Value) {
+        let auth = signed_header(relay, DELIVERY_URL, "POST", &body);
+        self.deliver_signed(body, auth).await
     }
 
     async fn deliver_signed(&self, body: Vec<u8>, auth: String) -> (StatusCode, serde_json::Value) {
@@ -453,8 +503,8 @@ fn update_hex() -> String {
 #[tokio::test]
 async fn la_registration_and_update_token_round_trip() {
     let h = harness(true).await;
-    let a = hash_hex(ORIGIN);
-    let b = hash_hex(OTHER_ORIGIN);
+    let a = h.hash_hex(ORIGIN);
+    let b = h.hash_hex(OTHER_ORIGIN);
     assert_eq!(
         h.register(Some(&start_hex()), vec![a.clone(), b.clone()])
             .await,
@@ -501,7 +551,7 @@ async fn la_registration_and_update_token_round_trip() {
 #[tokio::test]
 async fn la_registration_rejects_bad_input() {
     let h = harness(true).await;
-    let a = hash_hex(ORIGIN);
+    let a = h.hash_hex(ORIGIN);
     let many: Vec<String> = (0..17u8).map(|i| hex::encode([i; 32])).collect();
     for (start, origins, extra) in [
         (Some("zz".to_owned()), vec![a.clone()], None),
@@ -545,7 +595,7 @@ async fn la_registration_rejects_bad_input() {
 #[tokio::test]
 async fn la_registration_rejects_stale_assertion_counter() {
     let h = harness(true).await;
-    let a = hash_hex(ORIGIN);
+    let a = h.hash_hex(ORIGIN);
     assert_eq!(
         h.register_with(Some(&start_hex()), vec![a.clone()], 3, None)
             .await
@@ -561,7 +611,7 @@ async fn la_registration_rejects_stale_assertion_counter() {
 #[tokio::test]
 async fn la_update_for_unregistered_origin_is_not_found() {
     let h = harness(true).await;
-    let a = hash_hex(ORIGIN);
+    let a = h.hash_hex(ORIGIN);
     assert_eq!(
         h.set_update(&a, Some(&update_hex())).await,
         (
@@ -574,7 +624,7 @@ async fn la_update_for_unregistered_origin_is_not_found() {
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        h.set_update(&hash_hex(OTHER_ORIGIN), Some(&update_hex()))
+        h.set_update(&h.hash_hex(OTHER_ORIGIN), Some(&update_hex()))
             .await
             .0,
         StatusCode::NOT_FOUND
@@ -721,6 +771,71 @@ async fn la_rejects_unregistered_origin() {
         );
     }
     assert!(h.la.sent().is_empty());
+}
+
+#[tokio::test]
+async fn la_rejects_origin_registered_for_another_relay() {
+    let h = harness(true).await;
+    h.seed(Some(now() - 100), true).await;
+    let (foreign, grant) = h.foreign_relay().await;
+    for (op, state) in [
+        ("upsert", state(1)),
+        ("restart", state(1)),
+        ("end", serde_json::Value::Null),
+    ] {
+        assert_eq!(
+            h.deliver_as(&foreign, delivery_with(&grant, op, ORIGIN, state))
+                .await,
+            status("not_registered"),
+            "{op}"
+        );
+    }
+    assert!(h.la.sent().is_empty());
+    let target = h.target(ORIGIN).await.unwrap();
+    assert!(target.update_ciphertext.is_some());
+    assert_eq!(target.started_at, Some(now() - 100));
+    assert_eq!(h.upsert().await, status("updated"));
+    assert_eq!(h.la.sent(), [(update_hex(), "update".to_owned(), 10)]);
+}
+
+#[tokio::test]
+async fn la_rejects_update_token_registered_for_another_relay() {
+    let h = harness(true).await;
+    let (foreign, grant) = h.foreign_relay().await;
+    let own = h.hash_hex(ORIGIN);
+    let foreign_hash = hex::encode(hash_for(ORIGIN, &foreign));
+    assert_ne!(own, foreign_hash);
+    assert_eq!(
+        h.register(Some(&start_hex()), vec![own.clone()]).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        h.set_update(&foreign_hash, Some(&update_hex())).await,
+        (
+            StatusCode::NOT_FOUND,
+            serde_json::json!({"error": "not_found"})
+        )
+    );
+    assert_eq!(
+        h.set_update(&own, Some(&update_hex())).await.0,
+        StatusCode::NO_CONTENT
+    );
+    for (op, state) in [("upsert", state(1)), ("end", serde_json::Value::Null)] {
+        assert_eq!(
+            h.deliver_as(&foreign, delivery_with(&grant, op, ORIGIN, state))
+                .await,
+            status("not_registered"),
+            "{op}"
+        );
+    }
+    assert!(h.la.sent().is_empty());
+    assert!(h.target(ORIGIN).await.unwrap().update_ciphertext.is_some());
+    assert_eq!(
+        h.deliver(h.delivery("end", ORIGIN, serde_json::Value::Null))
+            .await,
+        status("ended")
+    );
+    assert_eq!(h.la.sent(), [(update_hex(), "end".to_owned(), 10)]);
 }
 
 #[tokio::test]

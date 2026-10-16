@@ -14,6 +14,7 @@ use crate::{
 };
 
 pub const ATTRIBUTES_TYPE: &str = "BuzzApprovalsActivityAttributes";
+pub const ORIGIN_HASH_DOMAIN: &[u8] = b"buzz.push.la-origin.v1";
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
 pub const STALE_AFTER_SECONDS: i64 = 7200;
 pub const MAX_ASK_CHARS: usize = 120;
@@ -106,13 +107,25 @@ fn valid_port(port: &str) -> bool {
         && port.parse::<u16>().is_ok_and(|p| p != 443)
 }
 
-pub fn origin_hash(origin: &str) -> Option<[u8; 32]> {
-    let authority = origin.strip_prefix("https://")?;
-    let valid = match authority.split_once(':') {
-        Some((host, port)) => valid_host(host) && valid_port(port),
-        None => valid_host(authority),
-    };
-    valid.then(|| Sha256::digest(origin.as_bytes()).into())
+pub fn valid_origin(origin: &str) -> bool {
+    origin
+        .strip_prefix("https://")
+        .is_some_and(|authority| match authority.split_once(':') {
+            Some((host, port)) => valid_host(host) && valid_port(port),
+            None => valid_host(authority),
+        })
+}
+
+pub fn bound_origin_hash(origin: &str, relay_pubkey: &str) -> Option<[u8; 32]> {
+    (valid_origin(origin) && lower_hex_64(relay_pubkey)).then(|| {
+        let mut hash = Sha256::new();
+        hash.update(ORIGIN_HASH_DOMAIN);
+        hash.update([0]);
+        hash.update(origin.as_bytes());
+        hash.update([0]);
+        hash.update(relay_pubkey.as_bytes());
+        hash.finalize().into()
+    })
 }
 
 pub enum LiveEvent<'a> {
@@ -525,14 +538,35 @@ mod tests {
                 "{name}"
             );
         }
-        for entry in file["origin_hashes"].as_array().unwrap() {
+        let relay = "aa".repeat(32);
+        let bound = file["bound_origin_hashes"].as_array().unwrap();
+        for entry in bound {
+            let origin = entry["origin"].as_str().unwrap();
             assert_eq!(
-                hex::encode(origin_hash(entry["origin"].as_str().unwrap()).unwrap()),
+                hex::encode(
+                    bound_origin_hash(origin, entry["relay_pubkey"].as_str().unwrap()).unwrap()
+                ),
+                entry["sha256"].as_str().unwrap(),
+                "{origin}"
+            );
+            assert_ne!(
+                hex::encode(Sha256::digest(origin.as_bytes())),
                 entry["sha256"].as_str().unwrap()
             );
         }
+        assert_eq!(bound[0]["origin"], bound[1]["origin"]);
+        assert_ne!(bound[0]["relay_pubkey"], bound[1]["relay_pubkey"]);
+        assert_ne!(bound[0]["sha256"], bound[1]["sha256"]);
         for origin in file["invalid_origins"].as_array().unwrap() {
-            assert!(origin_hash(origin.as_str().unwrap()).is_none(), "{origin}");
+            let origin = origin.as_str().unwrap();
+            assert!(!valid_origin(origin), "{origin}");
+            assert!(bound_origin_hash(origin, &relay).is_none(), "{origin}");
+        }
+        for key in file["invalid_relay_pubkeys"].as_array().unwrap() {
+            assert!(
+                bound_origin_hash("https://buzz.bl4ko.com", key.as_str().unwrap()).is_none(),
+                "{key}"
+            );
         }
     }
 
@@ -618,8 +652,8 @@ mod tests {
 
     #[test]
     fn origin_hash_rejects_path_and_uppercase_host() {
-        assert!(origin_hash("https://buzz.bl4ko.com").is_some());
-        assert!(origin_hash("https://buzz.bl4ko.com:8443").is_some());
+        assert!(valid_origin("https://buzz.bl4ko.com"));
+        assert!(valid_origin("https://buzz.bl4ko.com:8443"));
         for origin in [
             "https://buzz.bl4ko.com/",
             "https://buzz.bl4ko.com/v1",
@@ -634,7 +668,7 @@ mod tests {
             "https://[::1]",
             "https://buzz.bl4ko.com#x",
         ] {
-            assert!(origin_hash(origin).is_none(), "{origin}");
+            assert!(!valid_origin(origin), "{origin}");
         }
     }
 
