@@ -99,6 +99,26 @@ void main() {
     },
   );
 
+  test('a sent decision clears the badge before the relay echo', () async {
+    final tasks = container.listen(
+      channelTasksProvider(pinsChannelId),
+      (_, _) {},
+    );
+    await pumpEventQueue();
+    expect(tasks.read().awaitingCount, 1);
+    await container
+        .read(channelTasksProvider(pinsChannelId).notifier)
+        .decide(fixtures.ask, OwnerDecision.deny);
+    final published = relay.published.single;
+    expect(published.kind, EventKind.reaction);
+    expect(published.content, '❌');
+    expect(published.tags, [
+      ['e', fixtures.ask],
+    ]);
+    expect(tasks.read().decisions[fixtures.ask], OwnerDecision.deny);
+    expect(tasks.read().awaitingCount, 0);
+  });
+
   test('owner decisions come from the own reactions on the asks', () async {
     final tasks = container.listen(
       channelTasksProvider(pinsChannelId),
@@ -114,6 +134,7 @@ void main() {
     });
     expect(relay.subscriptions.length, 2);
     expect(tasks.read().decisions, isEmpty);
+    expect(tasks.read().awaitingCount, 1);
     NostrEvent reaction(String id, String pubkey, String emoji, int at) =>
         NostrEvent(
           id: id,
@@ -131,6 +152,29 @@ void main() {
     relay.live!(reaction('r1', keys.public, '✅', 11));
     relay.live!(reaction('r3', 'f' * 64, '❌', 1));
     expect(tasks.read().decisions[fixtures.ask], OwnerDecision.approve);
-    expect(tasks.read().awaitingCount, 1);
+    expect(tasks.read().awaitingCount, 0);
+    expect(tasks.read().groups.needsYou, hasLength(1));
+  });
+
+  test('the badge counts only awaiting asks without an owner decision', () {
+    ThreadTask awaiting(String id) => ThreadTask(
+      rootId: id * 64,
+      channelId: pinsChannelId,
+      status: TaskStatus.awaitingOwner,
+      title: 'Task $id',
+      ask: ThreadTaskAsk(text: 'Ask $id?', eventId: id * 64),
+      author: 'e' * 64,
+      createdAt: 10,
+      eventId: id * 64,
+    );
+    final state = ChannelTasksState(
+      {
+        for (final t in [awaiting('1'), awaiting('2'), awaiting('3')])
+          t.rootId: t,
+      },
+      {'2' * 64: OwnerDecision.approve, '3' * 64: OwnerDecision.deny},
+    );
+    expect(state.groups.needsYou, hasLength(3));
+    expect(state.awaitingCount, 1);
   });
 }

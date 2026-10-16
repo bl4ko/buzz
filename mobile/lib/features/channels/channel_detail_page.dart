@@ -673,7 +673,7 @@ class ChannelDetailPage extends HookConsumerWidget {
     final currentTab = resolveSelectedTab(tabItems, selectedTab.value);
     final showTabRow =
         tabsEnabled && (tabItems.length > 1 || permissions.canEditTabs);
-    final tabBarHeight = showTabRow ? channelTabRowHeight : 0.0;
+    final tabBarHeight = showTabRow ? channelTabRowHeightOf(context) : 0.0;
 
     return FrostedScaffold(
       resizeToAvoidBottomInset:
@@ -960,36 +960,40 @@ class ChannelDetailPage extends HookConsumerWidget {
                     top: frostedAppBarHeight(
                       context,
                       titleContentHeight: appBarTitleContentHeight,
-                      bottomHeight: channelTabRowHeight,
+                      bottomHeight: tabBarHeight,
                     ),
                   ),
-                  child: ChannelTabBody(
-                    channel: resolvedChannel,
-                    selected: currentTab,
-                    permissions: permissions,
-                    onOpenMessage: (messageId, rootId) {
-                      selectedTab.value = 'messages';
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ChannelDetailPage(
-                            channel: resolvedChannel,
-                            initialMessageId: messageId,
-                            initialThreadRootId: rootId,
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    child: ChannelTabBody(
+                      channel: resolvedChannel,
+                      selected: currentTab,
+                      permissions: permissions,
+                      onOpenMessage: (messageId, rootId) {
+                        selectedTab.value = 'messages';
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ChannelDetailPage(
+                              channel: resolvedChannel,
+                              initialMessageId: messageId,
+                              initialThreadRootId: rootId,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    onOpenThread: (rootId) {
-                      selectedTab.value = 'messages';
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ChannelDetailPage(
-                            channel: resolvedChannel,
-                            initialThreadRootId: rootId,
+                        );
+                      },
+                      onOpenThread: (rootId) {
+                        selectedTab.value = 'messages';
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ChannelDetailPage(
+                              channel: resolvedChannel,
+                              initialThreadRootId: rootId,
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),

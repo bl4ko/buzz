@@ -46,6 +46,30 @@ void main() {
     expect(resolveSelectedTab(items.take(1).toList(), 'tasks'), 'messages');
   });
 
+  test('custom tab labels use the title, or the host of a URL title', () {
+    ChannelTab link(String title) => ChannelTab(
+      id: 'x',
+      type: 'link',
+      title: title,
+      value: 'https://grafana.example/d/abc',
+    );
+    expect(channelTabLabel(link('  Grafana  ')), 'Grafana');
+    expect(
+      channelTabLabel(link('https://www.grafana.example/d/abc?x=1')),
+      'grafana.example',
+    );
+    expect(channelTabLabel(link('http://ci.example')), 'ci.example');
+    expect(channelTabLabel(link('https://')), 'https://');
+    final items = buildChannelTabItems(
+      taskCount: 0,
+      awaitingCount: 0,
+      pinCount: 0,
+      fileCount: 0,
+      customTabs: [link('https://ci.example/runs')],
+    );
+    expect(items.last.label, 'ci.example');
+  });
+
   test('permissions follow roles', () {
     expect(
       taskPermissions(role: 'owner', isCommunityOwner: false).canSetStatus,

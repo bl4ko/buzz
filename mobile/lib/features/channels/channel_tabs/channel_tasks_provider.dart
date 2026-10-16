@@ -16,7 +16,9 @@ class ChannelTasksState {
   final Map<String, OwnerDecision> decisions;
   List<ThreadTask> get tasks => byRoot.values.toList();
   ThreadTaskGroups get groups => groupThreadTasks(byRoot.values);
-  int get awaitingCount => groups.needsYou.length;
+  int get awaitingCount => groups.needsYou
+      .where((t) => t.ask == null || !decisions.containsKey(t.ask!.eventId))
+      .length;
 }
 
 class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
@@ -26,6 +28,7 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
   (String, String?)? _scope;
   ChannelTasksState _tasks = const ChannelTasksState();
   final Map<String, NostrEvent> _reactions = {};
+  final Map<String, OwnerDecision> _sent = {};
   final Map<String, Object> _askSubscriptions = {};
   final Map<String, void Function()> _askCancels = {};
   bool _connected = false;
@@ -42,6 +45,7 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
       _scope = scope;
       _tasks = const ChannelTasksState();
       _reactions.clear();
+      _sent.clear();
     }
     _connected = connected;
     _me = ref.watch(myPubkeyProvider)?.toLowerCase();
@@ -132,10 +136,27 @@ class ChannelTasksNotifier extends Notifier<ChannelTasksState> {
       return;
     }
     _reactions[event.id] = event;
-    final decisions = ownerDecisions(_reactions.values, me);
+    _publishDecisions(me);
+  }
+
+  void _publishDecisions(String me) {
+    final decisions = {..._sent, ...ownerDecisions(_reactions.values, me)};
     if (mapEquals(decisions, _tasks.decisions)) return;
     _tasks = ChannelTasksState(_tasks.byRoot, decisions);
     state = _tasks;
+  }
+
+  Future<void> decide(String askId, OwnerDecision decision) async {
+    await ref
+        .read(channelActionsProvider)
+        .addReaction(
+          askId,
+          decision == OwnerDecision.approve ? approveEmoji : denyEmoji,
+        );
+    final me = _me;
+    if (me == null || !ref.mounted) return;
+    _sent.putIfAbsent(askId.toLowerCase(), () => decision);
+    _publishDecisions(me);
   }
 
   Future<void> markDone(ThreadTask task) async {

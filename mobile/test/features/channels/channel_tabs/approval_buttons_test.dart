@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:buzz/features/channels/channel_tabs/approval_buttons.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
+import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -10,6 +11,7 @@ void main() {
     final sent = <String>[];
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: ApprovalButtons(
             askEventId: 'a',
@@ -19,14 +21,15 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('✅ Approve'));
-    await tester.tap(find.text('❌ Deny'));
+    await tester.tap(find.text('Approve'));
+    await tester.tap(find.text('Deny'));
     expect(sent, ['✅', '❌']);
   });
 
   testWidgets('a decided approval shows the decision', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: ApprovalButtons(
             askEventId: 'a',
@@ -44,11 +47,12 @@ void main() {
       ),
     );
     expect(find.text('You denied'), findsOneWidget);
-    expect(find.text('✅ Approve'), findsNothing);
+    expect(find.text('Approve'), findsNothing);
   });
 
   Widget host(String askId, Future<void> Function(String) onReact) =>
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: ApprovalButtons(
             askEventId: askId,
@@ -62,13 +66,13 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(host('a', (_) async {}));
-    await tester.tap(find.text('✅ Approve'));
+    await tester.tap(find.text('Approve'));
     await tester.pump();
     expect(find.text('Approved'), findsOneWidget);
-    expect(find.text('✅ Approve'), findsNothing);
+    expect(find.text('Approve'), findsNothing);
     await tester.pumpWidget(host('b', (_) async {}));
-    expect(find.text('✅ Approve'), findsOneWidget);
-    await tester.tap(find.text('❌ Deny'));
+    expect(find.text('Approve'), findsOneWidget);
+    await tester.tap(find.text('Deny'));
     await tester.pump();
     expect(find.text('Denied'), findsOneWidget);
   });
@@ -79,10 +83,10 @@ void main() {
     await tester.pumpWidget(
       host('a', (_) async => throw Exception('rejected')),
     );
-    await tester.tap(find.text('✅ Approve'));
+    await tester.tap(find.text('Approve'));
     await tester.pump();
     expect(find.text("Couldn't send the decision"), findsOneWidget);
-    expect(find.text('✅ Approve'), findsOneWidget);
+    expect(find.text('Approve'), findsOneWidget);
     expect(find.text('Approved'), findsNothing);
   });
 
@@ -97,9 +101,9 @@ void main() {
         return pending.future;
       }),
     );
-    await tester.tap(find.text('✅ Approve'));
+    await tester.tap(find.text('Approve'));
     await tester.pump();
-    await tester.tap(find.text('❌ Deny'));
+    await tester.tap(find.text('Deny'));
     await tester.pump();
     expect(sent, ['✅']);
     pending.complete();
