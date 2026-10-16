@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/channel_detail_page.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/features/channels/deep_link_dispatcher.dart';
 import 'package:buzz/features/invites/invite_join_provider.dart';
@@ -673,6 +674,153 @@ void main() {
       destination.link,
       const ChannelDeepLink(channelId: 'welcome-everyone-id'),
     );
+  });
+
+  group('tasks links', () {
+    final askId = 'ab' * 32;
+
+    Future<ProviderContainer> pumpTasks(
+      WidgetTester tester, {
+      required TasksDeepLink link,
+      required Future<String?> Function(String) lookup,
+      String activeId = 'community-1',
+      Key key = const ValueKey('tasks-dispatcher'),
+      ProviderContainer? reuse,
+    }) async {
+      final container =
+          reuse ??
+          await () async {
+            final storage = CommunityStorage(secure: FakeSecureStorage());
+            await storage.save(_firstCommunity);
+            await storage.save(_notificationCommunity);
+            await storage.saveActiveId(activeId);
+            return ProviderContainer(
+              overrides: [
+                communityStorageProvider.overrideWithValue(storage),
+                communitySnapshotWriterProvider.overrideWithValue((_) async {}),
+                pendingDeepLinkProvider.overrideWith(
+                  () => _RecordingPendingDeepLinkNotifier(link),
+                ),
+                channelsProvider.overrideWith(
+                  () => _FakeChannelsNotifier(Future.value([_channel])),
+                ),
+                taskAskChannelLookupProvider.overrideWithValue(lookup),
+              ],
+            );
+          }();
+      if (reuse == null) addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: DeepLinkDispatcher(
+              key: key,
+              destinationBuilder: (channel, link) =>
+                  _CapturedDestination(channel: channel, link: link),
+              child: const Scaffold(body: SizedBox()),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return container;
+    }
+
+    testWidgets('dispatcher opens Tasks tab of the ask channel', (
+      tester,
+    ) async {
+      final link = TasksDeepLink(
+        origin: 'https://first.example',
+        eventId: askId,
+      );
+      final lookups = <String>[];
+      final container = await pumpTasks(
+        tester,
+        link: link,
+        lookup: (id) async {
+          lookups.add(id);
+          return 'channel-1';
+        },
+      );
+
+      final destination = tester.widget<_CapturedDestination>(
+        find.byType(_CapturedDestination),
+      );
+      expect(destination.channel.id, 'channel-1');
+      expect(destination.link, link);
+      expect(lookups, [askId]);
+      expect(container.read(pendingDeepLinkProvider), isNull);
+      final page = deepLinkDestination(_channel, link) as ChannelDetailPage;
+      expect(page.initialTab, 'tasks');
+      expect(page.initialMessageId, isNull);
+    });
+
+    testWidgets('switches to the community of the origin first', (
+      tester,
+    ) async {
+      final link = TasksDeepLink(
+        origin: 'https://notification.example',
+        eventId: askId,
+      );
+      final container = await pumpTasks(
+        tester,
+        link: link,
+        lookup: (_) async => 'channel-1',
+      );
+      final storage = container.read(communityStorageProvider);
+      expect(await storage.loadActiveId(), 'community-2');
+      expect(find.byType(_CapturedDestination), findsNothing);
+      expect(container.read(pendingDeepLinkProvider), link);
+
+      await pumpTasks(
+        tester,
+        link: link,
+        lookup: (_) async => 'channel-1',
+        key: const ValueKey('after-switch'),
+        reuse: container,
+      );
+      expect(find.byType(_CapturedDestination), findsOneWidget);
+    });
+
+    testWidgets('unknown origin does nothing', (tester) async {
+      final link = TasksDeepLink(
+        origin: 'https://unknown.example',
+        eventId: askId,
+      );
+      var lookups = 0;
+      final container = await pumpTasks(
+        tester,
+        link: link,
+        lookup: (_) async {
+          lookups++;
+          return 'channel-1';
+        },
+      );
+      expect(find.byType(_CapturedDestination), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(lookups, 0);
+      expect(container.read(pendingDeepLinkProvider), isNull);
+    });
+
+    testWidgets('unknown ask event or channel stays on the community', (
+      tester,
+    ) async {
+      for (final lookup in <Future<String?> Function(String)>[
+        (_) async => null,
+        (_) async => 'missing-channel',
+        (_) async => throw StateError('offline'),
+      ]) {
+        final container = await pumpTasks(
+          tester,
+          link: TasksDeepLink(origin: 'https://first.example', eventId: askId),
+          lookup: lookup,
+          key: UniqueKey(),
+        );
+        expect(find.byType(_CapturedDestination), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(container.read(pendingDeepLinkProvider), isNull);
+      }
+    });
   });
 }
 

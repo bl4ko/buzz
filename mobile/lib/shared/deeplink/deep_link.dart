@@ -110,6 +110,72 @@ class MessageDeepLink extends BuzzDeepLink {
       'thread: $threadRootId)';
 }
 
+/// A parsed `buzz://tasks?origin=<https origin>&event=<ask event id>` link.
+class TasksDeepLink extends BuzzDeepLink {
+  /// HTTPS origin of the community relay.
+  final String origin;
+
+  /// Ask event ID whose channel Tasks tab opens.
+  final String eventId;
+
+  const TasksDeepLink({required this.origin, required this.eventId});
+
+  @override
+  bool operator ==(Object other) =>
+      other is TasksDeepLink &&
+      other.origin == origin &&
+      other.eventId == eventId;
+
+  @override
+  int get hashCode => Object.hash(origin, eventId);
+
+  @override
+  String toString() => 'TasksDeepLink(origin: $origin, event: $eventId)';
+}
+
+/// HTTPS origin of a `wss://` or `https://` relay URL, or `null`.
+String? relayHttpsOrigin(String relayUrl) {
+  final uri = Uri.tryParse(relayUrl.trim());
+  if (uri == null ||
+      (uri.scheme != 'wss' && uri.scheme != 'https') ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasQuery ||
+      uri.hasFragment ||
+      (uri.path.isNotEmpty && uri.path != '/')) {
+    return null;
+  }
+  return Uri(
+    scheme: 'https',
+    host: uri.host.toLowerCase(),
+    port: uri.hasPort && uri.port != 443 ? uri.port : null,
+  ).toString();
+}
+
+/// Parse a `buzz://tasks` link from an approvals Live Activity.
+TasksDeepLink? parseTasksDeepLink(Uri uri) {
+  if (uri.scheme != 'buzz' || uri.host != 'tasks') return null;
+  if (uri.path.isNotEmpty ||
+      uri.hasFragment ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasPort) {
+    return null;
+  }
+  final params = uri.queryParametersAll;
+  if (params.length != 2 ||
+      params['origin']?.length != 1 ||
+      params['event']?.length != 1) {
+    return null;
+  }
+  final origin = params['origin']!.single;
+  final event = params['event']!.single;
+  if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(event)) return null;
+  if (!origin.startsWith('https://') || relayHttpsOrigin(origin) != origin) {
+    return null;
+  }
+  return TasksDeepLink(origin: origin, eventId: event);
+}
+
 /// Build a canonical `buzz://message` link for a channel message.
 ///
 /// Mirrors `desktop/src/features/messages/lib/messageLink.ts` so links copied
@@ -294,7 +360,8 @@ InviteDeepLink? parseInviteDeepLink(Uri uri) {
 BuzzDeepLink? parseBuzzDeepLink(Uri uri) =>
     parseInviteDeepLink(uri) ??
     parseChannelDeepLink(uri) ??
-    parseMessageDeepLink(uri);
+    parseMessageDeepLink(uri) ??
+    parseTasksDeepLink(uri);
 
 /// A validated Buzz repository, pull request, or issue permalink.
 class EntityDeepLink extends BuzzDeepLink {

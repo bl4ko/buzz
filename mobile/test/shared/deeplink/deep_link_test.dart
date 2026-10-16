@@ -5,6 +5,7 @@ void main() {
   _inviteTests();
   _channelTests();
   _buildMessageLinkTests();
+  _tasksTests();
 
   group('parseMessageDeepLink', () {
     const channel = '580ca78b-9dae-46f3-8854-bd671853ba32';
@@ -403,6 +404,68 @@ void _buildMessageLinkTests() {
       ]) {
         expect(parseEntityDeepLink(Uri.parse(url)), isNull, reason: url);
       }
+    });
+  });
+}
+
+void _tasksTests() {
+  group('parseTasksDeepLink', () {
+    final event = 'ab' * 32;
+
+    test('parses tasks link', () {
+      final link = parseBuzzDeepLink(
+        Uri.parse(
+          'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=$event',
+        ),
+      );
+      expect(
+        link,
+        TasksDeepLink(origin: 'https://buzz.bl4ko.com', eventId: event),
+      );
+      expect(
+        parseTasksDeepLink(
+          Uri.parse(
+            'buzz://tasks?origin=https://relay.example:8443&event=$event',
+          ),
+        ),
+        TasksDeepLink(origin: 'https://relay.example:8443', eventId: event),
+      );
+    });
+
+    test('rejects http origin and bad event id', () {
+      for (final url in [
+        'buzz://tasks?origin=http%3A%2F%2Fbuzz.bl4ko.com&event=$event',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com%2Fpath&event=$event',
+        'buzz://tasks?origin=https%3A%2F%2FBuzz.bl4ko.com&event=$event',
+        'buzz://tasks?origin=https%3A%2F%2Fuser%40buzz.bl4ko.com&event=$event',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=${event.toUpperCase()}',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=abcd',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com',
+        'buzz://tasks?event=$event',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=$event&x=1',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=$event&event=$event',
+        'buzz://tasks/path?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=$event',
+        'buzz://tasks?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=$event#x',
+        'buzz://other?origin=https%3A%2F%2Fbuzz.bl4ko.com&event=$event',
+      ]) {
+        expect(parseTasksDeepLink(Uri.parse(url)), isNull, reason: url);
+      }
+    });
+
+    test('maps relay URLs to their https origin', () {
+      expect(
+        relayHttpsOrigin('wss://buzz.bl4ko.com'),
+        'https://buzz.bl4ko.com',
+      );
+      expect(
+        relayHttpsOrigin('wss://Buzz.bl4ko.com/'),
+        'https://buzz.bl4ko.com',
+      );
+      expect(
+        relayHttpsOrigin('wss://relay.example:8443'),
+        'https://relay.example:8443',
+      );
+      expect(relayHttpsOrigin('ws://localhost:3000'), isNull);
     });
   });
 }
