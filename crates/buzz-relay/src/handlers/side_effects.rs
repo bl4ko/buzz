@@ -943,14 +943,24 @@ pub fn emit_live_thread_summary(
         };
 
         let root_hex = hex::encode(&root_id);
+        let status = match state
+            .db
+            .latest_thread_statuses(
+                tenant.community(),
+                channel_id,
+                std::slice::from_ref(&root_hex),
+            )
+            .await
+        {
+            Ok(mut rows) => rows.pop(),
+            Err(e) => {
+                warn!(root = %root_hex, "live thread status lookup failed: {e}");
+                None
+            }
+        };
         // Same tags/content shape as the channel-window page overlay in
         // `api/bridge.rs` — one contract, two delivery doors.
-        let content = serde_json::json!({
-            "reply_count": summary.reply_count,
-            "descendant_count": summary.descendant_count,
-            "last_reply_at": summary.last_reply_at.map(|t| t.timestamp()),
-            "participants": summary.participants.iter().map(hex::encode).collect::<Vec<_>>(),
-        });
+        let content = crate::thread_summary::thread_summary_content(&summary, status.as_ref());
         let tags = [
             Tag::parse(["e", &root_hex]),
             Tag::parse(["d", &root_hex]),

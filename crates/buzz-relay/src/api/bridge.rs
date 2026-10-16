@@ -24,6 +24,8 @@ use crate::state::AppState;
 
 use super::{api_error, db_read_error, internal_error, not_found, parse_query_or_400};
 
+mod channel_tasks;
+mod files_and_links;
 mod thread_roots;
 mod thread_window;
 
@@ -817,17 +819,30 @@ async fn handle_channel_window_filter(
 
     // 3. Thread-summary overlays: one relay-signed 39005 per row with replies.
     if extension_flag(raw, "include_summaries") {
+        let summarized: Vec<String> = window
+            .rows
+            .iter()
+            .filter(|row| row.thread_summary.is_some())
+            .map(|row| row.stored_event.event.id.to_hex())
+            .collect();
+        let statuses = state
+            .db
+            .latest_thread_statuses(tenant.community(), ch_id, &summarized)
+            .await
+            .map_err(|e| internal_error(&format!("thread status overlay: {e}")))?;
+        let status_by_root: std::collections::HashMap<String, &buzz_core::StoredEvent> = statuses
+            .iter()
+            .filter_map(|s| buzz_db::event::extract_d_tag(&s.event).map(|d| (d, s)))
+            .collect();
         for row in &window.rows {
             let Some(summary) = &row.thread_summary else {
                 continue;
             };
             let root_hex = row.stored_event.event.id.to_hex();
-            let content = serde_json::json!({
-                "reply_count": summary.reply_count,
-                "descendant_count": summary.descendant_count,
-                "last_reply_at": summary.last_reply_at.map(|t| t.timestamp()),
-                "participants": summary.participants.iter().map(hex::encode).collect::<Vec<_>>(),
-            });
+            let content = crate::thread_summary::thread_summary_content(
+                summary,
+                status_by_root.get(&root_hex).copied(),
+            );
             let tags = vec![
                 parse_tag(["e", &root_hex])?,
                 parse_tag(["d", &root_hex])?,
@@ -1456,6 +1471,20 @@ async fn query_events_authed(
     for (idx, (raw, filter)) in raw_filters.iter().zip(filters.iter()).enumerate() {
         if extension_flag(raw, "resolve_thread_roots") {
             events.extend(thread_roots::query(state, tenant, filter, &accessible_channels).await?);
+            handled.insert(idx);
+        }
+    }
+
+    for (idx, (raw, filter)) in raw_filters.iter().zip(filters.iter()).enumerate() {
+        if handled.contains(&idx) {
+            continue;
+        }
+        if extension_flag(raw, "open_tasks") {
+            events.extend(channel_tasks::query(state, tenant, filter, &accessible_channels).await?);
+            handled.insert(idx);
+        } else if extension_flag(raw, "files_and_links") {
+            events
+                .extend(files_and_links::query(state, tenant, filter, &accessible_channels).await?);
             handled.insert(idx);
         }
     }

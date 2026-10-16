@@ -61,6 +61,15 @@ pub(super) async fn query(
         .resolve_thread_root_summaries(tenant.community(), channel, &ids)
         .await
         .map_err(|e| internal_error(&format!("thread ownership summaries: {e}")))?;
+    let root_hexes: Vec<String> = summaries
+        .iter()
+        .map(|(root, _)| hex::encode(root))
+        .collect();
+    let statuses = state
+        .db
+        .latest_thread_statuses(tenant.community(), channel, &root_hexes)
+        .await
+        .map_err(|e| internal_error(&format!("thread status overlay: {e}")))?;
     let mut events = Vec::with_capacity(summaries.len());
     for (root, summary) in summaries {
         let root_hex = hex::encode(root);
@@ -74,12 +83,10 @@ pub(super) async fn query(
         .map(Tag::parse)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| internal_error(&format!("thread summary tags: {e}")))?;
-        let content = serde_json::json!({
-            "reply_count": summary.reply_count,
-            "descendant_count": summary.descendant_count,
-            "last_reply_at": summary.last_reply_at.map(|t| t.timestamp()),
-            "participants": summary.participants.iter().map(hex::encode).collect::<Vec<_>>(),
+        let status = statuses.iter().find(|s| {
+            buzz_db::event::extract_d_tag(&s.event).as_deref() == Some(root_hex.as_str())
         });
+        let content = crate::thread_summary::thread_summary_content(&summary, status);
         let event = EventBuilder::new(
             Kind::Custom(KIND_THREAD_SUMMARY as u16),
             content.to_string(),

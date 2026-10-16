@@ -439,6 +439,32 @@ pub enum MessagesCmd {
         #[arg(long)]
         approval_request: bool,
     },
+    #[command(
+        about = "Set the task status of a thread root",
+        after_help = "Example:\n  buzz messages status --channel <UUID> --root <EVENT_ID> --status awaiting_owner --title \"Rotate keys\" --ask \"Merge PR 7?\" --ask-event <EVENT_ID>"
+    )]
+    Status {
+        #[arg(long, help = "Channel UUID")]
+        channel: String,
+        #[arg(long, help = "Thread root event ID (64-char hex)")]
+        root: String,
+        #[arg(long, help = "open, in_progress, awaiting_owner, blocked, or done")]
+        status: String,
+        #[arg(long, help = "Task title, 1 to 80 characters")]
+        title: String,
+        #[arg(
+            long,
+            requires = "ask_event",
+            help = "Yes/no question, only with awaiting_owner"
+        )]
+        ask: Option<String>,
+        #[arg(
+            long,
+            requires = "ask",
+            help = "Event ID of the message that asks the question"
+        )]
+        ask_event: Option<String>,
+    },
     /// Send a code diff / patch to a channel
     SendDiff {
         /// Channel UUID
@@ -2230,6 +2256,51 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn messages_status_accepts_hyphen_prefixed_values_with_equals() {
+        let root = "a".repeat(64);
+        let ask_event = "b".repeat(64);
+        let cli = Cli::try_parse_from([
+            "buzz",
+            "messages",
+            "status",
+            "--channel",
+            "11111111-1111-4111-8111-111111111111",
+            "--root",
+            root.as_str(),
+            "--status",
+            "awaiting_owner",
+            "--title=-Rotate keys",
+            "--ask=-Merge PR 7?",
+            "--ask-event",
+            ask_event.as_str(),
+        ])
+        .unwrap();
+        match cli.command {
+            Cmd::Messages(MessagesCmd::Status { title, ask, .. }) => {
+                assert_eq!(title, "-Rotate keys");
+                assert_eq!(ask.as_deref(), Some("-Merge PR 7?"));
+            }
+            _ => panic!("expected messages status"),
+        }
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "messages",
+            "status",
+            "--channel",
+            "c",
+            "--root",
+            "r",
+            "--status",
+            "open",
+            "--title",
+            "T",
+            "--ask",
+            "Q?",
+        ])
+        .is_err());
+    }
+
     use super::*;
     use clap::CommandFactory;
 
@@ -2458,6 +2529,7 @@ mod tests {
                 "search",
                 "send",
                 "send-diff",
+                "status",
                 "thread",
                 "vote"
             ]
@@ -2597,7 +2669,7 @@ mod tests {
             ("feed", 1),
             ("issues", 6),
             ("media", 1),
-            ("messages", 8),
+            ("messages", 9),
             ("pack", 2),
             ("patches", 4),
             ("pr", 5),

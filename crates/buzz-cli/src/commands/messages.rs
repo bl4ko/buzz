@@ -598,6 +598,85 @@ fn match_profiles_by_name(events: &[serde_json::Value], name: &str) -> Vec<(Stri
     matches
 }
 
+const THREAD_STATUS_KIND: u16 = 30320;
+const THREAD_STATUSES: [&str; 5] = ["open", "in_progress", "awaiting_owner", "blocked", "done"];
+
+pub struct ThreadStatusParams {
+    pub channel: String,
+    pub root: String,
+    pub status: String,
+    pub title: String,
+    pub ask: Option<String>,
+    pub ask_event: Option<String>,
+}
+
+pub(crate) fn thread_status_builder(p: &ThreadStatusParams) -> Result<EventBuilder, CliError> {
+    let channel = parse_uuid(&p.channel)?.to_string();
+    validate_hex64(&p.root)?;
+    let root = p.root.to_ascii_lowercase();
+    if !THREAD_STATUSES.contains(&p.status.as_str()) {
+        return Err(CliError::Usage(
+            "--status must be open, in_progress, awaiting_owner, blocked, or done".into(),
+        ));
+    }
+    let title = p.title.trim();
+    if title.is_empty() || title.chars().count() > 80 {
+        return Err(CliError::Usage(
+            "--title must have 1 to 80 characters".into(),
+        ));
+    }
+    let mut rows = vec![
+        vec!["d".to_string(), root.clone()],
+        vec!["h".to_string(), channel],
+        vec!["e".to_string(), root],
+        vec!["status".to_string(), p.status.clone()],
+        vec!["title".to_string(), title.to_string()],
+    ];
+    match (p.status == "awaiting_owner", &p.ask, &p.ask_event) {
+        (true, Some(ask), Some(event)) => {
+            validate_hex64(event)?;
+            let ask = ask.trim();
+            if ask.is_empty() || ask.chars().count() > 400 {
+                return Err(CliError::Usage(
+                    "--ask must have 1 to 400 characters".into(),
+                ));
+            }
+            rows.push(vec![
+                "ask".to_string(),
+                ask.to_string(),
+                event.to_ascii_lowercase(),
+            ]);
+        }
+        (true, _, _) => {
+            return Err(CliError::Usage(
+                "--status awaiting_owner needs --ask and --ask-event".into(),
+            ))
+        }
+        (false, None, None) => {}
+        (false, _, _) => {
+            return Err(CliError::Usage(
+                "--ask and --ask-event need --status awaiting_owner".into(),
+            ))
+        }
+    }
+    let tags = rows
+        .into_iter()
+        .map(Tag::parse)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| CliError::Usage(format!("invalid status tag: {e}")))?;
+    Ok(EventBuilder::new(nostr::Kind::Custom(THREAD_STATUS_KIND), "").tags(tags))
+}
+
+pub async fn cmd_set_thread_status(
+    client: &BuzzClient,
+    p: ThreadStatusParams,
+) -> Result<(), CliError> {
+    let event = client.sign_event(thread_status_builder(&p)?)?;
+    let resp = client.submit_event(event).await?;
+    println!("{}", normalize_write_response(&resp));
+    Ok(())
+}
+
 pub struct SendMessageParams {
     pub channel_id: String,
     pub content: String,
@@ -987,6 +1066,27 @@ pub async fn dispatch(
                     approval_request,
                     files,
                     mentions,
+                },
+            )
+            .await
+        }
+        MessagesCmd::Status {
+            channel,
+            root,
+            status,
+            title,
+            ask,
+            ask_event,
+        } => {
+            cmd_set_thread_status(
+                client,
+                ThreadStatusParams {
+                    channel,
+                    root,
+                    status,
+                    title,
+                    ask,
+                    ask_event,
                 },
             )
             .await
@@ -1661,6 +1761,100 @@ mod tests {
     #[derive(Clone, Default)]
     struct CapturedEvent {
         body: String,
+    }
+
+    fn status_params(
+        status: &str,
+        title: &str,
+        ask: Option<&str>,
+        ask_event: Option<&str>,
+    ) -> super::ThreadStatusParams {
+        super::ThreadStatusParams {
+            channel: "11111111-1111-4111-8111-111111111111".into(),
+            root: "a".repeat(64),
+            status: status.into(),
+            title: title.into(),
+            ask: ask.map(str::to_string),
+            ask_event: ask_event.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn thread_status_builder_emits_the_shared_tag_shape() {
+        let ask = "b".repeat(64);
+        let event = super::thread_status_builder(&status_params(
+            "awaiting_owner",
+            "Rotate keys",
+            Some("Merge PR 7?"),
+            Some(&ask),
+        ))
+        .unwrap()
+        .sign_with_keys(&Keys::generate())
+        .unwrap();
+        assert_eq!(event.kind, nostr::Kind::Custom(30320));
+        assert_eq!(event.content, "");
+        let tags: Vec<Vec<String>> = event.tags.iter().map(|t| t.as_slice().to_vec()).collect();
+        let root = "a".repeat(64);
+        assert_eq!(
+            tags,
+            vec![
+                vec!["d".to_string(), root.clone()],
+                vec![
+                    "h".to_string(),
+                    "11111111-1111-4111-8111-111111111111".to_string()
+                ],
+                vec!["e".to_string(), root],
+                vec!["status".to_string(), "awaiting_owner".to_string()],
+                vec!["title".to_string(), "Rotate keys".to_string()],
+                vec!["ask".to_string(), "Merge PR 7?".to_string(), ask],
+            ]
+        );
+    }
+
+    #[test]
+    fn thread_status_builder_rejects_bad_input() {
+        let ask = "b".repeat(64);
+        let long = "é".repeat(81);
+        for params in [
+            status_params("finished", "T", None, None),
+            status_params("open", " ", None, None),
+            status_params("open", &long, None, None),
+            status_params("awaiting_owner", "T", None, None),
+            status_params("open", "T", Some("Q?"), Some(&ask)),
+            status_params("awaiting_owner", "T", Some("Q?"), Some("xyz")),
+        ] {
+            assert!(
+                super::thread_status_builder(&params).is_err(),
+                "{}",
+                params.status
+            );
+        }
+        assert!(
+            super::thread_status_builder(&status_params("open", &"é".repeat(80), None, None))
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn cmd_set_thread_status_submits_one_signed_event() {
+        let (url, _query_count, captured_event) = fake_send_relay("[]".to_string()).await;
+        let client = BuzzClient::new(url, Keys::generate(), None, None).unwrap();
+        super::cmd_set_thread_status(&client, status_params("done", "Rotate keys", None, None))
+            .await
+            .unwrap();
+        let body = captured_event
+            .lock()
+            .unwrap()
+            .take()
+            .expect("event submitted")
+            .body;
+        let event: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(event["kind"], 30320);
+        assert!(event["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t == &json!(["status", "done"])));
     }
 
     /// Minimal fake relay for send-path tests.

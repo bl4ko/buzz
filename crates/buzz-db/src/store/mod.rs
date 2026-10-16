@@ -56,6 +56,8 @@ pub mod replaceable;
 pub mod storage_accounting;
 /// Thread metadata persistence.
 pub mod thread;
+/// Fork-only thread status and channel file queries.
+pub mod thread_status;
 /// Strict newest-first thread windows and auxiliary scans.
 pub mod thread_window;
 /// Per-community usage rollup queries for Prometheus gauges.
