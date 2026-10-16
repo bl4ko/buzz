@@ -6,7 +6,7 @@ use buzz_push_gateway::{
     authority::{Delegation, MemoryAuthorityStore, NewInstallation, SealedToken},
     grant::{GrantKey, GrantKeyring},
     http::ProfileRuntime,
-    live_activity::{origin_hash, LiveActivityAttempt, LiveActivityTransport},
+    live_activity::{bound_origin_hash, LiveActivityAttempt, LiveActivityTransport},
     model::{AppProfile, EndpointGrant},
     token::{TokenKey, TokenKeyring},
 };
@@ -165,7 +165,7 @@ impl Gateway {
             .replace_live_activity_registration(
                 installation,
                 Some(self.sealed(start)),
-                vec![origin_hash(origin).unwrap()],
+                vec![bound_origin_hash(origin, &relay.public_key().to_hex()).unwrap()],
                 now,
             )
             .await
@@ -186,12 +186,18 @@ impl Gateway {
         (installation, grant)
     }
 
-    async fn register_update_token(&self, installation: Uuid, origin: &str, token: &[u8]) {
+    async fn register_update_token(
+        &self,
+        relay: &Keys,
+        installation: Uuid,
+        origin: &str,
+        token: &[u8],
+    ) {
         self.state
             .authority
             .set_live_activity_update_token(
                 installation,
-                origin_hash(origin).unwrap(),
+                bound_origin_hash(origin, &relay.public_key().to_hex()).unwrap(),
                 Some(self.sealed(token)),
                 real_now(),
             )
@@ -512,7 +518,12 @@ async fn relay_drives_gateway_card_through_asks_and_decisions() {
     assert!(started.started_at.is_some());
 
     gateway
-        .register_update_token(owner_installation, &relay.origin, &OWNER_UPDATE)
+        .register_update_token(
+            &relay.state.relay_keypair,
+            owner_installation,
+            &relay.origin,
+            &OWNER_UPDATE,
+        )
         .await;
     let root_two = relay.message(&agent, "Rotate keys", now - 90).await;
     let ask_two = relay
@@ -598,7 +609,11 @@ async fn relay_drives_gateway_card_through_asks_and_decisions() {
         .authority
         .live_activity_target(
             owner_installation,
-            origin_hash(&relay.origin).unwrap(),
+            bound_origin_hash(
+                &relay.origin,
+                &relay.state.relay_keypair.public_key().to_hex(),
+            )
+            .unwrap(),
             real_now(),
         )
         .await

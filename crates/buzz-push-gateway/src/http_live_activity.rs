@@ -7,8 +7,8 @@ use crate::{
     authority::{AuthorityError, DeliveryDisposition, LiveActivityTarget, SealedToken},
     config::{LIVE_ACTIVITY_AUDIENCE, LIVE_ACTIVITY_UPDATE_AUDIENCE},
     live_activity::{
-        origin_hash, payload, validate_state, ApprovalsState, LiveActivityAttempt,
-        LiveActivityTransport, LiveEvent,
+        bound_origin_hash, payload, valid_origin, validate_state, ApprovalsState,
+        LiveActivityAttempt, LiveActivityTransport, LiveEvent,
     },
     metrics::{record_live_activity_delivery, LiveActivityOutcome},
     model::*,
@@ -445,10 +445,11 @@ pub(super) async fn deliver(
         }
         _ => false,
     };
-    let Some(hash) = origin_hash(&r.origin) else {
-        return error(StatusCode::BAD_REQUEST, "invalid_request");
-    };
-    if r.v != WIRE_VERSION || !matches!(r.priority, 5 | 10) || !state_valid {
+    if r.v != WIRE_VERSION
+        || !valid_origin(&r.origin)
+        || !matches!(r.priority, 5 | 10)
+        || !state_valid
+    {
         return error(StatusCode::BAD_REQUEST, "invalid_request");
     }
     let Some(auth) = headers
@@ -478,6 +479,9 @@ pub(super) async fn deliver(
     {
         return error(StatusCode::NOT_FOUND, "invalid_grant");
     }
+    let Some(hash) = bound_origin_hash(&r.origin, &grant.relay_pubkey) else {
+        return error(StatusCode::NOT_FOUND, "invalid_grant");
+    };
     let permit = match s
         .authority
         .authorize_delivery(
@@ -598,11 +602,13 @@ mod transcript_vector_tests {
     }
 
     fn origin_hash_hex() -> String {
-        let origin = inputs()["live_activity_origin"]
-            .as_str()
-            .unwrap()
-            .to_owned();
-        let hash = hex::encode(origin_hash(&origin).unwrap());
+        let hash = hex::encode(
+            bound_origin_hash(
+                inputs()["live_activity_origin"].as_str().unwrap(),
+                inputs()["relay_pubkey"].as_str().unwrap(),
+            )
+            .unwrap(),
+        );
         assert_eq!(
             hash,
             inputs()["live_activity_origin_hash"].as_str().unwrap()
