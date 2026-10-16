@@ -107,6 +107,7 @@ async fn fixture() -> (axum::Router, Keys, Vec<u8>, Arc<AtomicUsize>) {
                 .unwrap(),
             ),
             transport: Arc::new(TestTransport(sends.clone())),
+            live_activity: None,
         }),
         max_grant_lifetime_seconds: 600,
         max_installation_lifetime_seconds: 600,
@@ -122,7 +123,7 @@ async fn fixture() -> (axum::Router, Keys, Vec<u8>, Arc<AtomicUsize>) {
     (app, keys, body, sends)
 }
 
-fn signed_header(keys: &Keys, url: &str, method: &str, body: &[u8]) -> String {
+pub(crate) fn signed_header(keys: &Keys, url: &str, method: &str, body: &[u8]) -> String {
     let hash = hex::encode(Sha256::digest(body));
     let event = EventBuilder::new(Kind::HttpAuth, "")
         .tags([

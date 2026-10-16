@@ -36,10 +36,14 @@ use std::{
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::{limit::RequestBodyLimitLayer, timeout::TimeoutLayer};
 
+#[path = "http_live_activity.rs"]
+mod live_activity;
+
 #[derive(Clone)]
 pub struct ProfileRuntime {
     pub app_attest: Arc<AppAttestVerifier>,
     pub transport: Arc<dyn PushTransport>,
+    pub live_activity: Option<Arc<dyn crate::live_activity::LiveActivityTransport>>,
 }
 
 #[derive(Clone)]
@@ -75,7 +79,7 @@ fn valid_relay_pubkey(v: &str) -> bool {
 pub(crate) const DELIVERY_PATH: &str = "/v1/deliveries/apns";
 
 // Keep preliminary decoding bounded to the pinned nostr verifier's limits.
-fn delivery_auth(header: &str, body: &[u8]) -> Option<(String, String)> {
+fn delivery_auth(header: &str, body: &[u8], path: &str) -> Option<(String, String)> {
     let (prefix, encoded) = header.split_once(' ')?;
     const MAX_EVENT_BYTES: usize = 64 * 1024;
     const MAX_ENCODED_BYTES: usize = MAX_EVENT_BYTES.div_ceil(3) * 4;
@@ -92,7 +96,7 @@ fn delivery_auth(header: &str, body: &[u8]) -> Option<(String, String)> {
         _ => return None,
     };
     if !matches!(signed_url.scheme(), "http" | "https")
-        || signed_url.path() != DELIVERY_PATH
+        || signed_url.path() != path
         || signed_url.query().is_some()
         || signed_url.fragment().is_some()
         || !signed_url.username().is_empty()
@@ -675,7 +679,7 @@ async fn deliver(
     if uri.query().is_some() {
         return error(StatusCode::UNAUTHORIZED, "invalid_auth");
     }
-    let (event_id, relay) = match delivery_auth(auth, &body) {
+    let (event_id, relay) = match delivery_auth(auth, &body, DELIVERY_PATH) {
         Some(auth) => auth,
         None => return error(StatusCode::UNAUTHORIZED, "invalid_auth"),
     };
@@ -861,6 +865,15 @@ pub fn router_with_metrics(
         .route("/v1/installations/endpoint", post(rotate_endpoint))
         .route("/v1/installations/revoke", post(revoke_installation))
         .route(DELIVERY_PATH, post(deliver))
+        .route(
+            "/v1/installations/live-activity",
+            post(live_activity::register),
+        )
+        .route(
+            "/v1/installations/live-activity/update-token",
+            post(live_activity::update_token),
+        )
+        .route(live_activity::DELIVERY_PATH, post(live_activity::deliver))
         .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BYTES));
     let public = Router::new()
         .merge(enrollment)
@@ -937,6 +950,7 @@ mod request_limit_tests {
             profile: Arc::new(ProfileRuntime {
                 app_attest: Arc::new(app_attest),
                 transport: Arc::new(NeverTransport),
+                live_activity: None,
             }),
             max_grant_lifetime_seconds: 86_400,
             max_installation_lifetime_seconds: 86_400,

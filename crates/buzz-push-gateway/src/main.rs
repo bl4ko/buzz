@@ -52,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         buzz_push_gateway::http::ProfileRuntime {
             app_attest: Arc::new(apple),
             transport,
+            live_activity: None,
         }
     };
     let grant_keyring = GrantKeyring::new(

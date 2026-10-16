@@ -50,5 +50,6 @@ url = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys"] }
 proptest = { workspace = true }
 reqwest = { workspace = true }

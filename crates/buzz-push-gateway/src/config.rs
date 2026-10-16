@@ -64,6 +64,9 @@ pub const ROTATE_ENDPOINT_AUDIENCE: &str = "https://push.buzz.xyz/v1/installatio
 pub const REVOKE_DELEGATION_AUDIENCE: &str = "https://push.buzz.xyz/v1/delegations/revoke";
 /// Fixed NIP-PL v1 App Attest audience for revoking an installation.
 pub const REVOKE_INSTALLATION_AUDIENCE: &str = "https://push.buzz.xyz/v1/installations/revoke";
+pub const LIVE_ACTIVITY_AUDIENCE: &str = "https://push.buzz.xyz/v1/installations/live-activity";
+pub const LIVE_ACTIVITY_UPDATE_AUDIENCE: &str =
+    "https://push.buzz.xyz/v1/installations/live-activity/update-token";
 
 #[derive(Debug, Error)]
 pub enum ConfigError {

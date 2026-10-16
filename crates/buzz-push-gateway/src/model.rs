@@ -173,3 +173,70 @@ pub enum DeliveryResponse {
 pub struct ErrorBody {
     pub error: &'static str,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LiveActivityRegistrationRequest {
+    pub v: u8,
+    pub challenge_id: uuid::Uuid,
+    pub challenge: String,
+    pub installation_handle: uuid::Uuid,
+    pub start_token: Option<String>,
+    pub origins: Vec<String>,
+    pub assertion: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LiveActivityUpdateTokenRequest {
+    pub v: u8,
+    pub challenge_id: uuid::Uuid,
+    pub challenge: String,
+    pub installation_handle: uuid::Uuid,
+    pub origin_hash: String,
+    pub update_token: Option<String>,
+    pub assertion: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveActivityOp {
+    Upsert,
+    End,
+    Restart,
+}
+impl LiveActivityOp {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Upsert => "upsert",
+            Self::End => "end",
+            Self::Restart => "restart",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LiveActivityDeliveryRequest {
+    pub v: u8,
+    pub endpoint_grant: String,
+    pub request_id: uuid::Uuid,
+    pub expires_at: i64,
+    pub origin: String,
+    pub op: LiveActivityOp,
+    pub priority: u8,
+    #[serde(default)]
+    pub state: Option<crate::live_activity::ApprovalsState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status", deny_unknown_fields)]
+pub enum LiveActivityDeliveryResponse {
+    Started,
+    Updated,
+    Ended,
+    Pending,
+    NotRegistered,
+    InvalidEndpoint { generation: i64 },
+    Retry { retry_after_seconds: Option<i64> },
+}
