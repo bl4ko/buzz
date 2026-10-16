@@ -64,13 +64,11 @@ class CustomTabView extends ConsumerWidget {
     }
     switch (tab.type) {
       case 'link':
+        final link = Uri.parse(tab.value.trim());
         return Center(
           child: FilledButton(
-            onPressed: () => launchUrl(
-              Uri.parse(tab.value),
-              mode: LaunchMode.inAppBrowserView,
-            ),
-            child: Text('Open ${Uri.parse(tab.value).host}'),
+            onPressed: () => launchUrl(link, mode: LaunchMode.inAppBrowserView),
+            child: Text('Open ${link.host}'),
           ),
         );
       case 'search':

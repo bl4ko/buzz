@@ -30,6 +30,25 @@ SearchTabQuery resolveSearchTab(
   return SearchTabQuery(text: text, unresolved: raw);
 }
 
+NostrFilter? searchTabFilter(String channelId, SearchTabQuery query) {
+  if (query.unresolved != null) return null;
+  if (query.text.isEmpty && query.authors == null) return null;
+  return NostrFilter(
+    kinds: const [
+      EventKind.streamMessage,
+      EventKind.streamMessageV2,
+      EventKind.forumPost,
+      EventKind.forumComment,
+    ],
+    authors: query.authors,
+    search: query.text.isEmpty ? null : query.text,
+    tags: {
+      '#h': [channelId],
+    },
+    limit: 50,
+  );
+}
+
 final searchTabResultsProvider = FutureProvider.autoDispose
     .family<List<NostrEvent>, (String, String)>((ref, key) async {
       final (channelId, value) = key;
@@ -38,23 +57,7 @@ final searchTabResultsProvider = FutureProvider.autoDispose
         value,
         members.map((m) => (pubkey: m.pubkey, displayName: m.displayName)),
       );
-      if (query.unresolved != null || query.text.isEmpty) return const [];
-      return ref
-          .read(relaySessionProvider.notifier)
-          .fetchHistory(
-            NostrFilter(
-              kinds: const [
-                EventKind.streamMessage,
-                EventKind.streamMessageV2,
-                EventKind.forumPost,
-                EventKind.forumComment,
-              ],
-              authors: query.authors,
-              search: query.text,
-              tags: {
-                '#h': [channelId],
-              },
-              limit: 50,
-            ),
-          );
+      final filter = searchTabFilter(channelId, query);
+      if (filter == null) return const [];
+      return ref.read(relaySessionProvider.notifier).fetchHistory(filter);
     });

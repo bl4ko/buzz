@@ -16,6 +16,7 @@ class FileLinkItem {
     required this.messageId,
     required this.rootId,
     required this.createdAt,
+    this.isVideo = false,
   });
   final FileLinkKind kind;
   final String url;
@@ -26,6 +27,7 @@ class FileLinkItem {
   final String messageId;
   final String? rootId;
   final int createdAt;
+  final bool isVideo;
 }
 
 final _url = RegExp(r'''https?://[^\s<>"'`]+''');
@@ -62,6 +64,7 @@ List<FileLinkItem> extractFilesAndLinks(Iterable<NostrEvent> events) {
         messageId: event.id,
         rootId: rootId,
         createdAt: event.createdAt,
+        isVideo: (entry.mimeType ?? '').startsWith('video/'),
       );
     }
     for (final match in _url.allMatches(event.content)) {
