@@ -100,6 +100,12 @@ pub const KIND_AGENT_ENGRAM: u32 = 30174;
 /// the target, note, and state are NIP-44 encrypted to the author. Reads are
 /// author-only (see [`AUTHOR_ONLY_KINDS`]). See `docs/nips/NIP-ER.md`.
 pub const KIND_EVENT_REMINDER: u32 = 30300;
+/// Fork-only task status of a channel thread root.
+pub const KIND_THREAD_STATUS: u32 = 30320;
+/// Fork-only ordered custom tab list of a channel.
+pub const KIND_CHANNEL_TABS: u32 = 30321;
+/// Fork-only Markdown canvas document of a channel tab.
+pub const KIND_CHANNEL_CANVAS_DOC: u32 = 30322;
 
 /// NIP-PL: encrypted push lease (parameterized replaceable, author-only).
 ///
@@ -660,6 +666,9 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_AGENT_PROFILE,
     KIND_AGENT_ENGRAM,
     KIND_EVENT_REMINDER,
+    KIND_THREAD_STATUS,
+    KIND_CHANNEL_TABS,
+    KIND_CHANNEL_CANVAS_DOC,
     KIND_PERSONA,
     KIND_TEAM,
     KIND_MANAGED_AGENT,
@@ -874,6 +883,9 @@ const _: () = assert!(is_parameterized_replaceable(KIND_TEAM_CATALOG)); // 30178
 const _: () = assert!(is_parameterized_replaceable(KIND_PRIVATE_MANAGED_AGENT)); // 30179 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKFLOW_DEF)); // 30620 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_EVENT_REMINDER)); // 30300 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_THREAD_STATUS));
+const _: () = assert!(is_parameterized_replaceable(KIND_CHANNEL_TABS));
+const _: () = assert!(is_parameterized_replaceable(KIND_CHANNEL_CANVAS_DOC));
 const _: () = assert!(is_parameterized_replaceable(KIND_DM_VISIBILITY)); // 30622 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROJECT)); // 30621 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_THREAD_SUMMARY)); // 39005 ∈ 30000–39999
@@ -1101,5 +1113,26 @@ mod tests {
         // from its own delegated readers.
         assert!(!is_shared_gated_kind(KIND_TEAM));
         assert!(!is_shared_gated_kind(KIND_MANAGED_AGENT));
+    }
+
+    #[test]
+    fn task_kinds_are_addressable_and_registered() {
+        for kind in [
+            KIND_THREAD_STATUS,
+            KIND_CHANNEL_TABS,
+            KIND_CHANNEL_CANVAS_DOC,
+        ] {
+            assert!(is_parameterized_replaceable(kind));
+            assert!(ALL_KINDS.contains(&kind));
+            assert!(!is_relay_only_kind(kind));
+        }
+        assert_eq!(
+            (
+                KIND_THREAD_STATUS,
+                KIND_CHANNEL_TABS,
+                KIND_CHANNEL_CANVAS_DOC
+            ),
+            (30320, 30321, 30322)
+        );
     }
 }
