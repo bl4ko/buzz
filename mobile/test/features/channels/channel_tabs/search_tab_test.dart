@@ -17,4 +17,22 @@ void main() {
     expect(resolveSearchTab('from:Nobody CVE', members).unresolved, 'Nobody');
     expect(resolveSearchTab('CVE', members).authors, isNull);
   });
+
+  test('a from-only search filters by author without a text query', () {
+    final filter = searchTabFilter(
+      'c',
+      resolveSearchTab('from:Athene', members),
+    )!;
+    expect(filter.authors, [athene]);
+    expect(filter.search, isNull);
+    expect(searchTabFilter('c', resolveSearchTab('', members)), isNull);
+    expect(
+      searchTabFilter('c', resolveSearchTab('from:Nobody', members)),
+      isNull,
+    );
+    expect(
+      searchTabFilter('c', resolveSearchTab('CVE', members))!.search,
+      'CVE',
+    );
+  });
 }

@@ -29,6 +29,9 @@ void main() {
   ];
 
   testWidgets('grid with See all, rows, filters, search, open', (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final opened = <String>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -52,5 +55,54 @@ void main() {
     expect(find.byKey(const Key('files-media-item')), findsNothing);
     await tester.tap(find.text('report.pdf'));
     expect(opened, ['f1']);
+  });
+
+  testWidgets('a video without a thumbnail shows a play tile, not an image', (
+    tester,
+  ) async {
+    final requested = <String>[];
+    final video = FileLinkItem(
+      kind: FileLinkKind.media,
+      url: 'https://cdn.example/v.mp4',
+      name: 'v.mp4',
+      host: 'cdn.example',
+      path: '/v.mp4',
+      thumb: null,
+      messageId: 'v',
+      rootId: null,
+      createdAt: 1,
+      isVideo: true,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChannelFilesView(
+            items: [video],
+            onOpenMessage: (_) {},
+            imageBuilder: (url) {
+              requested.add(url);
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    );
+    expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
+    expect(requested, isEmpty);
+  });
+
+  testWidgets('a long list builds lazily', (tester) async {
+    final many = [
+      for (var i = 0; i < 200; i++)
+        item('l$i', FileLinkKind.link, name: 'h/$i'),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChannelFilesView(items: many, onOpenMessage: (_) {}),
+        ),
+      ),
+    );
+    expect(find.byType(ListTile).evaluate().length, lessThan(40));
   });
 }
