@@ -22,6 +22,14 @@ public struct BuzzApprovalTarget: Codable, Equatable, Sendable {
     ["relay_url": relayURL, "event_id": eventID, "community_id": communityID]
   }
 
+  private static var allowsLocalHTTP: Bool {
+    #if DEBUG
+      true
+    #else
+      false
+    #endif
+  }
+
   public static func decodeIfPresent(from userInfo: [AnyHashable: Any]) -> BuzzApprovalTarget? {
     guard let raw = userInfo[userInfoKey] as? [String: String], raw.count == 3,
       let relay = raw["relay_url"], let event = raw["event_id"], let community = raw["community_id"],
@@ -29,7 +37,7 @@ public struct BuzzApprovalTarget: Codable, Equatable, Sendable {
       event.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
       !community.isEmpty, community.count <= 128,
       let url = URL(string: relay), let host = url.host, !host.isEmpty,
-      url.scheme == "https" || (url.scheme == "http" && (host == "127.0.0.1" || host == "localhost"))
+      url.scheme == "https" || (allowsLocalHTTP && url.scheme == "http" && (host == "127.0.0.1" || host == "localhost"))
     else { return nil }
     return BuzzApprovalTarget(relayURL: relay, eventID: event, communityID: community)
   }
@@ -88,6 +96,7 @@ public enum BuzzApprovalReactionError: Error, Equatable {
 }
 
 public struct BuzzApprovalReactionSender {
+  public static let requestTimeout: TimeInterval = 15
   private let session: URLSession
 
   public init(session: URLSession = .shared) {
@@ -106,6 +115,7 @@ public struct BuzzApprovalReactionSender {
     let body = try JSONEncoder().encode(event)
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
+    request.timeoutInterval = Self.requestTimeout
     request.httpBody = body
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(
@@ -126,11 +136,14 @@ public enum BuzzApprovalActionHandler {
   public static func handle(
     target: BuzzApprovalTarget,
     decision: BuzzApprovalDecision,
+    storedRelayURL: (String) -> String?,
     loadKey: (String) -> String?,
     send: (BuzzApprovalTarget, BuzzApprovalDecision, String) async throws -> Void,
     notifyFailure: (String) -> Void
   ) async {
-    guard let key = loadKey(target.communityID) else {
+    guard storedRelayURL(target.communityID) == target.relayURL,
+      let key = loadKey(target.communityID)
+    else {
       notifyFailure(failureBody)
       return
     }

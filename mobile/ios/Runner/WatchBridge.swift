@@ -67,11 +67,13 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         return
       }
       let accessGroup = Bundle.main.object(forInfoDictionaryKey: "BuzzKeychainAccessGroup") as? String
+      let appGroup = Bundle.main.object(forInfoDictionaryKey: "BuzzAppGroupIdentifier") as? String
       Task {
         let failed = WatchBridgeFlag()
         await BuzzApprovalActionHandler.handle(
           target: target,
           decision: decision,
+          storedRelayURL: { BuzzPushStoredRelay.relayURL(communityID: $0, appGroupIdentifier: appGroup) },
           loadKey: { BuzzPushSigningKeychain.privateKey(communityID: $0, accessGroup: accessGroup) },
           send: { try await BuzzApprovalReactionSender().send($0, decision: $1, privateKeyHex: $2) },
           notifyFailure: { _ in failed.value = true }
