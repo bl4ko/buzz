@@ -14,5 +14,9 @@
   <key>WKCompanionAppBundleIdentifier</key><string>$(BUNDLE_IDENTIFIER)</string>
   <key>WKWatchOnly</key><false/>
   <key>WKRunsIndependentlyOfCompanionApp</key><true/>
+  <key>WKSupportsLiveActivityLaunchAttributeTypes</key>
+  <array>
+    <string>BuzzApprovalsActivityAttributes</string>
+  </array>
 </dict>
 </plist>
