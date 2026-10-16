@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../shared/profile/user_cache_provider.dart';
 import '../../../shared/relay/relay.dart';
 import '../channel_management_provider.dart';
 
@@ -49,13 +50,34 @@ NostrFilter? searchTabFilter(String channelId, SearchTabQuery query) {
   );
 }
 
+List<({String pubkey, String? displayName})> searchTabMembers(
+  Iterable<({String pubkey, String? displayName})> members,
+  String? Function(String pubkey) profileName,
+) => [
+  for (final m in members)
+    (
+      pubkey: m.pubkey,
+      displayName: (m.displayName?.trim().isNotEmpty ?? false)
+          ? m.displayName
+          : profileName(m.pubkey),
+    ),
+];
+
 final searchTabResultsProvider = FutureProvider.autoDispose
     .family<List<NostrEvent>, (String, String)>((ref, key) async {
       final (channelId, value) = key;
       final members = await ref.watch(channelMembersProvider(channelId).future);
+      final cache = ref.read(userCacheProvider.notifier);
+      if (_from.hasMatch(value)) {
+        await cache.preload([for (final m in members) m.pubkey]);
+      }
       final query = resolveSearchTab(
         value,
-        members.map((m) => (pubkey: m.pubkey, displayName: m.displayName)),
+        searchTabMembers(
+          members.map((m) => (pubkey: m.pubkey, displayName: m.displayName)),
+          (pubkey) =>
+              ref.read(userCacheProvider)[pubkey.toLowerCase()]?.displayName,
+        ),
       );
       final filter = searchTabFilter(channelId, query);
       if (filter == null) return const [];
