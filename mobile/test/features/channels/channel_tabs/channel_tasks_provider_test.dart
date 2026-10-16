@@ -131,6 +131,7 @@ void main() {
     expect(filter.authors, [keys.public]);
     expect(filter.tags, {
       '#e': [fixtures.ask],
+      '#h': [pinsChannelId],
     });
     expect(relay.subscriptions.length, 2);
     expect(tasks.read().decisions, isEmpty);
