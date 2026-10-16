@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:buzz/features/channels/channel_tabs/channel_tasks_provider.dart';
 import 'package:buzz/features/channels/channel_tabs/channel_tasks_view.dart';
 import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
@@ -132,5 +134,59 @@ void main() {
     await tester.pump();
     expect(find.text("Couldn't send approval"), findsOneWidget);
     expect(find.text('✅'), findsOneWidget);
+  });
+
+  ChannelTasksState decided(String eventId, OwnerDecision decision) {
+    final t = task(
+      '1',
+      TaskStatus.awaitingOwner,
+      ask: ThreadTaskAsk(text: 'Merge PR 7?', eventId: eventId),
+    );
+    return ChannelTasksState({t.rootId: t}, {eventId: decision});
+  }
+
+  testWidgets('a stored owner reaction shows the decision after a remount', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(decided('b' * 64, OwnerDecision.deny), (_, _) async {}),
+    );
+    expect(find.text('Denied'), findsOneWidget);
+    expect(find.text('✅'), findsNothing);
+    expect(find.text('❌'), findsNothing);
+  });
+
+  testWidgets('the stored reaction wins over the local decision', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(withAsk('b' * 64), (_, _) async {}));
+    await tester.tap(find.text('✅'));
+    await tester.pump();
+    expect(find.text('Approved'), findsOneWidget);
+    await tester.pumpWidget(
+      host(decided('b' * 64, OwnerDecision.deny), (_, _) async {}),
+    );
+    expect(find.text('Denied'), findsOneWidget);
+  });
+
+  testWidgets('both buttons are disabled while a send is pending', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    final sent = <String>[];
+    await tester.pumpWidget(
+      host(withAsk('b' * 64), (_, emoji) {
+        sent.add(emoji);
+        return pending.future;
+      }),
+    );
+    await tester.tap(find.text('✅'));
+    await tester.pump();
+    await tester.tap(find.text('❌'));
+    await tester.pump();
+    expect(sent, ['✅']);
+    pending.complete();
+    await tester.pump();
+    expect(find.text('Approved'), findsOneWidget);
   });
 }
