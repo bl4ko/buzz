@@ -14,6 +14,7 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
   static let ownPubkey =
     "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
   static let now = Int(Date().timeIntervalSince1970)
+  static let clock = Date(timeIntervalSince1970: TimeInterval(now))
   static let profilePrivateKey = String(repeating: "0", count: 63) + "2"
   static let relayPrivateKey = String(repeating: "0", count: 63) + "3"
   static let gatewayBody = "Reconnect to your relay now"
@@ -785,9 +786,9 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     let communitiesData = try snapshotData([community()])
 
     let first = try XCTUnwrap(resolve(makeResolver(
-      communitiesData: communitiesData, presentedEvents: store)))
+      communitiesData: communitiesData, now: Self.clock, presentedEvents: store)))
     let second = try XCTUnwrap(resolve(makeResolver(
-      communitiesData: communitiesData, presentedEvents: store)))
+      communitiesData: communitiesData, now: Self.clock, presentedEvents: store)))
 
     XCTAssertEqual(first.navigationTarget?.eventID, reply.id)
     XCTAssertEqual(first.categoryIdentifier, BuzzApprovalCategory.identifier)
@@ -814,7 +815,7 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
 
     let presented = try (0..<4).map { _ in
       try XCTUnwrap(resolve(makeResolver(
-        communitiesData: communitiesData, presentedEvents: store
+        communitiesData: communitiesData, now: Self.clock, presentedEvents: store
       ))?.navigationTarget?.eventID)
     }
 
@@ -841,7 +842,7 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     var presented: [String] = []
     let completions = (0..<3).map { expectation(description: "resolve \($0)") }
     for completion in completions {
-      makeResolver(communitiesData: communitiesData, presentedEvents: store).resolve {
+      makeResolver(communitiesData: communitiesData, now: Self.clock, presentedEvents: store).resolve {
         lock.lock()
         presented.append($0?.navigationTarget?.eventID ?? "")
         lock.unlock()
@@ -851,6 +852,66 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     wait(for: completions, timeout: 4)
 
     XCTAssertEqual(Set(presented), Set(messages.map(\.id)))
+  }
+
+  func testOldUnpresentedApprovalAskIsNotPresentedAgain() throws {
+    let store = try makePresentedEventStore()
+    let oldAsk = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey,
+      createdAt: Self.now - 121,
+      kind: 9,
+      tags: [["h", Self.channelID], ["p", Self.ownPubkey], ["notification", "approval"]],
+      content: "@owner TASKS-TEST-4 · awaiting_owner old"
+    )
+    let fresh = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey,
+      createdAt: Self.now - 5,
+      kind: 9,
+      tags: [["h", Self.channelID]],
+      content: "Fresh message"
+    )
+    let freshAsk = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey,
+      createdAt: Self.now - 1,
+      kind: 9,
+      tags: [["h", Self.channelID], ["p", Self.ownPubkey], ["notification", "approval"]],
+      content: "@owner TASKS-TEST-4 · awaiting_owner fresh"
+    )
+    var events = [oldAsk, fresh]
+    URLProtocolStub.handler = { request in
+      Self.response(request, status: 200, data: try JSONEncoder().encode(events))
+    }
+    let communitiesData = try snapshotData([community()])
+    func push() throws -> BuzzPushResolution {
+      try XCTUnwrap(resolve(makeResolver(
+        communitiesData: communitiesData, now: Self.clock, presentedEvents: store)))
+    }
+
+    XCTAssertEqual(try push().navigationTarget?.eventID, fresh.id)
+    let repeated = try push()
+    XCTAssertEqual(repeated.navigationTarget?.eventID, fresh.id)
+    XCTAssertNil(repeated.categoryIdentifier)
+
+    events.append(freshAsk)
+    let approval = try push()
+    XCTAssertEqual(approval.navigationTarget?.eventID, freshAsk.id)
+    XCTAssertEqual(approval.categoryIdentifier, BuzzApprovalCategory.identifier)
+  }
+
+  func testPresentedEventStoreClaimsDistinctIDsUnderContention() throws {
+    let store = try makePresentedEventStore()
+    let ids = (0..<50).map { "event-\($0)" }
+    let lock = NSLock()
+    var claimed: [String?] = []
+    DispatchQueue.concurrentPerform(iterations: ids.count) { _ in
+      let id = store.claim(ids)
+      lock.lock()
+      claimed.append(id)
+      lock.unlock()
+    }
+
+    XCTAssertEqual(claimed.compactMap { $0 }.count, ids.count)
+    XCTAssertEqual(Set(claimed.compactMap { $0 }), Set(ids))
   }
 
   func testPresentedEventStoreKeepsOnlyTheNewestIDs() throws {

@@ -72,6 +72,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
   // response capped, but large enough to recover the sender name from those
   // otherwise valid kind-0 events when the app cache has not been populated.
   static let maximumPresentationResponseBytes = 256 * 1_024
+  static let claimWindowSeconds = 120
 
   private let session: URLSession
   private let loadCommunitiesData: () -> Data?
@@ -124,7 +125,9 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
     }
     group.notify(queue: .global(qos: .userInitiated)) {
       let ordered = candidates.sorted { Self.isPreferred($0.0, over: $1.0) }
-      let claimedID = self.presentedEvents?.claim(ordered.map(\.0.id))
+      let oldest = Int(self.now().timeIntervalSince1970) - Self.claimWindowSeconds
+      let claimedID = self.presentedEvents?.claim(
+        ordered.filter { $0.0.createdAt >= oldest }.map(\.0.id))
       let chosen = ordered.first { $0.0.id == claimedID } ?? ordered.first
       guard let chosen else {
         completion(nil)
