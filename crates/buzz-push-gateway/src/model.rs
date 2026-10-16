@@ -225,8 +225,16 @@ pub struct LiveActivityDeliveryRequest {
     pub origin: String,
     pub op: LiveActivityOp,
     pub priority: u8,
-    #[serde(default)]
+    #[serde(deserialize_with = "present_or_null")]
     pub state: Option<crate::live_activity::ApprovalsState>,
+}
+
+fn present_or_null<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(deserializer)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

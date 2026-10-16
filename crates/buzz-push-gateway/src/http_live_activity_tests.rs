@@ -907,6 +907,27 @@ async fn la_rejects_state_for_end() {
 }
 
 #[tokio::test]
+async fn la_rejects_missing_state_key() {
+    let h = harness(true).await;
+    h.seed(Some(now() - 100), true).await;
+    for op in ["end", "upsert", "restart"] {
+        let mut body: serde_json::Value =
+            serde_json::from_slice(&h.delivery(op, ORIGIN, serde_json::Value::Null)).unwrap();
+        body.as_object_mut().unwrap().remove("state");
+        assert_eq!(
+            h.deliver(serde_json::to_vec(&body).unwrap()).await,
+            (
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({"error": "invalid_request"})
+            ),
+            "{op}"
+        );
+    }
+    assert!(h.la.sent().is_empty());
+    assert!(h.target(ORIGIN).await.unwrap().update_ciphertext.is_some());
+}
+
+#[tokio::test]
 async fn la_replay_is_rejected() {
     let h = harness(true).await;
     h.seed(None, false).await;
