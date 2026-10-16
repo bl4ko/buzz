@@ -133,7 +133,10 @@ final class BuzzPushTranscriptTests: XCTestCase {
     func testAllFixtureVectorsCovered() throws {
         XCTAssertEqual(
             Set(try Self.fixture().vectors.map(\.name)),
-            ["enroll", "delegate", "rotate_endpoint", "revoke_delegation", "revoke_installation"],
+            [
+                "enroll", "delegate", "rotate_endpoint", "revoke_delegation", "revoke_installation",
+                "live_activity", "live_activity_off", "live_activity_update", "live_activity_update_clear",
+            ],
             "fixture gained or lost a vector; add/remove the matching known-answer test"
         )
     }

@@ -78,39 +78,44 @@ final class BuzzLiveActivityTests: XCTestCase {
   }
 
   func testLiveActivityTranscriptsMatchVectors() throws {
-    let challengeID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
-    let installation = UUID(uuidString: "22222222-2222-4222-8222-222222222222")!
-    let challenge = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
-    let gateway = URL(string: "https://push.buzz.xyz")!
-    let hash = "4711f18ac134e45b229e29b2bb3e3537488b8123b4d80045337a0411dfed59db"
-    let token = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-    let prefix =
-      "\"challenge_id\":\"11111111-1111-4111-8111-111111111111\",\"challenge\":\"\(challenge)\",\"installation_handle\":\"22222222-2222-4222-8222-222222222222\""
-    let start = try BuzzPushTranscript.liveActivity(
-      gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
-      installationHandle: installation, startToken: token, origins: [hash])
-    XCTAssertEqual(
-      String(decoding: start, as: UTF8.self),
-      "buzz.push.live-activity.v1\n{\"v\":1,\"audience\":\"https://push.buzz.xyz/v1/installations/live-activity\",\(prefix),\"start_token\":\"\(token)\",\"origins\":[\"\(hash)\"]}"
-    )
-    let off = try BuzzPushTranscript.liveActivity(
-      gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
-      installationHandle: installation, startToken: nil, origins: [])
-    XCTAssertEqual(
-      String(decoding: off, as: UTF8.self),
-      "buzz.push.live-activity.v1\n{\"v\":1,\"audience\":\"https://push.buzz.xyz/v1/installations/live-activity\",\(prefix),\"start_token\":null,\"origins\":[]}"
-    )
-    let update = try BuzzPushTranscript.liveActivityUpdate(
-      gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
-      installationHandle: installation, originHash: hash, updateToken: token)
-    XCTAssertEqual(
-      String(decoding: update, as: UTF8.self),
-      "buzz.push.live-activity-update.v1\n{\"v\":1,\"audience\":\"https://push.buzz.xyz/v1/installations/live-activity/update-token\",\(prefix),\"origin_hash\":\"\(hash)\",\"update_token\":\"\(token)\"}"
-    )
-    let cleared = try BuzzPushTranscript.liveActivityUpdate(
-      gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
-      installationHandle: installation, originHash: hash, updateToken: nil)
-    XCTAssertTrue(String(decoding: cleared, as: UTF8.self).hasSuffix("\"update_token\":null}"))
+    let fixture = try BuzzPushTranscriptTests.fixture()
+    let challengeID = BuzzPushTranscriptTests.challengeId
+    let installation = BuzzPushTranscriptTests.installationHandle
+    let challenge = BuzzPushTranscriptTests.challenge
+    let gateway = BuzzPushTranscriptTests.gatewayOrigin
+    let hash = try XCTUnwrap(BuzzLiveActivityOrigin.hashHex(origin))
+    let token = BuzzPushTranscriptTests.endpoint
+    let cases: [(String, Data)] = [
+      (
+        "live_activity",
+        try BuzzPushTranscript.liveActivity(
+          gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
+          installationHandle: installation, startToken: token, origins: [hash])
+      ),
+      (
+        "live_activity_off",
+        try BuzzPushTranscript.liveActivity(
+          gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
+          installationHandle: installation, startToken: nil, origins: [])
+      ),
+      (
+        "live_activity_update",
+        try BuzzPushTranscript.liveActivityUpdate(
+          gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
+          installationHandle: installation, originHash: hash, updateToken: token)
+      ),
+      (
+        "live_activity_update_clear",
+        try BuzzPushTranscript.liveActivityUpdate(
+          gatewayOrigin: gateway, challengeId: challengeID, challenge: challenge,
+          installationHandle: installation, originHash: hash, updateToken: nil)
+      ),
+    ]
+    for (name, bytes) in cases {
+      let vector = try XCTUnwrap(fixture.vectors.first { $0.name == name }, name)
+      XCTAssertEqual(String(decoding: bytes, as: UTF8.self), vector.transcript, name)
+      XCTAssertEqual(SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), vector.sha256, name)
+    }
   }
 
   func testOriginsFromSnapshotAreCanonicalSortedAndUnique() {
