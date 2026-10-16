@@ -7,6 +7,7 @@ import { relayClient } from "@/shared/api/relayClient";
 import { Button } from "@/shared/ui/button";
 import { Markdown } from "@/shared/ui/markdown";
 import { type KnownChannelTab, validateTabValue } from "../lib/channelTabs";
+import { ChannelCanvasDocTab } from "./ChannelCanvasDocTab";
 import { resolveSearchTab } from "../lib/searchTab";
 
 function LinkTab({ url }: { url: string }) {
@@ -137,6 +138,7 @@ function ThreadTab({
 export function CustomTabPanel({
   tab,
   channelId,
+  canEditCanvas,
   onOpenMessage,
   onOpenThread,
 }: {
@@ -171,6 +173,14 @@ export function CustomTabPanel({
         channelId={channelId}
         onOpenThread={onOpenThread}
         rootId={tab.value}
+      />
+    );
+  if (tab.type === "canvas")
+    return (
+      <ChannelCanvasDocTab
+        canEdit={canEditCanvas}
+        canvasId={tab.value}
+        channelId={channelId}
       />
     );
   return null;
