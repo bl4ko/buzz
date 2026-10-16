@@ -44,7 +44,11 @@ test("owner can do everything, admin edits tabs, guest edits nothing", () => {
   );
   assert.equal(owner.canEditTabsFor(ADMIN), true);
   assert.equal(owner.canEditTabsFor(AGENT), false);
-  const channelOwner = taskPermissions({ relayMembers, channelMembers: [...channelMembers, { pubkey: GUEST, role: "owner" }], currentPubkey: GUEST });
+  const channelOwner = taskPermissions({
+    relayMembers,
+    channelMembers: [...channelMembers, { pubkey: GUEST, role: "owner" }],
+    currentPubkey: GUEST,
+  });
   assert.equal(channelOwner.canSetStatus, false);
   assert.equal(channelOwner.canEditTabs, true);
 });
