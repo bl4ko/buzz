@@ -43,6 +43,13 @@ function TabForm({
   const [value, setValue] = React.useState(initial?.value ?? "");
   const [error, setError] = React.useState<string | null>(null);
   const editing = initial !== null;
+  const attempt = async (tab: ChannelTab) => {
+    try {
+      await onSubmit(tab);
+    } catch {
+      setError("Couldn't save the tab. Try again.");
+    }
+  };
   const submit = async () => {
     const cleanTitle = title.trim();
     if (cleanTitle === "" || [...cleanTitle].length > 40) {
@@ -50,7 +57,7 @@ function TabForm({
       return;
     }
     if (initial) {
-      await onSubmit({ ...initial, title: cleanTitle });
+      await attempt({ ...initial, title: cleanTitle });
       return;
     }
     const cleanValue = type === "canvas" ? newTabId() : value.trim();
@@ -59,7 +66,7 @@ function TabForm({
       setError(problem);
       return;
     }
-    await onSubmit({
+    await attempt({
       id: newTabId(),
       type,
       title: cleanTitle,

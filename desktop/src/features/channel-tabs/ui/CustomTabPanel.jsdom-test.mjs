@@ -67,3 +67,22 @@ test("an invalid link value never reaches a frame", async () => {
   assert.equal(container.querySelector("iframe"), null);
   assert.ok(container.querySelector('[data-testid="custom-tab-invalid"]'));
 });
+
+test("a link tab frames the trimmed URL", async () => {
+  await render({
+    id: "g",
+    type: "link",
+    title: "Grafana",
+    value: "  https://grafana.xqx.uk  ",
+  });
+  assert.equal(
+    container.querySelector("iframe").getAttribute("src"),
+    "https://grafana.xqx.uk",
+  );
+  assert.equal(
+    container
+      .querySelector('[data-testid="custom-tab-link"]')
+      .textContent.includes("  https"),
+    false,
+  );
+});

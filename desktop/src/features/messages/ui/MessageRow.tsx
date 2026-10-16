@@ -737,6 +737,7 @@ export const MessageRow = React.memo(
             onSelect={(emoji) => {
               void handleReactionSelect(emoji);
             }}
+            error={reactionErrorMessage}
             reactions={reactions}
           />
         ) : null}

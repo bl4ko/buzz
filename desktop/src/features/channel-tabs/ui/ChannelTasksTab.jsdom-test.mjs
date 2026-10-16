@@ -33,7 +33,7 @@ let root;
 let container;
 let calls;
 
-async function render(canSetStatus = true) {
+async function render(canSetStatus = true, onReactOverride = null) {
   calls = { opened: [], reacted: [], status: [] };
   const state = {
     channelId: "c",
@@ -52,7 +52,9 @@ async function render(canSetStatus = true) {
         tasks: state,
         canSetStatus,
         onOpenThread: (rootId) => calls.opened.push(rootId),
-        onReact: async (eventId, emoji) => calls.reacted.push([eventId, emoji]),
+        onReact:
+          onReactOverride ??
+          (async (eventId, emoji) => calls.reacted.push([eventId, emoji])),
       }),
     ),
   );
@@ -76,11 +78,8 @@ test("groups, ask, approve, deny, done, and open", async () => {
     0,
   );
   await act(async () => q("task-approve").click());
-  await act(async () => q("task-deny").click());
-  assert.deepEqual(calls.reacted, [
-    [ASK, "✅"],
-    [ASK, "❌"],
-  ]);
+  assert.deepEqual(calls.reacted, [[ASK, "✅"]]);
+  assert.equal(q("task-decision").textContent, "Approved");
   await act(async () =>
     container.querySelector('[data-testid="task-done"]').click(),
   );
@@ -100,4 +99,22 @@ test("groups, ask, approve, deny, done, and open", async () => {
 test("Done buttons need the owner", async () => {
   await render(false);
   assert.equal(container.querySelector('[data-testid="task-done"]'), null);
+});
+
+test("a decision replaces the buttons and a failed publish shows an error", async () => {
+  await render();
+  await act(async () => q("task-deny").click());
+  assert.deepEqual(calls.reacted, [[ASK, "❌"]]);
+  assert.equal(q("task-decision").textContent, "Denied");
+  assert.equal(q("task-approve"), null);
+  assert.equal(q("task-deny"), null);
+  await act(async () => root.unmount());
+  container.remove();
+  await render(true, async () => {
+    throw new Error("offline");
+  });
+  await act(async () => q("task-approve").click());
+  assert.match(q("task-error").textContent, /Couldn't send approval/);
+  assert.ok(q("task-approve"));
+  assert.equal(q("task-decision"), null);
 });

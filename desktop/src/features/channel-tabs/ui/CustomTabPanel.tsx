@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+import { getThreadReference } from "@/features/messages/lib/threading";
 import { useChannelMembersQuery } from "@/features/channels/hooks";
 import { useSearchMessagesQuery } from "@/features/search/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -8,7 +9,7 @@ import { Button } from "@/shared/ui/button";
 import { Markdown } from "@/shared/ui/markdown";
 import { type KnownChannelTab, validateTabValue } from "../lib/channelTabs";
 import { ChannelCanvasDocTab } from "./ChannelCanvasDocTab";
-import { resolveSearchTab } from "../lib/searchTab";
+import { authorOnlyFilter, resolveSearchTab } from "../lib/searchTab";
 
 function LinkTab({ url }: { url: string }) {
   return (
@@ -56,13 +57,31 @@ function SearchTab({
     minimumQueryLength: 1,
     enabled: search.unresolved === null,
   });
+  const authorFilter = authorOnlyFilter(search, channelId);
+  const authorEvents = useQuery({
+    enabled: authorFilter !== null,
+    queryKey: ["custom-tab-author-search", JSON.stringify(authorFilter)],
+    queryFn: async () => {
+      const events = await relayClient.fetchEvents(
+        authorFilter as NonNullable<typeof authorFilter>,
+      );
+      return [...events].sort((a, b) => b.created_at - a.created_at);
+    },
+  });
   if (search.unresolved)
     return (
       <p className="py-6 text-sm text-muted-foreground">
         No channel member named {search.unresolved}.
       </p>
     );
-  const hits = results.data?.hits ?? [];
+  const hits = authorFilter
+    ? (authorEvents.data ?? []).map((event) => ({
+        eventId: event.id,
+        content: event.content,
+        threadRootId: getThreadReference(event.tags).rootId ?? null,
+      }))
+    : (results.data?.hits ?? []);
+  const loading = authorFilter ? authorEvents.isLoading : results.isLoading;
   return (
     <ul className="divide-y divide-border/60" data-testid="custom-tab-search">
       {hits.map((hit) => (
@@ -76,7 +95,7 @@ function SearchTab({
           </button>
         </li>
       ))}
-      {hits.length === 0 && !results.isLoading ? (
+      {hits.length === 0 && !loading ? (
         <li className="py-6 text-sm text-muted-foreground">
           No messages match.
         </li>
@@ -158,7 +177,7 @@ export function CustomTabPanel({
       </p>
     );
   }
-  if (tab.type === "link") return <LinkTab url={tab.value} />;
+  if (tab.type === "link") return <LinkTab url={tab.value.trim()} />;
   if (tab.type === "search")
     return (
       <SearchTab

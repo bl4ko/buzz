@@ -31,12 +31,23 @@ function TaskRow({
   onDone: (task: ThreadTask) => Promise<void>;
 }) {
   const [pending, setPending] = React.useState(false);
-  const run = async (action: () => Promise<void>, failure: string) => {
+  const [decision, setDecision] = React.useState<"approve" | "deny" | null>(
+    null,
+  );
+  const [error, setError] = React.useState<string | null>(null);
+  const run = async (
+    action: () => Promise<void>,
+    failure: string,
+    onDone?: () => void,
+  ) => {
     setPending(true);
+    setError(null);
     try {
       await action();
-    } catch (error) {
-      console.error(failure, error);
+      onDone?.();
+    } catch (caught) {
+      console.error(failure, caught);
+      setError(failure);
       toast.error(failure);
     } finally {
       setPending(false);
@@ -63,7 +74,15 @@ function TaskRow({
         </span>
         {ask ? <span className="mt-1 block text-sm">{ask.text}</span> : null}
       </button>
-      {ask ? (
+      {ask && decision ? (
+        <span
+          className="text-sm text-muted-foreground"
+          data-testid="task-decision"
+        >
+          {decision === "approve" ? "Approved" : "Denied"}
+        </span>
+      ) : null}
+      {ask && !decision ? (
         <>
           <Button
             data-testid="task-approve"
@@ -72,6 +91,7 @@ function TaskRow({
               void run(
                 () => onReact(ask.eventId, APPROVE_EMOJI),
                 "Couldn't send approval",
+                () => setDecision("approve"),
               )
             }
             size="sm"
@@ -87,6 +107,7 @@ function TaskRow({
               void run(
                 () => onReact(ask.eventId, DENY_EMOJI),
                 "Couldn't send denial",
+                () => setDecision("deny"),
               )
             }
             size="sm"
@@ -96,6 +117,11 @@ function TaskRow({
             {DENY_EMOJI} Deny
           </Button>
         </>
+      ) : null}
+      {error ? (
+        <span className="text-xs text-destructive" data-testid="task-error">
+          {error}
+        </span>
       ) : null}
       {canSetStatus && task.status !== "done" ? (
         <Button

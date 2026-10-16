@@ -108,3 +108,33 @@ test("filters and search narrow the list, rows open their message", async () => 
   await act(async () => all("files-row")[0].click());
   assert.deepEqual(opened, ["f1"]);
 });
+
+test("a video without a thumbnail shows a play placeholder, not an image", async () => {
+  const video = extractFilesAndLinks([
+    message(
+      "v1",
+      "",
+      [["imeta", "url https://cdn.example/v.mp4", "m video/mp4"]],
+      200,
+    ),
+  ]);
+  opened = [];
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () =>
+    root.render(
+      React.createElement(ChannelFilesTab, {
+        files: {
+          items: video,
+          isLoading: false,
+          hasMore: false,
+          loadMore: () => {},
+        },
+        onOpenMessage: () => {},
+      }),
+    ),
+  );
+  assert.equal(all("files-video-placeholder").length, 1);
+  assert.equal(container.querySelector("img"), null);
+});
