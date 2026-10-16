@@ -49,6 +49,7 @@ import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_detail_page.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
+import 'package:buzz/features/channels/channel_tabs/channel_tab_body.dart';
 import 'package:buzz/features/channels/channel_tabs/channel_tasks_provider.dart';
 import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
 import 'package:buzz/features/channels/channel_window.dart';
@@ -118,6 +119,7 @@ part 'channel_detail_page_test/review_avatar_tests.dart';
 part 'channel_detail_page_test/huddle_thread_tests.dart';
 part 'channel_detail_page_test/huddle_call_layout_tests.dart';
 part 'channel_detail_page_test/channel_tab_composer_tests.dart';
+part 'channel_detail_page_test/initial_tab_tests.dart';
 
 const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
@@ -1008,6 +1010,7 @@ void main() {
   huddleThreadTests();
   huddleCallLayoutTests();
   channelTabComposerTests();
+  initialTabTests();
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _testPrefs = await SharedPreferences.getInstance();

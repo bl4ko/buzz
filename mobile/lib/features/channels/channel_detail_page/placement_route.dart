@@ -14,6 +14,7 @@ class ChannelDetailPage extends ConsumerWidget {
   final String? initialMessageId;
   final String? initialThreadRootId;
   final bool markChannelReadOnOpen;
+  final String? initialTab;
   final InitialThreadRouteBehavior initialThreadRouteBehavior;
 
   const ChannelDetailPage({
@@ -25,6 +26,7 @@ class ChannelDetailPage extends ConsumerWidget {
     this.initialMessageId,
     this.initialThreadRootId,
     this.markChannelReadOnOpen = true,
+    this.initialTab,
     this.initialThreadRouteBehavior = InitialThreadRouteBehavior.push,
   });
 
@@ -63,6 +65,7 @@ class ChannelDetailPage extends ConsumerWidget {
       initialMessageId: initialMessageId,
       initialThreadRootId: initialThreadRootId,
       markChannelReadOnOpen: markChannelReadOnOpen,
+      initialTab: initialTab,
       initialThreadRouteBehavior: initialThreadRouteBehavior,
     );
   }

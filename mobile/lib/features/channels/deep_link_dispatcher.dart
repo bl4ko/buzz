@@ -24,6 +24,31 @@ import 'channels_provider.dart';
 typedef DeepLinkDestinationBuilder =
     Widget Function(Channel channel, BuzzDeepLink link);
 
+/// Resolves the channel ID (`h` tag) of an ask event, or `null`.
+typedef TaskAskChannelLookup = Future<String?> Function(String eventId);
+
+/// Looks up the channel of a Live Activity ask event on the active relay.
+final taskAskChannelLookupProvider = Provider<TaskAskChannelLookup>(
+  (ref) => (eventId) async {
+    final events = await ref.read(relaySessionProvider.notifier).queryRelay([
+      NostrFilter(ids: [eventId], kinds: EventKind.channelEventKinds, limit: 1),
+    ]);
+    return events
+        .where((event) => event.id == eventId)
+        .firstOrNull
+        ?.getTagValue('h');
+  },
+);
+
+/// The page that a dispatched deep link opens for [channel].
+Widget deepLinkDestination(Channel channel, BuzzDeepLink link) =>
+    ChannelDetailPage(
+      channel: channel,
+      initialMessageId: link is MessageDeepLink ? link.messageId : null,
+      initialThreadRootId: link is MessageDeepLink ? link.threadRootId : null,
+      initialTab: link is TasksDeepLink ? 'tasks' : null,
+    );
+
 class DeepLinkDispatcher extends ConsumerStatefulWidget {
   final Widget child;
   final DeepLinkDestinationBuilder? destinationBuilder;
@@ -51,6 +76,7 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
   bool _resolvingLink = false;
   bool _lookupInterrupted = false;
   ProviderSubscription<SessionState>? _session;
+  TasksDeepLink? _resolvingTasks;
 
   @override
   void initState() {
@@ -107,8 +133,14 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       _maybeDispatchInvite(link);
       return;
     }
-    if ((link is! MessageDeepLink && link is! ChannelDeepLink) ||
+    if ((link is! MessageDeepLink &&
+            link is! ChannelDeepLink &&
+            link is! TasksDeepLink) ||
         !widget.dispatchMessageLinks) {
+      return;
+    }
+    if (link is TasksDeepLink) {
+      unawaited(_dispatchTasksLink(link));
       return;
     }
     if (link is MessageDeepLink) {
@@ -219,6 +251,37 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
     }
   }
 
+  Future<void> _dispatchTasksLink(TasksDeepLink link) async {
+    if (_resolvingTasks == link) return;
+    _resolvingTasks = link;
+    try {
+      final notifier = ref.read(pendingDeepLinkProvider.notifier);
+      final preparation = await notifier.prepareCommunity(link);
+      if (!mounted || ref.read(pendingDeepLinkProvider) != link) return;
+      if (preparation == DeepLinkCommunityPreparation.switched) return;
+      if (preparation != DeepLinkCommunityPreparation.ready) {
+        notifier.consume();
+        return;
+      }
+      String? channelId;
+      List<Channel>? channels;
+      try {
+        channelId = await ref.read(taskAskChannelLookupProvider)(link.eventId);
+        channels = await ref.read(channelsProvider.future);
+      } catch (error) {
+        debugPrint('deep-link: tasks link lookup failed: $error');
+      }
+      if (!mounted || ref.read(pendingDeepLinkProvider) != link) return;
+      final channel = channels
+          ?.where((candidate) => candidate.id == channelId)
+          .firstOrNull;
+      if (channel != null && context.mounted) _pushChannel(channel, link);
+      notifier.consume();
+    } finally {
+      if (_resolvingTasks == link) _resolvingTasks = null;
+    }
+  }
+
   void _dispatchNavigableLink(BuzzDeepLink link) {
     if (_resolvingLink || !widget.dispatchMessageLinks) return;
     final channelId = switch (link) {
@@ -320,13 +383,7 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       MaterialPageRoute<void>(
         builder: (_) =>
             widget.destinationBuilder?.call(channel, link) ??
-            ChannelDetailPage(
-              channel: channel,
-              initialMessageId: link is MessageDeepLink ? link.messageId : null,
-              initialThreadRootId: link is MessageDeepLink
-                  ? link.threadRootId
-                  : null,
-            ),
+            deepLinkDestination(channel, link),
       ),
     );
   }

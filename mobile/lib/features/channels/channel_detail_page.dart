@@ -294,6 +294,9 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
   final String? initialAssistant;
   final String? initialMessageId;
   final String? initialThreadRootId;
+
+  /// Tab key selected when the page opens, for example `tasks`.
+  final String? initialTab;
   final bool markChannelReadOnOpen;
 
   /// How the automatically opened initial thread affects the route stack.
@@ -308,6 +311,7 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
     this.initialAssistant,
     this.initialMessageId,
     this.initialThreadRootId,
+    this.initialTab,
     this.markChannelReadOnOpen = true,
     this.initialThreadRouteBehavior = InitialThreadRouteBehavior.push,
   });
@@ -731,9 +735,9 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
       relaySummaries: ref.read(messagesProvider.notifier).threadSummaries,
     );
 
-    final selectedTab = useState('messages');
+    final selectedTab = useState(initialTab ?? 'messages');
     useEffect(() {
-      selectedTab.value = 'messages';
+      selectedTab.value = initialTab ?? 'messages';
       return null;
     }, [resolvedChannel.id]);
     final tabsEnabled = !resolvedChannel.isForum;
