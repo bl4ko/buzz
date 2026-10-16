@@ -302,3 +302,66 @@ pub(crate) async fn reaper_drops_stale_update_rows(store: &dyn AuthorityStore) {
         Ok(None)
     );
 }
+
+async fn admit(
+    store: &dyn AuthorityStore,
+    delegation: Uuid,
+    event: u8,
+    bucket: QuotaBucket,
+) -> Result<(), AuthorityError> {
+    store
+        .authorize_delivery(
+            delegation,
+            &"11".repeat(32),
+            1,
+            1,
+            &hex::encode([event; 32]),
+            Uuid::new_v4(),
+            NOW + 60,
+            60,
+            2,
+            bucket,
+            NOW,
+        )
+        .await
+        .map(|_| ())
+}
+
+pub(crate) async fn quota_buckets_are_separate(store: &dyn AuthorityStore) {
+    let id = seed(store).await;
+    let delegation = Uuid::new_v4();
+    store
+        .upsert_delegation(Delegation {
+            id: delegation,
+            installation_id: id,
+            relay_pubkey: "11".repeat(32),
+            endpoint_epoch: 1,
+            generation: 1,
+            not_before: NOW,
+            expires_at: NOW + 600,
+            revoked: false,
+        })
+        .await
+        .unwrap();
+    let mut event = 0u8;
+    for bucket in [QuotaBucket::Alert, QuotaBucket::LiveActivity] {
+        for _ in 0..2 {
+            event += 1;
+            assert_eq!(
+                admit(store, delegation, event, bucket).await,
+                Ok(()),
+                "{bucket:?}"
+            );
+        }
+        event += 1;
+        assert_eq!(
+            admit(store, delegation, event, bucket).await,
+            Err(AuthorityError::Rejected),
+            "{bucket:?}"
+        );
+    }
+    assert_eq!(
+        admit(store, delegation, event + 1, QuotaBucket::Alert).await,
+        Err(AuthorityError::Rejected)
+    );
+}

@@ -106,6 +106,26 @@ pub struct LiveActivityTarget {
     pub started_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuotaBucket {
+    Alert,
+    LiveActivity,
+}
+
+impl QuotaBucket {
+    pub fn key(self, token_fingerprint: [u8; 32]) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        match self {
+            Self::Alert => token_fingerprint,
+            Self::LiveActivity => Sha256::new()
+                .chain_update(b"buzz.push.la-quota.v1\0")
+                .chain_update(token_fingerprint)
+                .finalize()
+                .into(),
+        }
+    }
+}
+
 pub const MAX_LIVE_ACTIVITY_ORIGINS: usize = 16;
 pub const LIVE_ACTIVITY_UPDATE_RETENTION_SECONDS: i64 = 12 * 3600;
 
@@ -220,6 +240,7 @@ pub trait AuthorityStore: Send + Sync {
         request_expires_at: i64,
         quota_window_seconds: i64,
         quota_max_deliveries: i64,
+        quota_bucket: QuotaBucket,
         now: i64,
     ) -> Result<DeliveryPermit, AuthorityError>;
     /// Retain terminal request ids; release retryable request ids while always
@@ -614,6 +635,7 @@ impl AuthorityStore for MemoryAuthorityStore {
         request_expires_at: i64,
         quota_window_seconds: i64,
         quota_max_deliveries: i64,
+        quota_bucket: QuotaBucket,
         now: i64,
     ) -> Result<DeliveryPermit, AuthorityError> {
         let mut s = self.0.lock().map_err(|_| AuthorityError::Unavailable)?;
@@ -652,7 +674,7 @@ impl AuthorityStore for MemoryAuthorityStore {
             generation,
             expires_at: d.expires_at,
         };
-        let fingerprint = i.token_fingerprint;
+        let fingerprint = quota_bucket.key(i.token_fingerprint);
         let auth_key = (relay.to_owned(), event_id.to_owned());
         let request_key = (relay.to_owned(), request_id);
         if s.delivery_auth_replays.contains_key(&auth_key)
@@ -866,6 +888,7 @@ mod tests {
                 1_100,
                 60,
                 10,
+                QuotaBucket::Alert,
                 1_000,
             )
             .await
@@ -909,6 +932,12 @@ mod tests {
     #[tokio::test]
     async fn live_activity_registration_replaces_origins() {
         live_activity_conformance::registration_replaces_origins(&MemoryAuthorityStore::default())
+            .await;
+    }
+
+    #[tokio::test]
+    async fn quota_buckets_are_separate() {
+        live_activity_conformance::quota_buckets_are_separate(&MemoryAuthorityStore::default())
             .await;
     }
 
@@ -1073,6 +1102,7 @@ mod tests {
                 2_100,
                 60,
                 10,
+                QuotaBucket::Alert,
                 2_001,
             )
             .await
@@ -1173,6 +1203,7 @@ mod tests {
                 1_100,
                 60,
                 10,
+                QuotaBucket::Alert,
                 1_000,
             )
             .await

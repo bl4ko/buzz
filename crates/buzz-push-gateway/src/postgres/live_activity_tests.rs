@@ -23,6 +23,12 @@ async fn live_activity_registration_replaces_origins() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn quota_buckets_are_separate() {
+    with_store(|store| async move { conformance::quota_buckets_are_separate(&store).await }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn update_token_needs_registered_origin() {
     with_store(
         |store| async move { conformance::update_token_needs_registered_origin(&store).await },

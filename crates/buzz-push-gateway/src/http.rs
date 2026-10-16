@@ -58,6 +58,8 @@ pub struct AppState {
     pub max_installation_lifetime_seconds: i64,
     pub endpoint_quota_window_seconds: i64,
     pub endpoint_quota_max_deliveries: i64,
+    pub live_activity_quota_window_seconds: i64,
+    pub live_activity_quota_max_deliveries: i64,
     pub now: fn() -> i64,
     pub accepting: Arc<AtomicBool>,
 }
@@ -711,6 +713,7 @@ async fn deliver(
             r.expires_at,
             s.endpoint_quota_window_seconds,
             s.endpoint_quota_max_deliveries,
+            crate::authority::QuotaBucket::Alert,
             now,
         )
         .await
@@ -956,6 +959,8 @@ mod request_limit_tests {
             max_installation_lifetime_seconds: 86_400,
             endpoint_quota_window_seconds: 60,
             endpoint_quota_max_deliveries: 10,
+            live_activity_quota_window_seconds: 60,
+            live_activity_quota_max_deliveries: 10,
             now: fixed_now,
             accepting: Arc::new(AtomicBool::new(true)),
         }

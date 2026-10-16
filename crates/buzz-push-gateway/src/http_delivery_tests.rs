@@ -113,6 +113,8 @@ async fn fixture() -> (axum::Router, Keys, Vec<u8>, Arc<AtomicUsize>) {
         max_installation_lifetime_seconds: 600,
         endpoint_quota_window_seconds: 60,
         endpoint_quota_max_deliveries: 10,
+        live_activity_quota_window_seconds: 60,
+        live_activity_quota_max_deliveries: 10,
         now,
         accepting: Arc::new(AtomicBool::new(true)),
     });

@@ -107,6 +107,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_installation_lifetime_seconds: c.max_installation_lifetime_seconds,
             endpoint_quota_window_seconds: c.endpoint_quota_window_seconds,
             endpoint_quota_max_deliveries: c.endpoint_quota_max_deliveries,
+            live_activity_quota_window_seconds: c.live_activity_quota_window_seconds,
+            live_activity_quota_max_deliveries: c.live_activity_quota_max_deliveries,
             now: || chrono::Utc::now().timestamp(),
             accepting: accepting.clone(),
         },

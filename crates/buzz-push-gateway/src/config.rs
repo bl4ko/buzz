@@ -80,6 +80,8 @@ pub struct Config {
     pub max_installation_lifetime_seconds: i64,
     pub endpoint_quota_window_seconds: i64,
     pub endpoint_quota_max_deliveries: i64,
+    pub live_activity_quota_window_seconds: i64,
+    pub live_activity_quota_max_deliveries: i64,
     /// Server-owned dogfood application identity and APNs transport.
     pub profile: AppProfileConfig,
     pub database_url: String,
@@ -237,6 +239,10 @@ impl Config {
             bounded_positive("BUZZ_PUSH_ENDPOINT_QUOTA_WINDOW_SECONDS", 10, 86_400)?;
         let endpoint_quota_max_deliveries =
             bounded_positive("BUZZ_PUSH_ENDPOINT_QUOTA_MAX_DELIVERIES", 10, 10_000)?;
+        let live_activity_quota_window_seconds =
+            bounded_positive("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_WINDOW_SECONDS", 10, 86_400)?;
+        let live_activity_quota_max_deliveries =
+            bounded_positive("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES", 10, 10_000)?;
         let profile = parse_profile(e)?;
         let bind_addr = e
             .get("BUZZ_PUSH_BIND_ADDR")
@@ -257,6 +263,8 @@ impl Config {
             max_installation_lifetime_seconds,
             endpoint_quota_window_seconds,
             endpoint_quota_max_deliveries,
+            live_activity_quota_window_seconds,
+            live_activity_quota_max_deliveries,
             profile,
             database_url: req(e, "DATABASE_URL")?.to_owned(),
             app_attest_root_cert_path: req(e, "BUZZ_PUSH_APP_ATTEST_ROOT_CERT_PATH")?.into(),
@@ -469,6 +477,40 @@ mod tests {
         assert!(crate::live_activity::transport_from_config(&config.profile)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn live_activity_quota_has_its_own_small_defaults() {
+        let config = Config::from_map(&base()).unwrap();
+        assert_eq!(
+            (
+                config.live_activity_quota_window_seconds,
+                config.live_activity_quota_max_deliveries
+            ),
+            (10, 10)
+        );
+        let mut env = base();
+        env.insert(
+            "BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES".into(),
+            "4".into(),
+        );
+        env.insert("BUZZ_PUSH_ENDPOINT_QUOTA_MAX_DELIVERIES".into(), "7".into());
+        let config = Config::from_map(&env).unwrap();
+        assert_eq!(config.live_activity_quota_max_deliveries, 4);
+        assert_eq!(config.endpoint_quota_max_deliveries, 7);
+        for (key, value) in [
+            ("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_WINDOW_SECONDS", "0"),
+            ("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_WINDOW_SECONDS", "86401"),
+            ("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES", ""),
+            ("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES", "10001"),
+        ] {
+            let mut env = base();
+            env.insert(key.into(), value.into());
+            assert!(
+                matches!(Config::from_map(&env), Err(ConfigError::Invalid(k)) if k == key),
+                "{key}={value}"
+            );
+        }
     }
 
     #[test]

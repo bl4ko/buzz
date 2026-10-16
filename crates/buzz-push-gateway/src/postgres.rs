@@ -434,6 +434,7 @@ impl AuthorityStore for PostgresAuthorityStore {
         request_expires_at: i64,
         quota_window_seconds: i64,
         quota_max_deliveries: i64,
+        quota_bucket: QuotaBucket,
         now: i64,
     ) -> Result<DeliveryPermit, AuthorityError> {
         let relay_bytes = hex::decode(relay).map_err(|_| AuthorityError::Rejected)?;
@@ -495,7 +496,12 @@ impl AuthorityStore for PostgresAuthorityStore {
         if quota_window_seconds < 1 || quota_max_deliveries < 1 {
             return Err(AuthorityError::Unavailable);
         }
-        let fingerprint: Vec<u8> = i.try_get("token_fingerprint").map_err(db)?;
+        let fingerprint: [u8; 32] = i
+            .try_get::<Vec<u8>, _>("token_fingerprint")
+            .map_err(db)?
+            .try_into()
+            .map_err(|_| AuthorityError::Unavailable)?;
+        let fingerprint = quota_bucket.key(fingerprint).to_vec();
         let quota = sqlx::query("INSERT INTO push_gateway_endpoint_quotas(token_fingerprint,window_started_at,admitted) VALUES($1,$2,1) ON CONFLICT(token_fingerprint) DO UPDATE SET window_started_at=CASE WHEN push_gateway_endpoint_quotas.window_started_at <= $2 - make_interval(secs => $3::double precision) THEN $2 ELSE push_gateway_endpoint_quotas.window_started_at END, admitted=CASE WHEN push_gateway_endpoint_quotas.window_started_at <= $2 - make_interval(secs => $3::double precision) THEN 1 ELSE push_gateway_endpoint_quotas.admitted + 1 END, updated_at=now() WHERE push_gateway_endpoint_quotas.window_started_at <= $2 - make_interval(secs => $3::double precision) OR push_gateway_endpoint_quotas.admitted < $4")
             .bind(fingerprint).bind(at(now)?).bind(quota_window_seconds).bind(quota_max_deliveries).execute(&mut *tx).await.map_err(db)?;
         if quota.rows_affected() != 1 {
@@ -1146,6 +1152,7 @@ mod postgres_tests {
             now + 300,
             60,
             quota_max_deliveries,
+            QuotaBucket::Alert,
             now,
         )
     }
