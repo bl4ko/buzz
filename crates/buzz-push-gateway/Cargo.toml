@@ -55,5 +55,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
 ciborium = "0.2"
+aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys"] }
 proptest = { workspace = true }
 reqwest = { workspace = true }

@@ -120,6 +120,49 @@ pub fn record_readiness_failure(cause: ReadinessFailure) {
     metrics::counter!("push_gateway_readiness_failures_total", "cause" => label).increment(1);
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveActivityOutcome {
+    Started,
+    Updated,
+    Ended,
+    Pending,
+    NotRegistered,
+    InvalidEndpoint,
+    Retry,
+    ConfigurationFault,
+    InvalidRequest,
+    Unavailable,
+}
+
+impl LiveActivityOutcome {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Updated => "updated",
+            Self::Ended => "ended",
+            Self::Pending => "pending",
+            Self::NotRegistered => "not_registered",
+            Self::InvalidEndpoint => "invalid_endpoint",
+            Self::Retry => "retry",
+            Self::ConfigurationFault => "configuration_fault",
+            Self::InvalidRequest => "invalid_request",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+pub fn record_live_activity_delivery(
+    op: crate::model::LiveActivityOp,
+    outcome: LiveActivityOutcome,
+) {
+    metrics::counter!(
+        "push_gateway_live_activity_deliveries_total",
+        "op" => op.as_str(),
+        "outcome" => outcome.as_str()
+    )
+    .increment(1);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +218,10 @@ mod tests {
         record_reaper_failure();
         record_readiness_failure(ReadinessFailure::NotAccepting);
         record_readiness_failure(ReadinessFailure::Authority);
+        record_live_activity_delivery(
+            crate::model::LiveActivityOp::Upsert,
+            LiveActivityOutcome::Started,
+        );
 
         let rendered = handle.render();
 
@@ -187,6 +234,7 @@ mod tests {
             "push_gateway_delivery_errors_total",
             "push_gateway_reaper_failures_total",
             "push_gateway_readiness_failures_total",
+            "push_gateway_live_activity_deliveries_total",
         ] {
             assert!(rendered.contains(needle), "missing series {needle}");
         }
@@ -200,6 +248,8 @@ mod tests {
             "class=\"invalid_grant\"",
             "cause=\"not_accepting\"",
             "cause=\"authority\"",
+            "op=\"upsert\"",
+            "outcome=\"started\"",
         ] {
             assert!(rendered.contains(needle), "missing label {needle}");
         }
