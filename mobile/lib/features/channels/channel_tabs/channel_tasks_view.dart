@@ -26,10 +26,16 @@ class ChannelTasksView extends StatefulWidget {
 
 class _ChannelTasksViewState extends State<ChannelTasksView> {
   bool _showDone = false;
+  final Map<String, String> _decided = {};
 
-  Future<void> _run(Future<void> Function() action, String failure) async {
+  Future<void> _run(
+    Future<void> Function() action,
+    String failure, {
+    VoidCallback? onSuccess,
+  }) async {
     try {
       await action();
+      if (mounted) onSuccess?.call();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.maybeOf(
@@ -38,6 +44,9 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
       }
     }
   }
+
+  void _decide(String eventId, String label) =>
+      setState(() => _decided[eventId] = label);
 
   Widget _row(ThreadTask task) {
     final ask = task.ask;
@@ -48,11 +57,14 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
       trailing: Wrap(
         spacing: Grid.xxs,
         children: [
-          if (ask != null) ...[
+          if (ask != null && _decided[ask.eventId] != null)
+            Text(_decided[ask.eventId]!)
+          else if (ask != null) ...[
             OutlinedButton(
               onPressed: () => _run(
                 () => widget.onReact(ask.eventId, approveEmoji),
                 "Couldn't send approval",
+                onSuccess: () => _decide(ask.eventId, 'Approved'),
               ),
               child: const Text('✅'),
             ),
@@ -60,6 +72,7 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
               onPressed: () => _run(
                 () => widget.onReact(ask.eventId, denyEmoji),
                 "Couldn't send denial",
+                onSuccess: () => _decide(ask.eventId, 'Denied'),
               ),
               child: const Text('❌'),
             ),
