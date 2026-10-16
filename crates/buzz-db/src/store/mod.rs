@@ -24,6 +24,8 @@ pub mod event;
 pub mod feed;
 /// Git repository name registry (NIP-34 kind:30617).
 pub mod git_repo;
+/// Live Activity ask state, queue, and delivery results.
+pub mod live_activity;
 /// Community moderation: reports, bans/timeouts, audit actions.
 pub mod moderation;
 /// Deployment-global operator-listener mention registrations and delivery queues.
@@ -74,3 +76,5 @@ mod artifact_query;
 
 #[cfg(test)]
 mod artifact_postgres_tests;
+#[cfg(test)]
+mod live_activity_postgres_tests;

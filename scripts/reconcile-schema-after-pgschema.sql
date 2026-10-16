@@ -17,6 +17,8 @@ BEGIN
         -- those copies before ATTACH; PostgreSQL recreates inherited parent
         -- triggers while attaching and rejects same-named child triggers.
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p_past;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p_past;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p_past;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p_past;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p_past;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p_past;
@@ -31,6 +33,8 @@ BEGIN
           AND inhrelid = 'events_p2026_01'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p2026_01;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p2026_01;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p2026_01;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p2026_01;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p2026_01;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p2026_01;
@@ -45,6 +49,8 @@ BEGIN
           AND inhrelid = 'events_p2026_02'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p2026_02;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p2026_02;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p2026_02;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p2026_02;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p2026_02;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p2026_02;
@@ -59,6 +65,8 @@ BEGIN
           AND inhrelid = 'events_p2026_03'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p2026_03;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p2026_03;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p2026_03;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p2026_03;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p2026_03;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p2026_03;
@@ -73,6 +81,8 @@ BEGIN
           AND inhrelid = 'events_p2026_04'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p2026_04;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p2026_04;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p2026_04;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p2026_04;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p2026_04;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p2026_04;
@@ -87,6 +97,8 @@ BEGIN
           AND inhrelid = 'events_p2026_05'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p2026_05;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p2026_05;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p2026_05;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p2026_05;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p2026_05;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p2026_05;
@@ -101,6 +113,8 @@ BEGIN
           AND inhrelid = 'events_p2026_06'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p2026_06;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p2026_06;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p2026_06;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p2026_06;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p2026_06;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p2026_06;
@@ -115,6 +129,8 @@ BEGIN
           AND inhrelid = 'events_p_future'::regclass
     ) THEN
         DROP TRIGGER IF EXISTS events_enqueue_push_match ON events_p_future;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity ON events_p_future;
+        DROP TRIGGER IF EXISTS events_enqueue_live_activity_on_delete ON events_p_future;
         DROP TRIGGER IF EXISTS events_refresh_channel_ttl ON events_p_future;
         DROP TRIGGER IF EXISTS events_created_at_floor ON events_p_future;
         DROP TRIGGER IF EXISTS community_write_fence_events ON events_p_future;

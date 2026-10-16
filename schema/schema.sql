@@ -65,6 +65,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- functions
 \i functions/channels_community_id_immutable.sql
 \i functions/enqueue_push_match_job.sql
+\i functions/enqueue_live_activity_job.sql
 \i functions/refresh_channel_ttl_after_event_insert.sql
 \i functions/guard_channel_roster_snapshot.sql
 \i functions/events_created_at_floor_guard.sql
@@ -114,6 +115,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 \i tables/public/push_leases.sql
 \i tables/public/push_wake_outbox.sql
 \i tables/public/push_match_queue.sql
+\i tables/public/push_live_activity_queue.sql
+\i tables/public/push_live_activity_state.sql
 \i tables/public/push_gateway_challenges.sql
 \i tables/public/push_gateway_installations.sql
 \i tables/public/push_gateway_delegations.sql
@@ -167,6 +170,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 \i triggers/push_leases.sql
 \i triggers/push_match_queue.sql
 \i triggers/push_wake_outbox.sql
+\i triggers/push_live_activity_queue.sql
+\i triggers/push_live_activity_state.sql
 \i triggers/reactions.sql
 \i triggers/relay_invites.sql
 \i triggers/relay_members.sql

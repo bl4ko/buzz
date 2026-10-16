@@ -705,7 +705,12 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 57);
+        assert_eq!(migrations.len(), 58);
+        assert_eq!(migrations[57].version, 66);
+        assert!(migrations[57]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE push_live_activity_queue"));
         assert_eq!(migrations[55].version, 56);
         assert!(migrations[55]
             .sql
@@ -2244,6 +2249,42 @@ mod postgres_tests {
             );
         }
         expected_fences.extend(personal.fence_attachments);
+        let live_activity = surface(
+            MIGRATOR
+                .iter()
+                .find(|m| m.version == 66)
+                .expect("live activity migration")
+                .sql
+                .as_ref(),
+        );
+        for (table, definition) in &live_activity.tables {
+            assert_eq!(
+                schema.tables.get(table),
+                Some(definition),
+                "live activity table {table} differs"
+            );
+        }
+        for (function, definition) in &live_activity.functions {
+            assert_eq!(
+                schema.functions.get(function),
+                Some(definition),
+                "live activity function {function} differs"
+            );
+        }
+        for (trigger, definition) in &live_activity.triggers {
+            assert_eq!(
+                schema.triggers.get(trigger),
+                Some(definition),
+                "live activity trigger {trigger} differs"
+            );
+        }
+        for index in &live_activity.indexes {
+            assert!(
+                schema.indexes.contains(index),
+                "live activity index differs: {index}"
+            );
+        }
+        expected_fences.extend(live_activity.fence_attachments);
         expected_fences.extend(["artifact_heads", "artifact_revisions"].map(str::to_owned));
         assert_eq!(
             expected_fences, schema.fence_attachments,
