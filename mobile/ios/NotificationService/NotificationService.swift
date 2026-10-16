@@ -151,6 +151,7 @@ final class NotificationService: UNNotificationServiceExtension {
     bestAttemptContent = content
     var cleanUserInfo = content.userInfo
     cleanUserInfo.removeValue(forKey: BuzzPushNavigationTarget.userInfoKey)
+    cleanUserInfo.removeValue(forKey: BuzzApprovalTarget.userInfoKey)
     content.userInfo = cleanUserInfo
 
     let session = URLSession(configuration: .ephemeral)
@@ -219,7 +220,10 @@ final class NotificationService: UNNotificationServiceExtension {
     guard let soundName = resolution.notificationSoundName else { return }
     content.subtitle = resolution.subtitle ?? "Approval required"
     content.sound = UNNotificationSound(named: UNNotificationSoundName(rawValue: soundName))
-    content.categoryIdentifier = "BUZZ_APPROVAL"
+    content.categoryIdentifier = BuzzApprovalCategory.identifier
+    if let target = resolution.approvalTarget {
+      content.userInfo[BuzzApprovalTarget.userInfoKey] = target.userInfo
+    }
   }
 
   private func finish(_ content: UNNotificationContent) {
@@ -281,21 +285,7 @@ final class NotificationService: UNNotificationServiceExtension {
     communityID: String,
     keychainAccessGroup: String?
   ) -> String? {
-    var query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "buzz.push.nse.signing",
-      kSecAttrAccount as String: communityID,
-      kSecReturnData as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
-    if let keychainAccessGroup, !keychainAccessGroup.isEmpty {
-      query[kSecAttrAccessGroup as String] = keychainAccessGroup
-    }
-    var item: CFTypeRef?
-    guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-      let data = item as? Data
-    else { return nil }
-    return String(data: data, encoding: .utf8)
+    BuzzPushSigningKeychain.privateKey(communityID: communityID, accessGroup: keychainAccessGroup)
   }
 
   private static func loadPushSnapshotData(appGroupIdentifier: String?) -> Data? {

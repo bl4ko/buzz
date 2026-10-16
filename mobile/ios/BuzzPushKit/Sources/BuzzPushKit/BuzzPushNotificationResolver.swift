@@ -24,6 +24,7 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
   /// Exact verified recipient count for Communication Notifications specialization.
   public let conversationRecipientCount: Int?
   public let notificationType: BuzzPushNotificationType?
+  public let approvalTarget: BuzzApprovalTarget?
 
   public var notificationSoundName: String? {
     notificationType == .approval ? "approval.wav" : nil
@@ -41,7 +42,8 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
     conversationDisplayName: String? = nil,
     conversationRecipientCount: Int? = nil,
     notificationScope: BuzzNotificationCacheScope? = nil,
-    notificationType: BuzzPushNotificationType? = nil
+    notificationType: BuzzPushNotificationType? = nil,
+    approvalTarget: BuzzApprovalTarget? = nil
   ) {
     self.notificationScope = notificationScope
     self.title = title
@@ -55,6 +57,7 @@ public struct BuzzPushResolution: Decodable, Equatable, Sendable {
     self.conversationDisplayName = conversationDisplayName
     self.conversationRecipientCount = conversationRecipientCount
     self.notificationType = notificationType
+    self.approvalTarget = approvalTarget
   }
 }
 
@@ -525,7 +528,10 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
       conversationDisplayName: conversation?.displayName,
       conversationRecipientCount: conversation?.recipientCount,
       notificationScope: BuzzNotificationCacheScope(community: community),
-      notificationType: isApproval ? .approval : nil
+      notificationType: isApproval ? .approval : nil,
+      approvalTarget: isApproval
+        ? community.relayURL.map { BuzzApprovalTarget(relayURL: $0.absoluteString, eventID: event.id, communityID: community.id) }
+        : nil
     )
   }
 
