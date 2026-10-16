@@ -198,6 +198,14 @@ matcher and delivery worker. Relays retain lease matching, authorization, durabl
 jobs/retries, and generation checks; they receive only opaque capabilities and
 never APNs tokens or provider credentials.
 
+`BUZZ_PUSH_LIVE_ACTIVITY_ENABLED=true` also starts the approval Live Activity
+worker. It uses the same strict boolean parser, defaults to false, and requires
+`BUZZ_PUSH_ENABLED=true`; otherwise startup fails. The worker sends to the
+configured delivery URL with the path `/v1/deliveries/live-activity` and only
+for leases of community owners. Its queue and card state live in relay
+migration `9001` (`push_live_activity_queue`, `push_live_activity_state`); ask
+text is not stored.
+
 An enabled relay exports the following bounded-cardinality series on its
 existing Prometheus endpoint. None carries a community, account, relay key,
 installation, event, or request identifier as a label.
@@ -213,6 +221,9 @@ installation, event, or request identifier as a label.
 | `buzz_push_gateway_requests_total` | counter | — | Relay requests that reached the gateway transport seam. |
 | `buzz_push_gateway_request_seconds` | histogram | — | Relay-observed gateway request latency. |
 | `buzz_push_deliveries_total` | counter | `outcome` (static closed set) | Accepted, retried, suppressed, exhausted, invalid, or failed relay delivery outcomes. |
+| `buzz_push_live_activity_enabled` | gauge | — | `1` only when push and Live Activities are both enabled. |
+| `buzz_push_live_activity_jobs_total` | counter | `result` = `completed` \| `retried` \| `skipped` \| `error` \| `configuration_error` | Live Activity community jobs. |
+| `buzz_push_live_activity_deliveries_total` | counter | `outcome` = `started` \| `updated` \| `ended` \| `pending` \| `not_registered` \| `invalid_endpoint` \| `retry` \| `failed` | Gateway replies to Live Activity deliveries. |
 
 ## Relay integration status
 
