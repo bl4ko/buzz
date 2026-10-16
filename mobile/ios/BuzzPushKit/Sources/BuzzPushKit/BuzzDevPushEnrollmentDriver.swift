@@ -840,7 +840,7 @@ public final class BuzzDevPushEnrollmentDriver {
     return Self.lowercaseHex(bytes)
   }
 
-  private func challenge() async throws -> Challenge {
+  func challenge() async throws -> Challenge {
     let response: ChallengeResponse = try await post(
       route: "v1/installations/challenges",
       expectedStatus: 200,
@@ -1060,7 +1060,7 @@ public final class BuzzDevPushEnrollmentDriver {
 }
 
 private struct VersionRequest: Encodable { let v: Int }
-private struct Challenge {
+struct Challenge {
   let id: UUID
   let value: String
 }

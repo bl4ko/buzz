@@ -27,7 +27,11 @@ let package = Package(
                 "BuzzPushKit",
                 "CSecp256k1",
             ],
-            resources: [.copy("Fixtures/app_attest_transcripts.json"), .copy("CryptoFixtures/bip340.csv")]
+            resources: [
+                .copy("Fixtures/app_attest_transcripts.json"),
+                .copy("CryptoFixtures/bip340.csv"),
+                .copy("Fixtures/live_activity_payloads.json"),
+            ]
         ),
     ]
 )
