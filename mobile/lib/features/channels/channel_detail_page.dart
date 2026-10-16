@@ -68,6 +68,7 @@ import 'channel_messages_provider.dart';
 import 'channel_tabs/approval_buttons.dart';
 import 'channel_tabs/channel_files_provider.dart';
 import 'channel_tabs/channel_tab_body.dart';
+import 'channel_tabs/channel_tab_editor_sheet.dart';
 import 'channel_tabs/channel_tab_items.dart';
 import 'channel_tabs/channel_tab_row.dart';
 import 'channel_tabs/channel_tabs_model.dart';
@@ -854,8 +855,18 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
                 selected: currentTab,
                 canEdit: permissions.canEditTabs,
                 onSelect: (key) => selectedTab.value = key,
-                onAdd: () {},
-                onCustomLongPress: (_) {},
+                onAdd: () => showChannelTabEditor(
+                  context,
+                  ref,
+                  channelId: resolvedChannel.id,
+                  initial: null,
+                ),
+                onCustomLongPress: (tab) => showChannelTabActions(
+                  context,
+                  ref,
+                  channelId: resolvedChannel.id,
+                  tab: tab,
+                ),
               )
             : null,
         bottomHeight: tabBarHeight,
@@ -1106,6 +1117,18 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
                     channel: resolvedChannel,
                     selected: currentTab,
                     permissions: permissions,
+                    onOpenMessage: (messageId, rootId) {
+                      selectedTab.value = 'messages';
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ChannelDetailPage(
+                            channel: resolvedChannel,
+                            initialMessageId: messageId,
+                            initialThreadRootId: rootId,
+                          ),
+                        ),
+                      );
+                    },
                     onOpenThread: (rootId) {
                       selectedTab.value = 'messages';
                       Navigator.of(context).push(
