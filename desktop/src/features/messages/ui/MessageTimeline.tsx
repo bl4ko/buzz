@@ -36,6 +36,8 @@ import { useSettleGatedPrependMessages } from "./useSettleGatedPrependMessages";
 export type MessageTimelineHandle = {
   scrollToBottomOnNextUpdate: () => void;
   settleAtBottom: () => boolean;
+  getTailState: () => { isAtBottom: boolean; hasUnseen: boolean };
+  returnToTail: () => void;
 };
 
 type MessageTimelineProps = {
@@ -507,8 +509,25 @@ const MessageTimelineBase = React.forwardRef<
         scrollToBottom("auto");
         return true;
       },
+      getTailState: () => ({
+        isAtBottom,
+        hasUnseen: bufferedTimeline.pendingCount > 0 || newMessageCount > 0,
+      }),
+      returnToTail: () => {
+        setIsSemanticallyAtBottom(true);
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(() => scrollToBottom("auto")),
+        );
+      },
     }),
-    [prepareForOwnMessage, scrollToBottom, timelineVirtualizerApi],
+    [
+      prepareForOwnMessage,
+      scrollToBottom,
+      timelineVirtualizerApi,
+      isAtBottom,
+      bufferedTimeline.pendingCount,
+      newMessageCount,
+    ],
   );
 
   // Jump-to-message is purely DOM-based now: all loaded rows are mounted, so

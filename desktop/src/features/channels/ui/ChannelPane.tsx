@@ -1,4 +1,5 @@
 import * as React from "react";
+import { shouldReturnToTail } from "@/features/messages/ui/tabReturnScroll";
 import { LogIn } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -191,6 +192,26 @@ export const ChannelPane = React.memo(function ChannelPane({
 }: ChannelPaneProps) {
   const timelineScrollRef = React.useRef<HTMLDivElement>(null);
   const messageTimelineRef = React.useRef<MessageTimelineHandle>(null);
+  const hasTabPanel = Boolean(tabPanel);
+  const hadTabPanelRef = React.useRef(false);
+  const wasAtBottomBeforeTabRef = React.useRef(true);
+  React.useLayoutEffect(() => {
+    const timeline = messageTimelineRef.current;
+    if (hasTabPanel) {
+      wasAtBottomBeforeTabRef.current =
+        timeline?.getTailState().isAtBottom ?? true;
+    } else if (hadTabPanelRef.current && timeline) {
+      if (
+        shouldReturnToTail({
+          wasAtBottom: wasAtBottomBeforeTabRef.current,
+          hasUnseen: timeline.getTailState().hasUnseen,
+        })
+      ) {
+        timeline.returnToTail();
+      }
+    }
+    hadTabPanelRef.current = hasTabPanel;
+  }, [hasTabPanel]);
   const composerWrapperRef = React.useRef<HTMLDivElement>(null);
   const { goChannel } = useAppNavigation();
   const prepareDmSendChannel = usePrepareDmSendChannel(
