@@ -56,6 +56,7 @@ import { useIndependentThreadPanel } from "@/features/messages/useIndependentThr
 import { useThreadReplies } from "@/features/messages/useThreadReplies";
 import { useChannelTyping } from "@/features/messages/useChannelTyping";
 import { useChannelPins } from "@/features/messages/useChannelPins";
+import { useChannelTabsModel } from "@/features/channel-tabs/useChannelTabsModel";
 import { ChannelPinsProvider } from "@/features/messages/ui/ChannelPinsContext";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -204,6 +205,11 @@ export function ChannelScreen({
   }, [activeChannelId, openThreadHeadId]);
   const messagesQuery = useChannelMessagesQuery(activeChannel);
   const channelPins = useChannelPins(activeChannel?.channelType === "forum" ? null : (activeChannel?.id ?? null));
+  const channelTabsModel = useChannelTabsModel({
+    channelId: activeChannel && activeChannel.channelType !== "forum" ? activeChannel.id : null,
+    currentPubkey: currentIdentity?.pubkey,
+    pinCount: channelPins?.pinnedMessages.length ?? 0,
+  });
   const windowQuery = useChannelWindowQuery(activeChannel);
   const threadRepliesQuery = useThreadReplies(
     activeChannel,
@@ -755,6 +761,7 @@ export function ChannelScreen({
         activeDmPresenceStatus={activeDmPresenceStatus}
         chromeWrapperRef={channelHeaderChromeRef}
         {...{ currentPubkey, headerEndActions }}
+        tabBar={channelTabsModel.tabBar}
         isAddBotOpen={isAddBotOpen}
         isJoining={joinChannelMutation.isPending}
         onAddBotOpenChange={setIsAddBotOpen}
@@ -776,6 +783,7 @@ export function ChannelScreen({
       channelHeaderChromeRef,
       currentPubkey,
       headerEndActions,
+      channelTabsModel.tabBar,
       isAddBotOpen,
       joinChannelMutation.isPending,
       joinChannelMutation.mutateAsync,
@@ -846,6 +854,7 @@ export function ChannelScreen({
                 {searchForwarding.renderSearchAwareChannel(
                   <GuardedChannelPane
                   activeChannel={activeChannel}
+                  tabPanel={channelTabsModel.tabPanel}
                   activityAgents={channelAgentSessionAgents}
                   agentPubkeys={agentPubkeys}
                   agentPubkeysPending={agentPubkeysPending}

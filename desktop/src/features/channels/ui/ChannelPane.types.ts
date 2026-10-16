@@ -15,6 +15,7 @@ import type { ProfilePanelOpenOptions } from "@/shared/context/ProfilePanelConte
 import type { Channel } from "@/shared/api/types";
 import type { IdleAuxiliaryHeaderControls } from "./IdleAuxiliaryPanel";
 export type ChannelPaneProps = {
+  tabPanel?: React.ReactNode;
   activeChannel: Channel | null;
   activityAgents?: BotActivityAgent[];
   agentPubkeys?: ReadonlySet<string>;

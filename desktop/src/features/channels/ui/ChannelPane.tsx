@@ -83,6 +83,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   activityAgents = agentSessionAgents,
   autoSendDraftKey = null,
   onAutoSendComplete = null,
+  tabPanel = null,
   botTypingEntries,
   channelManagementOpen = false,
   currentPubkey,
@@ -698,6 +699,17 @@ export const ChannelPane = React.memo(function ChannelPane({
               }
               threadUnreadCounts={threadUnreadCounts}
             />
+            {tabPanel ? (
+              <div
+                className={cn(
+                  "absolute inset-0 z-30 overflow-y-auto bg-background px-5 pb-6",
+                  channelChrome.contentPadding,
+                )}
+                data-testid="channel-tab-panel"
+              >
+                {tabPanel}
+              </div>
+            ) : null}
             {isNonMemberView ? (
               <div
                 data-testid="join-banner"
@@ -729,7 +741,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                   {isJoining ? "Joining..." : "Join to participate"}
                 </Button>
               </div>
-            ) : (
+            ) : tabPanel ? null : (
               <div
                 className="pointer-events-none absolute inset-x-0 bottom-0 z-40 isolate before:absolute before:inset-x-0 before:bottom-0 before:-z-10 before:h-24 before:bg-gradient-to-b before:from-transparent before:to-background before:content-[''] after:absolute after:inset-x-0 after:bottom-0 after:-z-10 after:h-12 after:bg-background after:content-['']"
                 data-testid="channel-composer-overlay"

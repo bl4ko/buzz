@@ -13,6 +13,8 @@ import {
 import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { HuddleAttachment } from "@/features/huddle/components/HuddleAttachment";
+import { isApprovalRequest } from "@/features/channel-tabs/lib/threadStatus";
+import { ApprovalActions } from "@/features/channel-tabs/ui/ApprovalActions";
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
 import { MessageAuthorWithIndicators } from "@/features/messages/ui/MessageAuthorWithIndicators";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
@@ -729,6 +731,16 @@ export const MessageRow = React.memo(
           pubkeys={isDmChannel ? [] : hiddenMentionPubkeys}
         />
         {continuationMetadataNode}
+        {isApprovalRequest(message.tags) ? (
+          <ApprovalActions
+            disabled={!canToggleReactions || Boolean(reactionPending)}
+            onSelect={(emoji) => {
+              void handleReactionSelect(emoji);
+            }}
+            error={reactionErrorMessage}
+            reactions={reactions}
+          />
+        ) : null}
         <MessageReactions
           messageId={message.id}
           reactions={reactions}
