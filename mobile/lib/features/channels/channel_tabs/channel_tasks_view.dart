@@ -59,7 +59,7 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
         children: [
           if (ask != null && _decided[ask.eventId] != null)
             Text(_decided[ask.eventId]!)
-          else if (ask != null) ...[
+          else if (ask != null && widget.canSetStatus) ...[
             OutlinedButton(
               onPressed: () => _run(
                 () => widget.onReact(ask.eventId, approveEmoji),
