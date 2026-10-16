@@ -4,7 +4,9 @@ use super::{
 };
 use crate::{
     apns::DeliveryOutcome,
-    authority::{AuthorityError, DeliveryDisposition, LiveActivityTarget, SealedToken},
+    authority::{
+        AuthorityError, DeliveryDisposition, LiveActivityTarget, QuotaBucket, SealedToken,
+    },
     config::{LIVE_ACTIVITY_AUDIENCE, LIVE_ACTIVITY_UPDATE_AUDIENCE},
     live_activity::{
         bound_origin_hash, payload, valid_origin, validate_state, ApprovalsState,
@@ -497,8 +499,9 @@ pub(super) async fn deliver(
             &event_id,
             r.request_id,
             r.expires_at,
-            s.endpoint_quota_window_seconds,
-            s.endpoint_quota_max_deliveries,
+            s.live_activity_quota_window_seconds,
+            s.live_activity_quota_max_deliveries,
+            QuotaBucket::LiveActivity,
             now,
         )
         .await

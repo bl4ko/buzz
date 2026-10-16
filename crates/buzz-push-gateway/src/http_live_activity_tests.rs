@@ -2,7 +2,9 @@ use super::*;
 use crate::{
     apns::DeliveryOutcome,
     app_attest::AppAttestVerifier,
-    authority::{AuthorityStore, Challenge, Delegation, MemoryAuthorityStore, NewInstallation},
+    authority::{
+        AuthorityStore, Challenge, Delegation, MemoryAuthorityStore, NewInstallation, QuotaBucket,
+    },
     grant::{GrantKey, GrantKeyring},
     http::ProfileRuntime,
     http_delivery_tests::signed_header,
@@ -184,6 +186,8 @@ async fn harness(credentials: bool) -> Harness {
         max_installation_lifetime_seconds: 600,
         endpoint_quota_window_seconds: 60,
         endpoint_quota_max_deliveries: 10,
+        live_activity_quota_window_seconds: 60,
+        live_activity_quota_max_deliveries: 10,
         now,
         accepting: Arc::new(AtomicBool::new(true)),
     };
@@ -266,6 +270,27 @@ impl Harness {
             })
             .unwrap();
         (relay, grant)
+    }
+
+    async fn admit(&self, bucket: QuotaBucket) -> Result<(), AuthorityError> {
+        let grant = self.state.grant_keyring.open(&self.grant).unwrap();
+        self.state
+            .authority
+            .authorize_delivery(
+                grant.delegation_id,
+                &self.relay.public_key().to_hex(),
+                1,
+                1,
+                &hex::encode(Uuid::new_v4().as_bytes().repeat(2)),
+                Uuid::new_v4(),
+                now() + 60,
+                60,
+                10,
+                bucket,
+                now(),
+            )
+            .await
+            .map(|_| ())
     }
 
     async fn challenge(&self) -> (Uuid, String) {
@@ -925,6 +950,27 @@ async fn la_rejects_missing_state_key() {
     }
     assert!(h.la.sent().is_empty());
     assert!(h.target(ORIGIN).await.unwrap().update_ciphertext.is_some());
+}
+
+#[tokio::test]
+async fn la_quota_is_separate_from_alert_quota() {
+    let h = harness(true).await;
+    h.seed(None, false).await;
+    for _ in 0..10 {
+        h.admit(QuotaBucket::Alert).await.unwrap();
+    }
+    assert!(h.admit(QuotaBucket::Alert).await.is_err());
+    assert_eq!(h.upsert().await, status("started"));
+    for _ in 0..9 {
+        h.admit(QuotaBucket::LiveActivity).await.unwrap();
+    }
+    assert_eq!(
+        h.upsert().await,
+        (
+            StatusCode::NOT_FOUND,
+            serde_json::json!({"error": "invalid_grant"})
+        )
+    );
 }
 
 #[tokio::test]
