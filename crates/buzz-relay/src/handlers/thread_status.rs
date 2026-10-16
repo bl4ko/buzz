@@ -71,7 +71,7 @@ async fn channel_message(
     channel: Uuid,
     id_hex: &str,
     label: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<(Vec<u8>, [u8; 32]), String> {
     let id = hex::decode(id_hex).map_err(|_| format!("invalid: {label} not found"))?;
     let target = state
         .db
@@ -88,7 +88,7 @@ async fn channel_message(
     if target.channel_id != Some(channel) {
         return Err(format!("invalid: {label} belongs to a different channel"));
     }
-    Ok(id)
+    Ok((id, target.event.pubkey.to_bytes()))
 }
 
 pub(crate) async fn validate_thread_status(
@@ -108,7 +108,7 @@ pub(crate) async fn validate_thread_status(
     if !allowed {
         return Err("restricted: thread status author must be the owner or a channel agent".into());
     }
-    let root = channel_message(
+    let (root, _) = channel_message(
         tenant,
         state,
         channel,
@@ -126,7 +126,7 @@ pub(crate) async fn validate_thread_status(
         return Err("invalid: thread status root must be a top-level message".into());
     }
     if let Some(ask) = &parsed.ask {
-        channel_message(
+        let (ask_id, ask_author) = channel_message(
             tenant,
             state,
             channel,
@@ -134,6 +134,22 @@ pub(crate) async fn validate_thread_status(
             "thread status ask event",
         )
         .await?;
+        if ask_author != author {
+            return Err(
+                "invalid: thread status ask event must be authored by the status author".into(),
+            );
+        }
+        let in_thread = ask_id == root
+            || state
+                .db
+                .get_thread_metadata_by_event(tenant.community(), &ask_id)
+                .await
+                .map_err(db_error)?
+                .and_then(|meta| meta.root_event_id.or(meta.parent_event_id))
+                .is_some_and(|ask_root| ask_root == root);
+        if !in_thread {
+            return Err("invalid: thread status ask event must be in the root thread".into());
+        }
     }
     Ok(())
 }
