@@ -399,6 +399,71 @@ class ChannelActions {
     _ensureCommunityValid();
   }
 
+  Future<void> setThreadStatus({
+    required String channelId,
+    required String rootId,
+    required TaskStatus status,
+    required String title,
+    int? createdAt,
+    void Function(NostrEvent event)? onSigned,
+  }) async {
+    _ensureCommunityValid();
+    await _signedEventRelay.submit(
+      kind: EventKind.threadStatus,
+      content: '',
+      tags: threadStatusTags(
+        rootId: rootId,
+        channelId: channelId,
+        status: status,
+        title: title,
+      ),
+      createdAt: createdAt,
+      onSigned: onSigned,
+    );
+    _ensureCommunityValid();
+  }
+
+  Future<void> saveChannelTabs({
+    required String channelId,
+    required List<ChannelTab> tabs,
+    int? createdAt,
+    void Function(NostrEvent event)? onSigned,
+  }) async {
+    _ensureCommunityValid();
+    await _signedEventRelay.submit(
+      kind: EventKind.channelTabs,
+      content: encodeChannelTabs(tabs),
+      tags: [
+        ['d', channelId],
+        ['h', channelId],
+      ],
+      createdAt: createdAt,
+      onSigned: onSigned,
+    );
+    _ensureCommunityValid();
+  }
+
+  Future<void> saveCanvasDoc({
+    required String channelId,
+    required String canvasId,
+    required String content,
+    int? createdAt,
+    void Function(NostrEvent event)? onSigned,
+  }) async {
+    _ensureCommunityValid();
+    await _signedEventRelay.submit(
+      kind: EventKind.channelCanvasDoc,
+      content: content,
+      tags: [
+        ['d', canvasDTag(channelId, canvasId)],
+        ['h', channelId],
+      ],
+      createdAt: createdAt,
+      onSigned: onSigned,
+    );
+    _ensureCommunityValid();
+  }
+
   static final Random _random = Random.secure();
 }
 
