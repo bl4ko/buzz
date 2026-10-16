@@ -1,6 +1,26 @@
+import 'dart:math';
+
+import 'package:flutter/widgets.dart';
+
 import 'channel_tabs_model.dart';
 
-const channelTabRowHeight = 44.0;
+const channelTabLabelSize = 14.0;
+
+double channelTabRowHeightOf(BuildContext context) => max(
+  44,
+  MediaQuery.textScalerOf(context).scale(channelTabLabelSize) * 1.4 + 24,
+);
+
+String channelTabLabel(ChannelTab tab) {
+  final title = tab.title.trim();
+  final uri = Uri.tryParse(title);
+  if (uri == null ||
+      (uri.scheme != 'https' && uri.scheme != 'http') ||
+      uri.host.isEmpty) {
+    return title;
+  }
+  return uri.host.startsWith('www.') ? uri.host.substring(4) : uri.host;
+}
 
 class ChannelTabItem {
   const ChannelTabItem({
@@ -33,7 +53,11 @@ List<ChannelTabItem> buildChannelTabItems({
   if (fileCount > 0)
     const ChannelTabItem(key: 'files', label: 'Files and links'),
   for (final tab in customTabs)
-    ChannelTabItem(key: 'custom:${tab.id}', label: tab.title, custom: tab),
+    ChannelTabItem(
+      key: 'custom:${tab.id}',
+      label: channelTabLabel(tab),
+      custom: tab,
+    ),
 ];
 
 String resolveSelectedTab(List<ChannelTabItem> items, String selected) =>

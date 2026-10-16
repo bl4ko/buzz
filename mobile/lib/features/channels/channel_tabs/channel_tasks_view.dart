@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/theme/buzz_icons.dart';
 import '../../../shared/theme/theme.dart';
+import 'approval_buttons.dart';
 import 'channel_tasks_provider.dart';
 import 'thread_status.dart';
 
@@ -67,70 +69,157 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
         ? null
         : widget.state.decisions[ask.eventId] ?? _decided[ask.eventId];
     final pending = ask != null && _pending.contains(ask.eventId);
-    return ListTile(
-      title: Text(task.title),
-      subtitle: ask == null ? null : Text(ask.text),
+    final textTheme = context.textTheme;
+    return InkWell(
+      key: Key('task-row-${task.rootId}'),
       onTap: () => widget.onOpenThread(task.rootId),
-      trailing: Wrap(
-        spacing: Grid.xxs,
-        children: [
-          if (decision != null)
-            Text(decision == OwnerDecision.approve ? 'Approved' : 'Denied')
-          else if (ask != null && widget.canSetStatus) ...[
-            OutlinedButton(
-              onPressed: pending
-                  ? null
-                  : () => _send(ask.eventId, OwnerDecision.approve),
-              child: const Text('✅'),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(
+          Grid.xs,
+          Grid.xxs,
+          Grid.half,
+          Grid.xxs,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: Grid.half),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            task.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (decision != null) ...[
+                          const SizedBox(width: Grid.xxs),
+                          TaskDecisionChip(decision: decision),
+                        ],
+                      ],
+                    ),
+                    if (ask != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: Grid.quarter),
+                        child: Text(
+                          ask.text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: context.colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    if (ask != null && decision == null && widget.canSetStatus)
+                      Padding(
+                        padding: const EdgeInsets.only(top: Grid.xxs),
+                        child: DecisionButtons(
+                          enabled: !pending,
+                          onApprove: () =>
+                              _send(ask.eventId, OwnerDecision.approve),
+                          onDeny: () => _send(ask.eventId, OwnerDecision.deny),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-            OutlinedButton(
-              onPressed: pending
-                  ? null
-                  : () => _send(ask.eventId, OwnerDecision.deny),
-              child: const Text('❌'),
-            ),
+            if (widget.canSetStatus && task.status != TaskStatus.done)
+              IconButton(
+                tooltip: 'Mark done',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  BuzzIcons.circleCheck,
+                  size: 20,
+                  color: context.colors.onSurfaceVariant,
+                ),
+                onPressed: () =>
+                    _run(() => widget.onDone(task), "Couldn't close the task"),
+              ),
           ],
-          if (widget.canSetStatus && task.status != TaskStatus.done)
-            TextButton(
-              onPressed: () =>
-                  _run(() => widget.onDone(task), "Couldn't close the task"),
-              child: const Text('Done'),
-            ),
-        ],
+        ),
       ),
     );
   }
 
+  Widget _header(String title, int count) => Padding(
+    padding: const EdgeInsets.fromLTRB(Grid.xs, Grid.xs, Grid.xs, Grid.half),
+    child: Text(
+      '$title · $count',
+      style: context.textTheme.labelLarge?.copyWith(
+        color: context.colors.onSurfaceVariant,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+
+  Iterable<Widget> _rows(List<ThreadTask> tasks) sync* {
+    for (var i = 0; i < tasks.length; i++) {
+      if (i > 0) {
+        yield const Divider(height: 1, thickness: 0.5, indent: Grid.xs);
+      }
+      yield _row(tasks[i]);
+    }
+  }
+
   List<Widget> _section(String title, List<ThreadTask> tasks) => tasks.isEmpty
       ? const []
-      : [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              Grid.sm,
-              Grid.sm,
-              Grid.sm,
-              Grid.xxs,
+      : [_header(title, tasks.length), ..._rows(tasks)];
+
+  Widget _doneHeader(int count) => Semantics(
+    key: const Key('tasks-done-toggle'),
+    button: true,
+    expanded: _showDone,
+    hint: _showDone ? 'Hide done tasks' : 'Show done tasks',
+    child: InkWell(
+      onTap: () => setState(() => _showDone = !_showDone),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Grid.xs, Grid.xs, Grid.xs, Grid.xxs),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Done · $count',
+                style: context.textTheme.labelLarge?.copyWith(
+                  color: context.colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-            child: Text(title, style: Theme.of(context).textTheme.labelLarge),
-          ),
-          for (final task in tasks) _row(task),
-        ];
+            Icon(
+              _showDone ? BuzzIcons.chevronDown : BuzzIcons.chevronRight,
+              size: 18,
+              color: context.colors.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final groups = widget.state.groups;
     return ListView(
+      padding: EdgeInsets.only(
+        top: Grid.half,
+        bottom: Grid.xs + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         ..._section('Needs you', groups.needsYou),
         ..._section('In progress', groups.inProgress),
         ..._section('Blocked', groups.blocked),
-        if (groups.done.isNotEmpty)
-          TextButton(
-            onPressed: () => setState(() => _showDone = !_showDone),
-            child: Text('Done (${groups.done.length})'),
-          ),
-        if (_showDone)
-          for (final task in groups.done) _row(task),
+        if (groups.done.isNotEmpty) _doneHeader(groups.done.length),
+        if (_showDone) ..._rows(groups.done),
       ],
     );
   }

@@ -136,7 +136,9 @@ export function useChannelTasks(
       channelId,
       tasks,
       groups,
-      awaitingCount: groups.needsYou.length,
+      awaitingCount: groups.needsYou.filter(
+        (task) => !task.ask || !decisions.has(task.ask.eventId),
+      ).length,
       isLoading: query.isLoading,
       decisions,
       refreshDecisions,

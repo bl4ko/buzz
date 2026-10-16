@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../channel.dart';
-import '../channel_management_provider.dart';
 import 'channel_files_provider.dart';
 import 'channel_files_view.dart';
 import 'channel_pins_view.dart';
@@ -11,6 +10,7 @@ import 'channel_tasks_provider.dart';
 import 'channel_tabs_provider.dart';
 import 'channel_tasks_view.dart';
 import 'custom_tab_view.dart';
+import 'thread_status.dart';
 import 'files_and_links.dart';
 
 class ChannelTabBody extends ConsumerWidget {
@@ -35,8 +35,14 @@ class ChannelTabBody extends ConsumerWidget {
       return ChannelTasksView(
         state: ref.watch(channelTasksProvider(channel.id)),
         canSetStatus: permissions.canSetStatus,
-        onReact: (eventId, emoji) =>
-            ref.read(channelActionsProvider).addReaction(eventId, emoji),
+        onReact: (eventId, emoji) => ref
+            .read(channelTasksProvider(channel.id).notifier)
+            .decide(
+              eventId,
+              emoji == approveEmoji
+                  ? OwnerDecision.approve
+                  : OwnerDecision.deny,
+            ),
         onDone: (task) =>
             ref.read(channelTasksProvider(channel.id).notifier).markDone(task),
         onOpenThread: onOpenThread,
