@@ -1,10 +1,10 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../shared/relay/relay.dart';
 import '../channel_management_provider.dart';
+import 'subscribe_while_alive.dart';
 import 'channel_tabs_model.dart';
 
 class ChannelTabsState {
@@ -34,31 +34,16 @@ class ChannelTabsNotifier extends Notifier<ChannelTabsState> {
       _tabs = ChannelTabsState(channelId);
     }
     if (connected) {
-      var disposed = false;
-      void Function()? unsubscribe;
-      ref.onDispose(() {
-        disposed = true;
-        unsubscribe?.call();
-      });
-      unawaited(
-        ref
-            .read(relaySessionProvider.notifier)
-            .subscribe(
-              NostrFilter(
-                kinds: const [EventKind.channelTabs],
-                tags: {
-                  '#h': [channelId],
-                },
-                limit: 200,
-              ),
-              (event) {
-                if (!disposed) receive(event);
-              },
-            )
-            .then(
-              (cancel) => disposed ? cancel() : unsubscribe = cancel,
-              onError: (Object _) {},
-            ),
+      subscribeWhileAlive(
+        ref,
+        NostrFilter(
+          kinds: const [EventKind.channelTabs],
+          tags: {
+            '#h': [channelId],
+          },
+          limit: 200,
+        ),
+        receive,
       );
     }
     return _tabs;
