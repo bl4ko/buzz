@@ -105,4 +105,37 @@ void main() {
     );
     expect(find.byType(ListTile).evaluate().length, lessThan(40));
   });
+
+  testWidgets('the last row scrolls above the bottom safe area', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 600);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 34);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: ChannelFilesView(
+            items: [
+              for (var i = 0; i < 30; i++)
+                item('f$i', FileLinkKind.file, name: 'file-$i.pdf'),
+            ],
+            onOpenMessage: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.fling(
+      find.byType(CustomScrollView),
+      const Offset(0, -5000),
+      5000,
+    );
+    await tester.pumpAndSettle();
+    final lastRow = find.ancestor(
+      of: find.text('file-29.pdf'),
+      matching: find.byType(ListTile),
+    );
+    expect(tester.getBottomLeft(lastRow).dy, lessThanOrEqualTo(600 - 34));
+  });
 }

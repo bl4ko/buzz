@@ -128,7 +128,12 @@ class CanvasDocView extends HookConsumerWidget {
       );
     }
     return ListView(
-      padding: const EdgeInsets.all(Grid.twelve),
+      padding: EdgeInsets.fromLTRB(
+        Grid.twelve,
+        Grid.twelve,
+        Grid.twelve,
+        Grid.twelve + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         if (canEdit)
           Align(
