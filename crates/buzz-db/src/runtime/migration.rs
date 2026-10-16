@@ -778,10 +778,15 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 82);
-        for (index, migration) in migrations.iter().enumerate() {
+        assert_eq!(migrations.len(), 83);
+        for (index, migration) in migrations[..82].iter().enumerate() {
             assert_eq!(migration.version, (index + 1) as i64);
         }
+        assert_eq!(migrations[82].version, 9001);
+        assert!(migrations[82]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE push_live_activity_queue"));
         assert!(migrations[79]
             .sql
             .as_str()
@@ -2467,7 +2472,7 @@ mod postgres_tests {
         let live_activity = surface(
             MIGRATOR
                 .iter()
-                .find(|m| m.version == 66)
+                .find(|m| m.version == 9001)
                 .expect("live activity migration")
                 .sql
                 .as_ref(),
