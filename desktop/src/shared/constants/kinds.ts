@@ -175,3 +175,7 @@ const NON_CONVERSATIONAL_UNREAD_KINDS: ReadonlySet<number> = new Set([
 export function isConversationalUnreadKind(kind: number | undefined): boolean {
   return kind === undefined || !NON_CONVERSATIONAL_UNREAD_KINDS.has(kind);
 }
+
+export const KIND_THREAD_STATUS = 30320;
+export const KIND_CHANNEL_TABS = 30321;
+export const KIND_CHANNEL_CANVAS_DOC = 30322;
