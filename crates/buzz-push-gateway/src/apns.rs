@@ -162,41 +162,49 @@ struct ApnsErrorBody {
     timestamp: Option<i64>,
 }
 
+pub(crate) async fn read_outcome(
+    response: Result<reqwest::Response, reqwest::Error>,
+) -> (DeliveryOutcome, Option<String>) {
+    let response = match response {
+        Ok(response) => response,
+        Err(_) => {
+            return (
+                DeliveryOutcome::Retry {
+                    retry_after_seconds: None,
+                },
+                None,
+            )
+        }
+    };
+    if response.status() == StatusCode::OK {
+        return (DeliveryOutcome::Accepted, None);
+    }
+    let code = response.status().as_u16();
+    let retry_after = response
+        .headers()
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(|seconds| seconds.clamp(1, 3600));
+    let detail = response.json::<ApnsErrorBody>().await.ok();
+    let timestamp = detail.as_ref().and_then(|d| d.timestamp);
+    let reason = detail.and_then(|d| d.reason);
+    let outcome = match classify(code, reason.as_deref(), timestamp) {
+        DeliveryOutcome::Retry { .. } => DeliveryOutcome::Retry {
+            retry_after_seconds: retry_after,
+        },
+        outcome => outcome,
+    };
+    (outcome, reason)
+}
+
 #[async_trait]
 impl PushTransport for ApnsTransport {
     async fn send(&self, attempt: DeliveryAttempt, endpoint: &str) -> DeliveryOutcome {
         crate::metrics::record_apns_send_attempt();
-        let response = self.send_response(attempt, endpoint).await;
-        let response = match response {
-            Ok(response) => response,
-            Err(_) => {
-                return DeliveryOutcome::Retry {
-                    retry_after_seconds: None,
-                }
-            }
-        };
-        if response.status() == StatusCode::OK {
-            return DeliveryOutcome::Accepted;
-        }
-        let code = response.status().as_u16();
-        let retry_after = response
-            .headers()
-            .get("retry-after")
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.parse::<i64>().ok())
-            .map(|seconds| seconds.clamp(1, 3600));
-        let detail = response.json::<ApnsErrorBody>().await.ok();
-        let timestamp = detail.as_ref().and_then(|d| d.timestamp);
-        match classify(
-            code,
-            detail.as_ref().and_then(|d| d.reason.as_deref()),
-            timestamp,
-        ) {
-            DeliveryOutcome::Retry { .. } => DeliveryOutcome::Retry {
-                retry_after_seconds: retry_after,
-            },
-            outcome => outcome,
-        }
+        read_outcome(self.send_response(attempt, endpoint).await)
+            .await
+            .0
     }
 }
 

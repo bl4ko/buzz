@@ -5,6 +5,7 @@ pub mod authority;
 pub mod config;
 pub mod grant;
 pub mod http;
+pub mod live_activity;
 pub mod metrics;
 pub mod model;
 pub mod postgres;
