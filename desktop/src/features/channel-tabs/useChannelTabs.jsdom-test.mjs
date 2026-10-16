@@ -8,7 +8,6 @@ import { useChannelTabs } from "./useChannelTabs.ts";
 const CH = "11111111-1111-4111-8111-111111111111";
 const OWNER = "a".repeat(64);
 const MEMBER = "b".repeat(64);
-const canEdit = (pubkey) => pubkey === OWNER || pubkey === "f".repeat(64);
 
 function tabsEvent(id, pubkey, createdAt, tabs) {
   return {
@@ -25,19 +24,17 @@ function tabsEvent(id, pubkey, createdAt, tabs) {
   };
 }
 
-const h = createHookHarness((transport) =>
-  useChannelTabs(CH, canEdit, transport),
-);
+const h = createHookHarness((transport) => useChannelTabs(CH, transport));
 afterEach(() => h.unmount());
 
-test("only lists from allowed editors count and unknown types stay hidden", async () => {
+test("the newest stored list counts and unknown types stay hidden", async () => {
   const transport = createEventTransport([
-    tabsEvent("1", OWNER, 10, [
+    tabsEvent("1", MEMBER, 10, [
+      { id: "b", type: "link", title: "Old", value: "https://s.example" },
+    ]),
+    tabsEvent("2", OWNER, 20, [
       { id: "a", type: "link", title: "Grafana", value: "https://g.example" },
       { id: "z", type: "future", title: "Z", value: "" },
-    ]),
-    tabsEvent("2", MEMBER, 20, [
-      { id: "b", type: "link", title: "Spam", value: "https://s.example" },
     ]),
   ]);
   await h.mount(transport);

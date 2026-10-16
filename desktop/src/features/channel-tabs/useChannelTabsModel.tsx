@@ -46,7 +46,7 @@ export function useChannelTabsModel({
   );
   const permissions = useTaskPermissions(channelId, currentPubkey);
   const tasks = useChannelTasks(channelId);
-  const tabs = useChannelTabs(channelId, permissions.canEditTabsFor);
+  const tabs = useChannelTabs(channelId);
   const files = useChannelFilesAndLinks(channelId);
   const items = React.useMemo(
     () =>
