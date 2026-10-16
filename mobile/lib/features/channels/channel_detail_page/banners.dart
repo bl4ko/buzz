@@ -57,10 +57,12 @@ class _HeaderEphemeralBadge extends StatelessWidget {
 class _MessageTimelineSkeleton extends StatelessWidget {
   final List<TimelineMessage> messages;
   final double appBarTitleContentHeight;
+  final double appBarBottomHeight;
 
   const _MessageTimelineSkeleton({
     required this.messages,
     required this.appBarTitleContentHeight,
+    this.appBarBottomHeight = 0,
   });
 
   @override
@@ -74,6 +76,7 @@ class _MessageTimelineSkeleton extends StatelessWidget {
         frostedAppBarHeight(
               context,
               titleContentHeight: appBarTitleContentHeight,
+              bottomHeight: appBarBottomHeight,
             ) +
             Grid.xs,
         Grid.gutter,

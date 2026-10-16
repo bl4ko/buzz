@@ -545,6 +545,18 @@ class _MessageBubble extends HookConsumerWidget {
                   child: MessagePinnedLabel(messageId: message.id),
                 ),
               content,
+              if (isApprovalRequest(message.tags) && isMember && !isArchived)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: messageAvatarSize + messageAvatarContentGap,
+                  ),
+                  child: ApprovalButtons(
+                    reactions: message.reactions,
+                    onReact: (emoji) => ref
+                        .read(channelActionsProvider)
+                        .addReaction(message.id, emoji),
+                  ),
+                ),
             ],
           ),
           if (showAuthor)
