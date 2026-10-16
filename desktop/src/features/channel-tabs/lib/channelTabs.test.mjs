@@ -65,7 +65,7 @@ test("parseChannelTabs validates the list", () => {
   );
 });
 
-test("latestChannelTabs ignores authors who cannot edit", () => {
+test("latestChannelTabs takes the newest stored list from any author", () => {
   const events = [
     tabsEvent("1", OWNER, 10, [
       { id: "a", type: "link", title: "Owner", value: "https://o.example" },
@@ -74,12 +74,12 @@ test("latestChannelTabs ignores authors who cannot edit", () => {
       { id: "b", type: "link", title: "Member", value: "https://m.example" },
     ]),
   ];
-  const latest = latestChannelTabs(events, CH, (pubkey) => pubkey === OWNER);
+  const latest = latestChannelTabs(events, CH);
   assert.deepEqual(
     latest.tabs.map((t) => t.title),
-    ["Owner"],
+    ["Member"],
   );
-  assert.equal(latest.eventId, "1");
+  assert.equal(latest.eventId, "2");
 });
 
 test("knownTabs hides unknown types", () => {

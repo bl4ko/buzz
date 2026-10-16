@@ -53,12 +53,11 @@ export function parseChannelTabs(content: string): ChannelTab[] | null {
 export function latestChannelTabs(
   events: readonly RelayEvent[],
   channelId: string,
-  canEdit: (pubkey: string) => boolean,
 ): { tabs: ChannelTab[]; eventId: string | null } {
   let best: RelayEvent | null = null;
   let bestTabs: ChannelTab[] = [];
   for (const event of events) {
-    if (event.kind !== KIND_CHANNEL_TABS || !canEdit(event.pubkey)) continue;
+    if (event.kind !== KIND_CHANNEL_TABS) continue;
     const d = event.tags.find((t) => t[0] === "d")?.[1];
     const h = event.tags.find((t) => t[0] === "h")?.[1];
     if (d !== channelId || h !== channelId) continue;

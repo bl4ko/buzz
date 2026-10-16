@@ -34,7 +34,6 @@ export type ChannelTabsState = {
 
 export function useChannelTabs(
   channelId: string | null,
-  canEditFor: (pubkey: string) => boolean,
   transport: ChannelEventTransport = defaultTransport,
 ): ChannelTabsState | null {
   const queryClient = useQueryClient();
@@ -57,8 +56,8 @@ export function useChannelTabs(
     transport,
   );
   const latest = React.useMemo(
-    () => latestChannelTabs(query.data ?? [], channelId ?? "", canEditFor),
-    [query.data, channelId, canEditFor],
+    () => latestChannelTabs(query.data ?? [], channelId ?? ""),
+    [query.data, channelId],
   );
   const latestCreatedAt =
     query.data?.find((event) => event.id === latest.eventId)?.created_at ?? 0;
