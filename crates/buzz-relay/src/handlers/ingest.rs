@@ -6967,7 +6967,11 @@ mod postgres_tests {
         };
         let root = post(&agent, channel, None);
         let foreign = post(&agent, other, None);
-        for event in [root.clone(), foreign.clone()] {
+        let other_root = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "other case")
+            .tags([tag(&["h", &channel.to_string()])])
+            .sign_with_keys(&agent)
+            .expect("sign other root");
+        for event in [root.clone(), foreign.clone(), other_root.clone()] {
             assert!(
                 ingest_event(&state, &tenant, event, auth(&agent))
                     .await
@@ -6986,6 +6990,14 @@ mod postgres_tests {
                     .accepted
             );
         }
+        let boss_ask = post(&boss, channel, Some(&root_hex));
+        assert!(
+            ingest_event(&state, &tenant, boss_ask.clone(), auth(&boss))
+                .await
+                .expect("boss reply")
+                .accepted
+        );
+        let boss_ask_hex = boss_ask.id.to_hex();
         let clock = std::cell::Cell::new(nostr::Timestamp::now().as_secs() + 10);
         let status = |keys: &nostr::Keys,
                       root: &str,
@@ -7021,9 +7033,29 @@ mod postgres_tests {
                     &root_hex,
                     "awaiting_owner",
                     "Rotate keys",
-                    Some(("Merge PR 7?", &ask_hex)),
+                    Some(("Merge PR 7?", &boss_ask_hex)),
                 ),
                 &boss,
+            ),
+            (
+                status(
+                    &agent,
+                    &root_hex,
+                    "awaiting_owner",
+                    "Rotate keys",
+                    Some(("Merge PR 7?", &ask_hex)),
+                ),
+                &agent,
+            ),
+            (
+                status(
+                    &agent,
+                    &root_hex,
+                    "awaiting_owner",
+                    "Rotate keys",
+                    Some(("Merge PR 7?", &root_hex)),
+                ),
+                &agent,
             ),
             (
                 status(&agent, &root_hex, "open", &"é".repeat(80), None),
@@ -7080,6 +7112,28 @@ mod postgres_tests {
                 ),
                 &agent,
                 "invalid: thread status ask event belongs to a different channel",
+            ),
+            (
+                status(
+                    &agent,
+                    &root_hex,
+                    "awaiting_owner",
+                    "T",
+                    Some(("Q?", &boss_ask_hex)),
+                ),
+                &agent,
+                "invalid: thread status ask event must be authored by the status author",
+            ),
+            (
+                status(
+                    &agent,
+                    &root_hex,
+                    "awaiting_owner",
+                    "T",
+                    Some(("Q?", &other_root.id.to_hex())),
+                ),
+                &agent,
+                "invalid: thread status ask event must be in the root thread",
             ),
             (
                 status(&agent, &root_hex, "open", &"é".repeat(81), None),
