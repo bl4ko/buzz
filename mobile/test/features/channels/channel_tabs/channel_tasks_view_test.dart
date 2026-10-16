@@ -76,4 +76,56 @@ void main() {
     await pump(tester, canSetStatus: false);
     expect(find.text('Done'), findsNothing);
   });
+
+  Widget host(
+    ChannelTasksState tasks,
+    Future<void> Function(String, String) onReact,
+  ) => MaterialApp(
+    home: Scaffold(
+      body: ChannelTasksView(
+        state: tasks,
+        canSetStatus: false,
+        onReact: onReact,
+        onDone: (_) async {},
+        onOpenThread: (_) {},
+      ),
+    ),
+  );
+
+  ChannelTasksState withAsk(String eventId) {
+    final t = task(
+      '1',
+      TaskStatus.awaitingOwner,
+      ask: ThreadTaskAsk(text: 'Merge PR 7?', eventId: eventId),
+    );
+    return ChannelTasksState({t.rootId: t});
+  }
+
+  testWidgets('a sent decision shows its label until a new ask event arrives', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(withAsk('b' * 64), (_, _) async {}));
+    await tester.tap(find.text('✅'));
+    await tester.pump();
+    expect(find.text('Approved'), findsOneWidget);
+    expect(find.text('✅'), findsNothing);
+    await tester.pumpWidget(host(withAsk('c' * 64), (_, _) async {}));
+    expect(find.text('✅'), findsOneWidget);
+    expect(find.text('Approved'), findsNothing);
+    await tester.tap(find.text('❌'));
+    await tester.pump();
+    expect(find.text('Denied'), findsOneWidget);
+  });
+
+  testWidgets('a failed reaction shows an error and keeps the buttons', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(withAsk('b' * 64), (_, _) async => throw Exception('rejected')),
+    );
+    await tester.tap(find.text('✅'));
+    await tester.pump();
+    expect(find.text("Couldn't send approval"), findsOneWidget);
+    expect(find.text('✅'), findsOneWidget);
+  });
 }

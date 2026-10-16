@@ -551,6 +551,7 @@ class _MessageBubble extends HookConsumerWidget {
                     left: messageAvatarSize + messageAvatarContentGap,
                   ),
                   child: ApprovalButtons(
+                    askEventId: message.id,
                     reactions: message.reactions,
                     onReact: (emoji) => ref
                         .read(channelActionsProvider)
