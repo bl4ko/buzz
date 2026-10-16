@@ -1,5 +1,8 @@
 import * as React from "react";
 
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useToggleReactionMutation } from "@/features/messages/hooks";
+
 import {
   buildChannelTabItems,
   type ChannelTabKey,
@@ -46,6 +49,22 @@ export function useChannelTabsModel({
       }),
     [tasks, pinCount, files.items.length, tabs?.visible],
   );
+  const { goChannel } = useAppNavigation();
+  const reaction = useToggleReactionMutation();
+  const onOpenThread = React.useCallback(
+    (rootId: string) => {
+      if (!channelId) return;
+      setSelected("messages");
+      void goChannel(channelId, { thread: rootId });
+    },
+    [channelId, goChannel, setSelected],
+  );
+  const onReact = React.useCallback(
+    async (eventId: string, emoji: string) => {
+      await reaction.mutateAsync({ eventId, emoji, remove: false });
+    },
+    [reaction],
+  );
   const current = resolveSelectedTab(items, selected);
   if (!channelId) return { tabBar: null, tabPanel: null };
   const tabBar = (
@@ -63,9 +82,13 @@ export function useChannelTabsModel({
   const tabPanel =
     current === "messages" ? null : (
       <ChannelTabPanel
+        canSetStatus={permissions.canSetStatus}
         channelId={channelId}
         currentPubkey={currentPubkey}
+        onOpenThread={onOpenThread}
+        onReact={onReact}
         selected={current}
+        tasks={tasks}
       />
     );
   return { tabBar, tabPanel };
