@@ -123,3 +123,17 @@ export function selectThreadComposerBotTypingPubkeys(
         ) === index,
     );
 }
+
+export function getMainComposerPaddingKey({
+  activeChannelId,
+  hasMainComposerOverlay,
+  hasTabPanel,
+  isSinglePanelView,
+}: {
+  activeChannelId: string | null;
+  hasMainComposerOverlay: boolean;
+  hasTabPanel: boolean;
+  isSinglePanelView: boolean;
+}): string {
+  return `${activeChannelId}:${isSinglePanelView}:${hasMainComposerOverlay}:${hasTabPanel}`;
+}
