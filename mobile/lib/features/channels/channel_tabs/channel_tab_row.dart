@@ -173,6 +173,7 @@ class _CountBadge extends StatelessWidget {
       ),
       child: Text(
         '$count',
+        semanticsLabel: '$count need you',
         textAlign: TextAlign.center,
         style: context.textTheme.labelSmall?.copyWith(
           color: colors.onError,

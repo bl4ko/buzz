@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../shared/theme/theme.dart';
@@ -15,6 +17,10 @@ class TaskDecisionChip extends StatelessWidget {
     final color = decision == OwnerDecision.approve
         ? context.appColors.success
         : context.colors.error;
+    final background = Color.alphaBlend(
+      color.withValues(alpha: 0.16),
+      context.colors.surface,
+    );
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: Grid.xxs,
@@ -28,12 +34,33 @@ class TaskDecisionChip extends StatelessWidget {
         label ?? (decision == OwnerDecision.approve ? 'Approved' : 'Denied'),
         maxLines: 1,
         style: context.textTheme.labelMedium?.copyWith(
-          color: color,
+          color: _readableOn(background, color),
           fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
+}
+
+double _contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+}
+
+Color _readableOn(Color background, Color color) {
+  final target = background.computeLuminance() > 0.18
+      ? Colors.black
+      : Colors.white;
+  var result = color;
+  for (
+    var step = 1;
+    step <= 20 && _contrastRatio(result, background) < 4.5;
+    step++
+  ) {
+    result = Color.lerp(color, target, step / 20)!;
+  }
+  return result;
 }
 
 class DecisionButtons extends StatelessWidget {
@@ -42,11 +69,13 @@ class DecisionButtons extends StatelessWidget {
     required this.enabled,
     required this.onApprove,
     required this.onDeny,
+    this.subject,
   });
 
   final bool enabled;
   final VoidCallback onApprove;
   final VoidCallback onDeny;
+  final String? subject;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +87,10 @@ class DecisionButtons extends StatelessWidget {
         FilledButton(
           style: FilledButton.styleFrom(visualDensity: density),
           onPressed: enabled ? onApprove : null,
-          child: const Text('Approve'),
+          child: Text(
+            'Approve',
+            semanticsLabel: subject == null ? null : 'Approve $subject',
+          ),
         ),
         OutlinedButton(
           style: OutlinedButton.styleFrom(
@@ -66,7 +98,10 @@ class DecisionButtons extends StatelessWidget {
             foregroundColor: context.colors.error,
           ),
           onPressed: enabled ? onDeny : null,
-          child: const Text('Deny'),
+          child: Text(
+            'Deny',
+            semanticsLabel: subject == null ? null : 'Deny $subject',
+          ),
         ),
       ],
     );

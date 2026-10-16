@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:buzz/features/channels/channel_tabs/approval_buttons.dart';
+import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
@@ -110,4 +112,41 @@ void main() {
     await tester.pump();
     expect(find.text('Approved'), findsOneWidget);
   });
+
+  double contrast(Color a, Color b) {
+    final la = a.computeLuminance();
+    final lb = b.computeLuminance();
+    return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+  }
+
+  for (final (name, theme) in [
+    ('light', AppTheme.light()),
+    ('dark', AppTheme.dark()),
+  ]) {
+    for (final decision in OwnerDecision.values) {
+      testWidgets('the ${decision.name} chip text is readable in $name', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: Scaffold(body: TaskDecisionChip(decision: decision)),
+          ),
+        );
+        final box = tester.widget<Container>(
+          find.descendant(
+            of: find.byType(TaskDecisionChip),
+            matching: find.byType(Container),
+          ),
+        );
+        final tint = (box.decoration! as BoxDecoration).color!;
+        final text = tester.widget<Text>(find.byType(Text));
+        final background = Color.alphaBlend(tint, theme.colorScheme.surface);
+        expect(
+          contrast(text.style!.color!, background),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+    }
+  }
 }

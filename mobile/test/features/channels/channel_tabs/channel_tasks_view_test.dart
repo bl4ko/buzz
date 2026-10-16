@@ -113,14 +113,14 @@ void main() {
     expect(inRow('Task 1', find.text('Denied')), findsOneWidget);
     expect(find.text('Approve'), findsNothing);
     expect(find.text('Deny'), findsNothing);
-    expect(inRow('Task 1', find.byTooltip('Mark done')), findsOneWidget);
+    expect(inRow('Task 1', find.byTooltip('Mark Task 1 done')), findsOneWidget);
   });
 
   testWidgets('mark done, open thread, and the collapsible Done group', (
     tester,
   ) async {
     final log = await pump(tester, canSetStatus: true);
-    await tester.tap(inRow('Task 1', find.byTooltip('Mark done')));
+    await tester.tap(inRow('Task 1', find.byTooltip('Mark Task 1 done')));
     await tester.pump();
     await tester.tap(find.text('Task 2'));
     expect(find.text('Task 4'), findsNothing);
@@ -130,7 +130,7 @@ void main() {
     expect(find.text('Task 4'), findsOneWidget);
     expect(find.text('Task 5'), findsOneWidget);
     expect(find.byIcon(BuzzIcons.chevronDown), findsOneWidget);
-    expect(inRow('Task 4', find.byTooltip('Mark done')), findsNothing);
+    expect(inRow('Task 4', find.byTooltip('Mark Task 4 done')), findsNothing);
     await tester.tap(find.text('Done · 2'));
     await tester.pumpAndSettle();
     expect(find.text('Task 4'), findsNothing);
@@ -143,8 +143,9 @@ void main() {
     expect(
       tester.getSemantics(find.byKey(const Key('tasks-done-toggle'))),
       matchesSemantics(
-        label: 'Done · 2',
+        label: 'Done, 2',
         hint: 'Show done tasks',
+        isHeader: true,
         isButton: true,
         hasTapAction: true,
         hasExpandedState: true,
@@ -160,7 +161,7 @@ void main() {
     tester,
   ) async {
     await pump(tester, canSetStatus: false);
-    expect(find.byTooltip('Mark done'), findsNothing);
+    expect(find.byType(IconButton), findsNothing);
     expect(find.text('Approve'), findsNothing);
     expect(find.text('Deny'), findsNothing);
     expect(find.text('Merge PR 7?'), findsOneWidget);
@@ -300,5 +301,65 @@ void main() {
     pending.complete();
     await tester.pump();
     expect(find.text('Approved'), findsOneWidget);
+  });
+
+  testWidgets('actions and headers name the task for VoiceOver', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await pump(tester, canSetStatus: true);
+    for (final title in ['Task 1', 'Task 2', 'Task 3']) {
+      expect(
+        tester.getSemantics(find.byTooltip('Mark $title done')).tooltip,
+        'Mark $title done',
+      );
+    }
+    expect(find.bySemanticsLabel('Approve Task 1'), findsOneWidget);
+    expect(find.bySemanticsLabel('Deny Task 1'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Needs you, 1')),
+      isSemantics(label: 'Needs you, 1', isHeader: true),
+    );
+    semantics.dispose();
+  });
+
+  testWidgets('Mark done is disabled until the publish returns', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    var calls = 0;
+    await tester.pumpWidget(
+      app(
+        ChannelTasksView(
+          state: withAsk('b' * 64),
+          canSetStatus: true,
+          onReact: (_, _) async {},
+          onDone: (_) {
+            calls++;
+            return pending.future;
+          },
+          onOpenThread: (_) {},
+        ),
+      ),
+    );
+    final button = find.byTooltip('Mark Task 1 done');
+    await tester.tap(button);
+    await tester.pump();
+    await tester.tap(button);
+    await tester.pump();
+    expect(calls, 1);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.ancestor(of: button, matching: find.byType(IconButton)),
+          )
+          .onPressed,
+      isNull,
+    );
+    pending.complete();
+    await tester.pump();
+    await tester.tap(button);
+    await tester.pump();
+    expect(calls, 2);
   });
 }
