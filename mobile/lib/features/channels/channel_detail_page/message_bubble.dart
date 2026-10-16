@@ -367,6 +367,20 @@ class _MessageBubble extends HookConsumerWidget {
                         ],
                       ),
                     ),
+                    if (isApprovalRequest(message.tags) &&
+                        isMember &&
+                        !isArchived)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          left: messageAvatarSize + messageAvatarContentGap,
+                        ),
+                        child: ApprovalButtons(
+                          reactions: message.reactions,
+                          onReact: (emoji) => ref
+                              .read(channelActionsProvider)
+                              .addReaction(message.id, emoji),
+                        ),
+                      ),
                     if (message.reactions.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(

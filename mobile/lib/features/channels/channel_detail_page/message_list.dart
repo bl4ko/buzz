@@ -16,6 +16,7 @@ class _MessageList extends HookConsumerWidget {
   final bool isMember;
   final bool isArchived;
   final double appBarTitleContentHeight;
+  final double appBarBottomHeight;
   final double composerBottomInset;
   final FocusNode? composerFocusNode;
   final VoidCallback? restoreComposerFocus;
@@ -36,6 +37,7 @@ class _MessageList extends HookConsumerWidget {
     required this.isMember,
     required this.isArchived,
     required this.appBarTitleContentHeight,
+    this.appBarBottomHeight = 0,
     required this.composerBottomInset,
     this.composerFocusNode,
     this.restoreComposerFocus,
@@ -303,6 +305,7 @@ class _MessageList extends HookConsumerWidget {
           frostedAppBarHeight(
             context,
             titleContentHeight: appBarTitleContentHeight,
+            bottomHeight: appBarBottomHeight,
           ) +
           Grid.twelve;
       double physicalTop(ItemPosition position) =>
@@ -474,6 +477,7 @@ class _MessageList extends HookConsumerWidget {
             frostedAppBarHeight(
               context,
               titleContentHeight: appBarTitleContentHeight,
+              bottomHeight: appBarBottomHeight,
             ) -
             composerBottomInset,
       );
@@ -809,6 +813,7 @@ class _MessageList extends HookConsumerWidget {
                 top: frostedAppBarHeight(
                   context,
                   titleContentHeight: appBarTitleContentHeight,
+                  bottomHeight: appBarBottomHeight,
                 ),
                 bottom: timelineBottomInset,
               ),
@@ -942,6 +947,7 @@ class _MessageList extends HookConsumerWidget {
                 frostedAppBarHeight(
                   context,
                   titleContentHeight: appBarTitleContentHeight,
+                  bottomHeight: appBarBottomHeight,
                 ) +
                 Grid.twelve,
             child: StickyDateHeader(
@@ -957,6 +963,7 @@ class _MessageList extends HookConsumerWidget {
                 frostedAppBarHeight(
                   context,
                   titleContentHeight: appBarTitleContentHeight,
+                  bottomHeight: appBarBottomHeight,
                 ) +
                 Grid.xs,
             child: Center(
