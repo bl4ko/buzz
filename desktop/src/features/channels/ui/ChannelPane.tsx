@@ -51,6 +51,7 @@ import {
 } from "@/features/channels/ui/WelcomeComposerBanner";
 import { useWelcomeComposerBanner } from "@/features/channels/ui/useWelcomeComposerBanner";
 import {
+  getMainComposerPaddingKey,
   mentionsKnownAgent,
   selectThreadComposerBotTypingPubkeys,
   shouldPrioritizeIdleAuxiliary,
@@ -240,7 +241,12 @@ export const ChannelPane = React.memo(function ChannelPane({
   useComposerHeightPadding(
     timelineScrollRef,
     composerWrapperRef,
-    `${activeChannelId}:${isSinglePanelView}:${hasMainComposerOverlay}`,
+    getMainComposerPaddingKey({
+      activeChannelId,
+      hasMainComposerOverlay,
+      hasTabPanel: Boolean(tabPanel),
+      isSinglePanelView,
+    }),
     "css-variable",
     () => messageTimelineRef.current?.settleAtBottom() ?? false,
   );
@@ -702,7 +708,7 @@ export const ChannelPane = React.memo(function ChannelPane({
             {tabPanel ? (
               <div
                 className={cn(
-                  "absolute inset-0 z-30 overflow-y-auto bg-background px-5 pb-6",
+                  "absolute inset-0 z-50 overflow-y-auto bg-background px-5 pb-6",
                   channelChrome.contentPadding,
                 )}
                 data-testid="channel-tab-panel"
