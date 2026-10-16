@@ -33,14 +33,22 @@ let root;
 let container;
 let calls;
 
-async function render(canSetStatus = true, onReactOverride = null) {
-  calls = { opened: [], reacted: [], status: [] };
+async function render(
+  canSetStatus = true,
+  onReactOverride = null,
+  decisions = new Map(),
+) {
+  calls = { opened: [], reacted: [], status: [], refreshed: 0 };
   const state = {
     channelId: "c",
     tasks,
     groups: groupThreadTasks(tasks),
     awaitingCount: 1,
     isLoading: false,
+    decisions,
+    refreshDecisions: () => {
+      calls.refreshed += 1;
+    },
     setStatus: async (t, s) => calls.status.push([t.rootId, s]),
   };
   container = document.createElement("div");
@@ -80,6 +88,7 @@ test("groups, ask, approve, deny, done, and open", async () => {
   await act(async () => q("task-approve").click());
   assert.deepEqual(calls.reacted, [[ASK, "✅"]]);
   assert.equal(q("task-decision").textContent, "Approved");
+  assert.equal(calls.refreshed, 1);
   await act(async () =>
     container.querySelector('[data-testid="task-done"]').click(),
   );
@@ -144,6 +153,8 @@ test("a new ask on the same case shows the buttons again", async () => {
           groups: groupThreadTasks(next),
           awaitingCount: 1,
           isLoading: false,
+          decisions: new Map(),
+          refreshDecisions: () => {},
           setStatus: async () => {},
         },
         canSetStatus: true,
@@ -155,4 +166,31 @@ test("a new ask on the same case shows the buttons again", async () => {
   assert.equal(q("task-decision"), null);
   assert.ok(q("task-approve"));
   assert.match(q("tasks-group-needs-you").textContent, /Delete the branch\?/);
+});
+
+test("a stored owner reaction shows the decision after a remount", async () => {
+  await render(true, null, new Map([[ASK, "deny"]]));
+  assert.equal(q("task-decision").textContent, "Denied");
+  assert.equal(q("task-approve"), null);
+  assert.equal(q("task-deny"), null);
+});
+
+test("the stored reaction wins over the local optimistic decision", async () => {
+  await render();
+  await act(async () => q("task-approve").click());
+  assert.equal(q("task-decision").textContent, "Approved");
+  await act(async () => root.unmount());
+  container.remove();
+  await render(true, null, new Map([[ASK, "deny"]]));
+  assert.equal(q("task-decision").textContent, "Denied");
+});
+
+test("both buttons stay disabled while a send is pending", async () => {
+  let release;
+  await render(true, () => new Promise((resolve) => (release = resolve)));
+  await act(async () => q("task-approve").click());
+  assert.equal(q("task-approve").disabled, true);
+  assert.equal(q("task-deny").disabled, true);
+  await act(async () => release());
+  assert.equal(q("task-decision").textContent, "Approved");
 });

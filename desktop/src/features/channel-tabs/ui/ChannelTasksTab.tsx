@@ -5,6 +5,7 @@ import { Button } from "@/shared/ui/button";
 import {
   APPROVE_EMOJI,
   DENY_EMOJI,
+  type OwnerDecision,
   type ThreadTask,
 } from "../lib/threadStatus";
 import type { ChannelTasksState } from "../useChannelTasks";
@@ -20,12 +21,16 @@ const STATUS_LABEL: Record<ThreadTask["status"], string> = {
 function TaskRow({
   task,
   canSetStatus,
+  stored,
+  onDecided,
   onOpenThread,
   onReact,
   onDone,
 }: {
   task: ThreadTask;
   canSetStatus: boolean;
+  stored: OwnerDecision | undefined;
+  onDecided: () => void;
   onOpenThread: (rootId: string) => void;
   onReact: (eventId: string, emoji: string) => Promise<void>;
   onDone: (task: ThreadTask) => Promise<void>;
@@ -56,7 +61,7 @@ function TaskRow({
   };
   const ask = task.ask;
   const decision =
-    ask && answered?.askId === ask.eventId ? answered.value : null;
+    stored ?? (ask && answered?.askId === ask.eventId ? answered.value : null);
   return (
     <li
       className="flex items-start gap-3 rounded-lg border border-border/60 px-3 py-2"
@@ -94,7 +99,10 @@ function TaskRow({
               void run(
                 () => onReact(ask.eventId, APPROVE_EMOJI),
                 "Couldn't send approval",
-                () => setAnswered({ askId: ask.eventId, value: "approve" }),
+                () => {
+                  setAnswered({ askId: ask.eventId, value: "approve" });
+                  onDecided();
+                },
               )
             }
             size="sm"
@@ -110,7 +118,10 @@ function TaskRow({
               void run(
                 () => onReact(ask.eventId, DENY_EMOJI),
                 "Couldn't send denial",
-                () => setAnswered({ askId: ask.eventId, value: "deny" }),
+                () => {
+                  setAnswered({ askId: ask.eventId, value: "deny" });
+                  onDecided();
+                },
               )
             }
             size="sm"
@@ -168,9 +179,13 @@ export function ChannelTasksTab({
             <TaskRow
               canSetStatus={canSetStatus}
               key={task.rootId}
+              onDecided={tasks.refreshDecisions}
               onDone={onDone}
               onOpenThread={onOpenThread}
               onReact={onReact}
+              stored={
+                task.ask ? tasks.decisions.get(task.ask.eventId) : undefined
+              }
               task={task}
             />
           ))}
