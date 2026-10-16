@@ -35,4 +35,23 @@ void main() {
       'CVE',
     );
   });
+
+  test('names missing from the roster resolve through profile names', () {
+    final zeus = 'a1'.padRight(64, '0');
+    final roster = [(pubkey: zeus, displayName: null)];
+    final merged = searchTabMembers(
+      roster,
+      (pubkey) => pubkey == zeus ? 'Zeus' : null,
+    );
+    final query = resolveSearchTab('from:zeus TASKS', merged);
+    expect(query.authors, [zeus]);
+    expect(query.text, 'TASKS');
+    expect(query.unresolved, isNull);
+    expect(resolveSearchTab('from:zeus TASKS', roster).unresolved, 'zeus');
+  });
+
+  test('a roster display name wins over the profile name', () {
+    final merged = searchTabMembers(members, (_) => 'Other');
+    expect(merged.single.displayName, 'Athene');
+  });
 }
