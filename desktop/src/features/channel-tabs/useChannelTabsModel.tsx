@@ -1,4 +1,5 @@
 import * as React from "react";
+import { toast } from "sonner";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useToggleReactionMutation } from "@/features/messages/hooks";
@@ -9,6 +10,14 @@ import {
   type ChannelTabKey,
   resolveSelectedTab,
 } from "./lib/channelTabItems";
+import {
+  addTab,
+  type ChannelTab,
+  moveTab,
+  removeTab,
+  renameTab,
+} from "./lib/channelTabs";
+import { AddChannelTabDialog } from "./ui/AddChannelTabDialog";
 import { ChannelTabBar } from "./ui/ChannelTabBar";
 import { ChannelTabPanel } from "./ui/ChannelTabPanel";
 import { useChannelFilesAndLinks } from "./useChannelFilesAndLinks";
@@ -81,26 +90,59 @@ export function useChannelTabsModel({
     },
     [reaction],
   );
+  const [dialog, setDialog] = React.useState<{
+    open: boolean;
+    initial: ChannelTab | null;
+  }>({ open: false, initial: null });
+  const saveTabs = React.useCallback(
+    async (next: ChannelTab[]) => {
+      try {
+        await tabs?.save(next);
+      } catch (error) {
+        console.error("Failed to save channel tabs", error);
+        toast.error("Couldn't save the tabs");
+      }
+    },
+    [tabs],
+  );
   const current = resolveSelectedTab(items, selected);
   if (!channelId) return { tabBar: null, tabPanel: null };
+  const allTabs = tabs?.tabs ?? [];
   const tabBar = (
-    <ChannelTabBar
-      canEdit={permissions.canEditTabs}
-      items={items}
-      onAdd={() => {}}
-      onEdit={() => {}}
-      onMove={() => {}}
-      onRemove={() => {}}
-      onSelect={setSelected}
-      selected={current}
-    />
+    <>
+      <ChannelTabBar
+        canEdit={permissions.canEditTabs}
+        items={items}
+        onAdd={() => setDialog({ open: true, initial: null })}
+        onEdit={(tab) => setDialog({ open: true, initial: tab })}
+        onMove={(tab, delta) => void saveTabs(moveTab(allTabs, tab.id, delta))}
+        onRemove={(tab) => void saveTabs(removeTab(allTabs, tab.id))}
+        onSelect={setSelected}
+        selected={current}
+      />
+      <AddChannelTabDialog
+        initial={dialog.initial}
+        onOpenChange={(open) => setDialog((state) => ({ ...state, open }))}
+        onSubmit={async (tab) => {
+          await saveTabs(
+            dialog.initial
+              ? renameTab(allTabs, tab.id, tab.title)
+              : addTab(allTabs, tab),
+          );
+          setDialog({ open: false, initial: null });
+        }}
+        open={dialog.open}
+      />
+    </>
   );
   const tabPanel =
     current === "messages" ? null : (
       <ChannelTabPanel
         canSetStatus={permissions.canSetStatus}
         channelId={channelId}
+        canEditCanvas={permissions.canEditCanvas}
         currentPubkey={currentPubkey}
+        customTabs={tabs?.visible ?? []}
         onOpenThread={onOpenThread}
         files={files}
         onOpenMessage={onOpenMessage}
