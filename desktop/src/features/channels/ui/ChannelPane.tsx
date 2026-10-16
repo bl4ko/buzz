@@ -1,3 +1,4 @@
+import { tabPanelUnderlay } from "@/features/channel-tabs/lib/tabPanelUnderlay";
 import * as React from "react";
 import { LogIn } from "lucide-react";
 import { AnimatePresence } from "motion/react";
@@ -625,80 +626,84 @@ export const ChannelPane = React.memo(function ChannelPane({
             </div>
           ) : null}
           <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
-            <MessageTimeline
-              ref={messageTimelineRef}
-              channelId={activeChannel?.id}
-              channelIntro={channelIntro}
-              directMessageIntro={directMessageIntro}
-              scrollContainerRef={timelineScrollRef}
-              currentPubkey={currentPubkey}
-              fetchOlder={fetchOlder}
-              followThreadById={followThreadById}
-              hasComposerOverlay={hasMainComposerOverlay}
-              hasOlderMessages={hasOlderMessages}
-              historyExhausted={historyExhausted}
-              hideDayDividers={isHuddleTranscript}
-              alwaysShowMessageIdentity={isHuddleTranscript}
-              hideAgentAccessBadges={isHuddleTranscript}
-              pinnedIntro={
-                isHuddleTranscript ? <HuddleTranscriptIntro /> : undefined
-              }
-              huddleMemberPubkeys={huddleMemberPubkeys}
-              huddleMemberPubkeysPending={huddleMemberPubkeysPending}
-              isFetchingOlder={isFetchingOlder}
-              isFollowingThreadById={isFollowingThreadById}
-              isMessageUnreadById={isMessageUnreadById}
-              personaLookup={personaLookup}
-              profiles={profiles}
-              ownerProfiles={ownerProfiles}
-              unfollowThreadById={unfollowThreadById}
-              emptyDescription={
-                activeChannel?.channelType === "forum"
-                  ? "Select a stream or DM to load real message history in this first integration pass."
-                  : "Messages and sub-replies will appear here once the relay has history for this channel."
-              }
-              emptyTitle={
-                activeChannel
-                  ? activeChannel.channelType === "forum"
-                    ? "Forum channels are next"
-                    : "No messages yet"
-                  : "No channel selected"
-              }
-              isError={isTimelineError}
-              isLoading={isHuddleTranscript ? false : isTimelineLoading}
-              onRetry={onRetryTimeline}
-              entranceMessageId={entranceMessageId}
-              onEntranceMessageComplete={onEntranceMessageComplete}
-              mainEntries={mainTimelineEntries}
-              threadSummaries={threadSummaries}
-              messages={visibleMessages}
-              firstUnreadMessageId={firstUnreadMessageId}
-              unreadCount={unreadCount}
-              openUnreadTargetId={openUnreadTargetId}
-              isNewestWindowRefreshed={isNewestWindowRefreshed}
-              onDelete={onDelete}
-              onEdit={handleRoutedEdit}
-              onMarkUnread={onMarkUnread}
-              onMarkRead={onMarkRead}
-              onReply={timelineReplyHandler}
-              onOpenThread={isHuddleTranscript ? undefined : onOpenThread}
-              channelName={activeChannel?.name}
-              channelType={activeChannel?.channelType ?? null}
-              isSendingVideoReviewComment={isSending}
-              onSendVideoReviewComment={
-                activeChannel?.archivedAt ? undefined : onSendVideoReviewComment
-              }
-              onTargetReached={onTargetReached}
-              onToggleReaction={onToggleReaction}
-              {...searchHighlightProps.timeline}
-              targetMessageId={targetMessageId}
-              splitThreadPanelOpen={
-                useSplitAuxiliaryPane &&
-                !useFocusThreadDrawer &&
-                Boolean(openThreadHeadId)
-              }
-              threadUnreadCounts={threadUnreadCounts}
-            />
+            <div {...tabPanelUnderlay(Boolean(tabPanel))}>
+              <MessageTimeline
+                ref={messageTimelineRef}
+                channelId={activeChannel?.id}
+                channelIntro={channelIntro}
+                directMessageIntro={directMessageIntro}
+                scrollContainerRef={timelineScrollRef}
+                currentPubkey={currentPubkey}
+                fetchOlder={fetchOlder}
+                followThreadById={followThreadById}
+                hasComposerOverlay={hasMainComposerOverlay}
+                hasOlderMessages={hasOlderMessages}
+                historyExhausted={historyExhausted}
+                hideDayDividers={isHuddleTranscript}
+                alwaysShowMessageIdentity={isHuddleTranscript}
+                hideAgentAccessBadges={isHuddleTranscript}
+                pinnedIntro={
+                  isHuddleTranscript ? <HuddleTranscriptIntro /> : undefined
+                }
+                huddleMemberPubkeys={huddleMemberPubkeys}
+                huddleMemberPubkeysPending={huddleMemberPubkeysPending}
+                isFetchingOlder={isFetchingOlder}
+                isFollowingThreadById={isFollowingThreadById}
+                isMessageUnreadById={isMessageUnreadById}
+                personaLookup={personaLookup}
+                profiles={profiles}
+                ownerProfiles={ownerProfiles}
+                unfollowThreadById={unfollowThreadById}
+                emptyDescription={
+                  activeChannel?.channelType === "forum"
+                    ? "Select a stream or DM to load real message history in this first integration pass."
+                    : "Messages and sub-replies will appear here once the relay has history for this channel."
+                }
+                emptyTitle={
+                  activeChannel
+                    ? activeChannel.channelType === "forum"
+                      ? "Forum channels are next"
+                      : "No messages yet"
+                    : "No channel selected"
+                }
+                isError={isTimelineError}
+                isLoading={isHuddleTranscript ? false : isTimelineLoading}
+                onRetry={onRetryTimeline}
+                entranceMessageId={entranceMessageId}
+                onEntranceMessageComplete={onEntranceMessageComplete}
+                mainEntries={mainTimelineEntries}
+                threadSummaries={threadSummaries}
+                messages={visibleMessages}
+                firstUnreadMessageId={firstUnreadMessageId}
+                unreadCount={unreadCount}
+                openUnreadTargetId={openUnreadTargetId}
+                isNewestWindowRefreshed={isNewestWindowRefreshed}
+                onDelete={onDelete}
+                onEdit={handleRoutedEdit}
+                onMarkUnread={onMarkUnread}
+                onMarkRead={onMarkRead}
+                onReply={timelineReplyHandler}
+                onOpenThread={isHuddleTranscript ? undefined : onOpenThread}
+                channelName={activeChannel?.name}
+                channelType={activeChannel?.channelType ?? null}
+                isSendingVideoReviewComment={isSending}
+                onSendVideoReviewComment={
+                  activeChannel?.archivedAt
+                    ? undefined
+                    : onSendVideoReviewComment
+                }
+                onTargetReached={onTargetReached}
+                onToggleReaction={onToggleReaction}
+                {...searchHighlightProps.timeline}
+                targetMessageId={targetMessageId}
+                splitThreadPanelOpen={
+                  useSplitAuxiliaryPane &&
+                  !useFocusThreadDrawer &&
+                  Boolean(openThreadHeadId)
+                }
+                threadUnreadCounts={threadUnreadCounts}
+              />
+            </div>
             {tabPanel ? (
               <div
                 className={cn(
