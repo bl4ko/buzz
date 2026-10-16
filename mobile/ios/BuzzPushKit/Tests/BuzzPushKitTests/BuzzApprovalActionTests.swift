@@ -139,6 +139,17 @@ final class BuzzApprovalActionTests: XCTestCase {
     XCTAssertTrue(category.actions.allSatisfy { $0.options.contains(.authenticationRequired) })
     XCTAssertTrue(category.actions[1].options.contains(.destructive))
   }
+
+  func testApprovalCategoryNeedsATarget() {
+    let untargeted = BuzzPushResolution(
+      title: "Hermes", body: "Run rm?", subtitle: nil, threadIdentifier: nil, notificationType: .approval)
+    XCTAssertNil(untargeted.categoryIdentifier)
+    XCTAssertEqual(untargeted.notificationSoundName, "approval.wav")
+    let targeted = BuzzPushResolution(
+      title: "Hermes", body: "Run rm?", subtitle: nil, threadIdentifier: nil, notificationType: .approval,
+      approvalTarget: target)
+    XCTAssertEqual(targeted.categoryIdentifier, "BUZZ_APPROVAL")
+  }
 }
 
 func XCTAssertThrowsErrorAsync(_ body: () async throws -> Void, file: StaticString = #filePath, line: UInt = #line) async {
