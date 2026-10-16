@@ -92,7 +92,7 @@ impl Db {
         let sql = format!(
             "SELECT {EVENT_COLUMNS} FROM events WHERE community_id = $1 AND channel_id = $2 \
              AND kind = ANY($3) AND deleted_at IS NULL \
-             AND ($4::timestamptz IS NULL OR created_at < $4) \
+             AND ($4::timestamptz IS NULL OR created_at <= $4) \
              AND (tags @> '[[\"imeta\"]]'::jsonb OR content ~* 'https?://') \
              ORDER BY created_at DESC, id ASC LIMIT $5"
         );

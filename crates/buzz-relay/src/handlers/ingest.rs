@@ -7397,6 +7397,102 @@ mod postgres_tests {
         }));
     }
 
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn files_and_links_query_returns_attachments_and_links_newest_first() {
+        use buzz_db::channel::{ChannelType, ChannelVisibility};
+        use nostr::{Tag, Timestamp};
+
+        let state = ingest_state().await;
+        let host = format!("files-{}.test", Uuid::new_v4().simple());
+        let community = state
+            .db
+            .ensure_configured_community(&host)
+            .await
+            .expect("community")
+            .id;
+        let tenant = TenantContext::resolved(community, &host);
+        let owner = nostr::Keys::generate();
+        let channel = Uuid::new_v4();
+        state
+            .db
+            .create_channel_with_id(
+                community,
+                channel,
+                &format!("files-{}", channel.simple()),
+                ChannelType::Stream,
+                ChannelVisibility::Private,
+                None,
+                owner.public_key().as_bytes(),
+                None,
+            )
+            .await
+            .expect("create channel");
+        let auth = IngestAuth::Http {
+            pubkey: owner.public_key(),
+            scopes: vec![Scope::MessagesWrite],
+            auth_method: HttpAuthMethod::Nip98,
+        };
+        let now = Timestamp::now().as_secs();
+        let h = Tag::parse(["h", channel.to_string().as_str()]).expect("h");
+        let message = |content: &str, extra: Vec<Tag>, at: u64| {
+            EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), content)
+                .tags([vec![h.clone()], extra].concat())
+                .custom_created_at(Timestamp::from(at))
+                .sign_with_keys(&owner)
+                .expect("sign")
+        };
+        let plain = message("no links here", vec![], now - 3);
+        let link = message("see https://grafana.xqx.uk/d/abc", vec![], now - 2);
+        let file = message(
+            "report",
+            vec![Tag::parse([
+                "imeta",
+                "url https://buzz.bl4ko.com/media/abc.pdf",
+                "m application/pdf",
+            ])
+            .expect("imeta")],
+            now - 1,
+        );
+        for event in [plain, link.clone()] {
+            assert!(
+                ingest_event(&state, &tenant, event, auth.clone())
+                    .await
+                    .expect("message")
+                    .accepted
+            );
+        }
+        state
+            .db
+            .insert_event(community, &file, Some(channel))
+            .await
+            .expect("insert file message");
+        let found = state
+            .db
+            .channel_files_and_links(community, channel, &[KIND_STREAM_MESSAGE as i32], None, 100)
+            .await
+            .expect("files");
+        assert_eq!(
+            found.iter().map(|s| s.event.id).collect::<Vec<_>>(),
+            vec![file.id, link.id]
+        );
+        let at_edge = state
+            .db
+            .channel_files_and_links(
+                community,
+                channel,
+                &[KIND_STREAM_MESSAGE as i32],
+                chrono::DateTime::from_timestamp(link.created_at.as_secs() as i64, 0),
+                100,
+            )
+            .await
+            .expect("edge page");
+        assert_eq!(
+            at_edge.iter().map(|s| s.event.id).collect::<Vec<_>>(),
+            vec![link.id]
+        );
+    }
+
     /// An owner's timeout reaches its agent, and it is enforced before command
     /// routing: a DM open (a command kind) is refused, while a report and the
     /// restriction-lifting commands stay admitted.
