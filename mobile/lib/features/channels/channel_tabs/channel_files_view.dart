@@ -136,6 +136,11 @@ class _ChannelFilesViewState extends State<ChannelFilesView> {
               child: Text('No files or links found.'),
             ),
           ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: Grid.twelve + MediaQuery.paddingOf(context).bottom,
+          ),
+        ),
       ],
     );
   }
