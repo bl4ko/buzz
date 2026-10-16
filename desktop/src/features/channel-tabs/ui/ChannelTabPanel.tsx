@@ -16,6 +16,7 @@ export function ChannelTabPanel({
   onReact,
   files,
   onOpenMessage,
+  onOpenMessageId,
 }: {
   selected: ChannelTabKey;
   channelId: string;
@@ -26,12 +27,17 @@ export function ChannelTabPanel({
   onReact: (eventId: string, emoji: string) => Promise<void>;
   files: ReturnType<typeof useChannelFilesAndLinks>;
   onOpenMessage: (item: FileLinkItem) => void;
+  onOpenMessageId: (messageId: string, rootId: string | null) => void;
 }) {
   if (selected === "files")
     return <ChannelFilesTab files={files} onOpenMessage={onOpenMessage} />;
   if (selected === "pins")
     return (
-      <ChannelPinsTab channelId={channelId} currentPubkey={currentPubkey} />
+      <ChannelPinsTab
+        channelId={channelId}
+        currentPubkey={currentPubkey}
+        onOpenMessage={onOpenMessageId}
+      />
     );
   if (selected === "tasks" && tasks)
     return (

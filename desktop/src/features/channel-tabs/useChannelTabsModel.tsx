@@ -60,16 +60,20 @@ export function useChannelTabsModel({
     },
     [channelId, goChannel, setSelected],
   );
-  const onOpenMessage = React.useCallback(
-    (item: FileLinkItem) => {
+  const onOpenMessageId = React.useCallback(
+    (messageId: string, rootId: string | null) => {
       if (!channelId) return;
       setSelected("messages");
       void goChannel(channelId, {
-        messageId: item.messageId,
-        threadRootId: item.rootId ?? undefined,
+        messageId,
+        threadRootId: rootId ?? undefined,
       });
     },
     [channelId, goChannel, setSelected],
+  );
+  const onOpenMessage = React.useCallback(
+    (item: FileLinkItem) => onOpenMessageId(item.messageId, item.rootId),
+    [onOpenMessageId],
   );
   const onReact = React.useCallback(
     async (eventId: string, emoji: string) => {
@@ -100,6 +104,7 @@ export function useChannelTabsModel({
         onOpenThread={onOpenThread}
         files={files}
         onOpenMessage={onOpenMessage}
+        onOpenMessageId={onOpenMessageId}
         onReact={onReact}
         selected={current}
         tasks={tasks}
