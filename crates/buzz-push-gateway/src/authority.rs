@@ -93,6 +93,30 @@ impl DeliveryPermit {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SealedToken {
+    pub ciphertext: Vec<u8>,
+    pub fingerprint: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveActivityTarget {
+    pub start_ciphertext: Vec<u8>,
+    pub update_ciphertext: Option<Vec<u8>>,
+    pub started_at: Option<i64>,
+}
+
+pub const MAX_LIVE_ACTIVITY_ORIGINS: usize = 16;
+pub const LIVE_ACTIVITY_UPDATE_RETENTION_SECONDS: i64 = 12 * 3600;
+
+pub(crate) fn valid_origin_hashes(origin_hashes: &[[u8; 32]]) -> bool {
+    origin_hashes.len() <= MAX_LIVE_ACTIVITY_ORIGINS
+        && origin_hashes
+            .iter()
+            .enumerate()
+            .all(|(i, hash)| !origin_hashes[..i].contains(hash))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeliveryDisposition {
     Terminal,
@@ -107,6 +131,8 @@ pub enum AuthorityError {
     Conflict,
     #[error("authority request rate exceeded")]
     RateLimited,
+    #[error("authority record not found")]
+    NotFound,
     #[error("authority store unavailable")]
     Unavailable,
 }
@@ -205,6 +231,49 @@ pub trait AuthorityStore: Send + Sync {
     ) -> Result<(), AuthorityError>;
     /// Delete only data whose safety retention window has elapsed.
     async fn reap_expired(&self, now: i64) -> Result<(), AuthorityError>;
+    async fn replace_live_activity_registration(
+        &self,
+        installation: Uuid,
+        start: Option<SealedToken>,
+        origin_hashes: Vec<[u8; 32]>,
+        now: i64,
+    ) -> Result<(), AuthorityError>;
+    async fn set_live_activity_update_token(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        token: Option<SealedToken>,
+        now: i64,
+    ) -> Result<(), AuthorityError>;
+    async fn live_activity_target(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        now: i64,
+    ) -> Result<Option<LiveActivityTarget>, AuthorityError>;
+    async fn record_live_activity_start(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        now: i64,
+    ) -> Result<(), AuthorityError>;
+    async fn clear_live_activity(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        now: i64,
+    ) -> Result<(), AuthorityError>;
+}
+
+struct MemoryLiveActivityStart {
+    token: SealedToken,
+    origin_hashes: Vec<[u8; 32]>,
+}
+
+struct MemoryLiveActivity {
+    update: Option<SealedToken>,
+    started_at: Option<i64>,
+    expires_at: i64,
 }
 
 #[derive(Default)]
@@ -217,6 +286,22 @@ struct MemoryState {
     delivery_auth_replays: HashMap<(String, String), i64>,
     delivery_request_replays: HashMap<(String, Uuid), i64>,
     endpoint_quotas: HashMap<[u8; 32], (i64, i64)>,
+    live_activity_starts: HashMap<Uuid, MemoryLiveActivityStart>,
+    live_activities: HashMap<(Uuid, [u8; 32]), MemoryLiveActivity>,
+}
+
+impl MemoryState {
+    fn drop_live_activities(&mut self, installation: Uuid) {
+        self.live_activity_starts.remove(&installation);
+        self.live_activities
+            .retain(|(id, _), _| *id != installation);
+    }
+
+    fn registered_origin(&self, installation: Uuid, origin_hash: [u8; 32]) -> bool {
+        self.live_activity_starts
+            .get(&installation)
+            .is_some_and(|start| start.origin_hashes.contains(&origin_hash))
+    }
 }
 
 /// Executable reference store used by conformance tests. Production uses the
@@ -311,6 +396,7 @@ impl AuthorityStore for MemoryAuthorityStore {
                 .retain(|(installation_id, _), _| *installation_id != id);
             s.delegation_ids
                 .retain(|_, (installation_id, _)| *installation_id != id);
+            s.drop_live_activities(id);
         }
         s.token_owners.insert(token_key, n.id);
         s.installations.insert(
@@ -513,6 +599,7 @@ impl AuthorityStore for MemoryAuthorityStore {
         }
         i.endpoint_epoch = new;
         i.revoked = true;
+        s.drop_live_activities(id);
         Ok(())
     }
 
@@ -612,9 +699,152 @@ impl AuthorityStore for MemoryAuthorityStore {
             .retain(|_, expires_at| *expires_at >= now);
         s.endpoint_quotas
             .retain(|_, (started_at, _)| now.saturating_sub(*started_at) < 86_400);
+        s.live_activities
+            .retain(|_, activity| activity.expires_at >= now);
+        let expired = s
+            .live_activity_starts
+            .keys()
+            .filter(|id| {
+                s.installations
+                    .get(id)
+                    .is_none_or(|installation| installation.expires_at < now)
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        for id in expired {
+            s.drop_live_activities(id);
+        }
+        Ok(())
+    }
+
+    async fn replace_live_activity_registration(
+        &self,
+        installation: Uuid,
+        start: Option<SealedToken>,
+        origin_hashes: Vec<[u8; 32]>,
+        now: i64,
+    ) -> Result<(), AuthorityError> {
+        if !valid_origin_hashes(&origin_hashes) {
+            return Err(AuthorityError::Rejected);
+        }
+        let mut s = self.0.lock().map_err(|_| AuthorityError::Unavailable)?;
+        if !s
+            .installations
+            .get(&installation)
+            .is_some_and(|i| !i.revoked && i.expires_at >= now)
+        {
+            return Err(AuthorityError::Rejected);
+        }
+        match start {
+            Some(token) if !origin_hashes.is_empty() => {
+                s.live_activities.retain(|(id, origin), _| {
+                    *id != installation || origin_hashes.contains(origin)
+                });
+                s.live_activity_starts.insert(
+                    installation,
+                    MemoryLiveActivityStart {
+                        token,
+                        origin_hashes,
+                    },
+                );
+            }
+            _ => s.drop_live_activities(installation),
+        }
+        Ok(())
+    }
+
+    async fn set_live_activity_update_token(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        token: Option<SealedToken>,
+        now: i64,
+    ) -> Result<(), AuthorityError> {
+        let mut s = self.0.lock().map_err(|_| AuthorityError::Unavailable)?;
+        if !s.registered_origin(installation, origin_hash) {
+            return Err(AuthorityError::NotFound);
+        }
+        let key = (installation, origin_hash);
+        match token {
+            Some(token) => {
+                let activity = s.live_activities.entry(key).or_insert(MemoryLiveActivity {
+                    update: None,
+                    started_at: None,
+                    expires_at: now,
+                });
+                activity.update = Some(token);
+                activity.expires_at = now.saturating_add(LIVE_ACTIVITY_UPDATE_RETENTION_SECONDS);
+            }
+            None => {
+                s.live_activities.remove(&key);
+            }
+        }
+        Ok(())
+    }
+
+    async fn live_activity_target(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        _now: i64,
+    ) -> Result<Option<LiveActivityTarget>, AuthorityError> {
+        let s = self.0.lock().map_err(|_| AuthorityError::Unavailable)?;
+        let Some(start) = s
+            .live_activity_starts
+            .get(&installation)
+            .filter(|start| start.origin_hashes.contains(&origin_hash))
+        else {
+            return Ok(None);
+        };
+        let activity = s.live_activities.get(&(installation, origin_hash));
+        Ok(Some(LiveActivityTarget {
+            start_ciphertext: start.token.ciphertext.clone(),
+            update_ciphertext: activity
+                .and_then(|a| a.update.as_ref())
+                .map(|token| token.ciphertext.clone()),
+            started_at: activity.and_then(|a| a.started_at),
+        }))
+    }
+
+    async fn record_live_activity_start(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        now: i64,
+    ) -> Result<(), AuthorityError> {
+        let mut s = self.0.lock().map_err(|_| AuthorityError::Unavailable)?;
+        if !s.registered_origin(installation, origin_hash) {
+            return Err(AuthorityError::NotFound);
+        }
+        s.live_activities.insert(
+            (installation, origin_hash),
+            MemoryLiveActivity {
+                update: None,
+                started_at: Some(now),
+                expires_at: now.saturating_add(LIVE_ACTIVITY_UPDATE_RETENTION_SECONDS),
+            },
+        );
+        Ok(())
+    }
+
+    async fn clear_live_activity(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        _now: i64,
+    ) -> Result<(), AuthorityError> {
+        self.0
+            .lock()
+            .map_err(|_| AuthorityError::Unavailable)?
+            .live_activities
+            .remove(&(installation, origin_hash));
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "authority/live_activity_conformance.rs"]
+pub(crate) mod live_activity_conformance;
 
 #[cfg(test)]
 mod tests {
@@ -674,6 +904,34 @@ mod tests {
             .await
             .unwrap();
         store
+    }
+
+    #[tokio::test]
+    async fn live_activity_registration_replaces_origins() {
+        live_activity_conformance::registration_replaces_origins(&MemoryAuthorityStore::default())
+            .await;
+    }
+
+    #[tokio::test]
+    async fn update_token_needs_registered_origin() {
+        live_activity_conformance::update_token_needs_registered_origin(
+            &MemoryAuthorityStore::default(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn revoke_installation_drops_live_activity_rows() {
+        live_activity_conformance::revoke_installation_drops_live_activity_rows(
+            &MemoryAuthorityStore::default(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn reaper_drops_stale_update_rows() {
+        live_activity_conformance::reaper_drops_stale_update_rows(&MemoryAuthorityStore::default())
+            .await;
     }
 
     #[tokio::test]

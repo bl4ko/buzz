@@ -125,6 +125,7 @@ fn authority_error(e: AuthorityError) -> Response {
         AuthorityError::Rejected => error(StatusCode::NOT_FOUND, "not_authorized"),
         AuthorityError::Conflict => installation_conflict(),
         AuthorityError::RateLimited => error(StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
+        AuthorityError::NotFound => error(StatusCode::NOT_FOUND, "not_found"),
         AuthorityError::Unavailable => {
             error(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable")
         }
@@ -719,7 +720,7 @@ async fn deliver(
             crate::metrics::record_delivery_error("invalid_grant");
             return error(StatusCode::NOT_FOUND, "invalid_grant");
         }
-        Err(AuthorityError::Conflict) => {
+        Err(AuthorityError::Conflict | AuthorityError::NotFound) => {
             crate::metrics::record_admission(crate::metrics::Admission::Rejected);
             crate::metrics::record_delivery_error("invalid_grant");
             return error(StatusCode::NOT_FOUND, "invalid_grant");

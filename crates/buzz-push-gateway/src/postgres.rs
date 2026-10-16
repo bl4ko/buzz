@@ -10,6 +10,11 @@ use uuid::Uuid;
 #[cfg(test)]
 #[path = "postgres/bootstrap_tests.rs"]
 mod bootstrap_postgres_tests;
+#[path = "postgres/live_activity.rs"]
+mod live_activity;
+#[cfg(test)]
+#[path = "postgres/live_activity_tests.rs"]
+mod live_activity_postgres_tests;
 
 static GATEWAY_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
@@ -57,7 +62,9 @@ impl PostgresAuthorityStore {
                push_gateway_delegations,
                push_gateway_endpoint_quotas,
                push_gateway_delivery_auth_replays,
-               push_gateway_delivery_request_replays
+               push_gateway_delivery_request_replays,
+               push_gateway_live_activity_starts,
+               push_gateway_live_activities
              TO {role};"
         );
         sqlx::raw_sql(AssertSqlSafe(grants)).execute(pool).await?;
@@ -95,7 +102,7 @@ impl AuthorityStore for PostgresAuthorityStore {
             "push_gateway_delivery_request_replays",
         ];
         let mut tx = self.pool.begin().await.map_err(db)?;
-        for table in TABLES {
+        for table in TABLES.into_iter().chain(live_activity::TABLES) {
             let ready: bool = sqlx::query_scalar(
                 "SELECT to_regclass($1) IS NOT NULL
                     AND COALESCE(has_table_privilege(current_user, to_regclass($1), 'SELECT'), false)
@@ -212,6 +219,7 @@ impl AuthorityStore for PostgresAuthorityStore {
             .filter_map(|(id, expires_at)| (expires_at < now_at).then_some(id))
             .collect::<Vec<_>>();
         if !expired.is_empty() {
+            live_activity::delete_installation_rows(&mut tx, &expired).await?;
             sqlx::query("DELETE FROM push_gateway_delegations WHERE installation_id = ANY($1)")
                 .bind(&expired)
                 .execute(&mut *tx)
@@ -401,7 +409,12 @@ impl AuthorityStore for PostgresAuthorityStore {
         if new != expected.checked_add(1).ok_or(AuthorityError::Rejected)? {
             return Err(AuthorityError::Rejected);
         }
-        let result=sqlx::query("UPDATE push_gateway_installations SET endpoint_epoch=$3,revoked_at=now(),updated_at=now() WHERE id=$1 AND endpoint_epoch=$2 AND revoked_at IS NULL").bind(id).bind(expected).bind(new).execute(&self.pool).await.map_err(db)?;
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        let result=sqlx::query("UPDATE push_gateway_installations SET endpoint_epoch=$3,revoked_at=now(),updated_at=now() WHERE id=$1 AND endpoint_epoch=$2 AND revoked_at IS NULL").bind(id).bind(expected).bind(new).execute(&mut *tx).await.map_err(db)?;
+        if result.rows_affected() == 1 {
+            live_activity::delete_installation_rows(&mut tx, &[id]).await?;
+        }
+        tx.commit().await.map_err(db)?;
         if result.rows_affected() != 1 {
             let already_revoked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM push_gateway_installations WHERE id=$1 AND endpoint_epoch=$2 AND revoked_at IS NOT NULL)").bind(id).bind(new).fetch_one(&self.pool).await.map_err(db)?;
             if !already_revoked {
@@ -539,6 +552,7 @@ impl AuthorityStore for PostgresAuthorityStore {
         .execute(&mut *tx)
         .await
         .map_err(db)?;
+        live_activity::reap(&mut tx, now).await?;
         // Revoked rows are idempotency tombstones for cleanup retries, so keep
         // them for the full authority lifetime. A parent may expire before an
         // otherwise-active child; reap every child of an expired parent first
@@ -564,6 +578,54 @@ impl AuthorityStore for PostgresAuthorityStore {
         tx.commit().await.map_err(db)?;
         Ok(())
     }
+
+    async fn replace_live_activity_registration(
+        &self,
+        installation: Uuid,
+        start: Option<SealedToken>,
+        origin_hashes: Vec<[u8; 32]>,
+        now: i64,
+    ) -> Result<(), AuthorityError> {
+        live_activity::replace_registration(&self.pool, installation, start, origin_hashes, now)
+            .await
+    }
+
+    async fn set_live_activity_update_token(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        token: Option<SealedToken>,
+        now: i64,
+    ) -> Result<(), AuthorityError> {
+        live_activity::set_update_token(&self.pool, installation, origin_hash, token, now).await
+    }
+
+    async fn live_activity_target(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        _now: i64,
+    ) -> Result<Option<LiveActivityTarget>, AuthorityError> {
+        live_activity::target(&self.pool, installation, origin_hash).await
+    }
+
+    async fn record_live_activity_start(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        now: i64,
+    ) -> Result<(), AuthorityError> {
+        live_activity::record_start(&self.pool, installation, origin_hash, now).await
+    }
+
+    async fn clear_live_activity(
+        &self,
+        installation: Uuid,
+        origin_hash: [u8; 32],
+        _now: i64,
+    ) -> Result<(), AuthorityError> {
+        live_activity::clear(&self.pool, installation, origin_hash).await
+    }
 }
 
 #[cfg(test)]
@@ -571,7 +633,7 @@ mod postgres_tests {
     use super::*;
     use sqlx::{postgres::PgPoolOptions, AssertSqlSafe};
 
-    const TEST_DB_URL: &str = "postgres://buzz:buzz_dev@localhost:5432/buzz"; // sadscan:disable np.postgres.1 -- fixed localhost-only test credential
+    pub(super) const TEST_DB_URL: &str = "postgres://buzz:buzz_dev@localhost:5432/buzz"; // sadscan:disable np.postgres.1 -- fixed localhost-only test credential
 
     #[tokio::test]
     #[ignore = "requires PostgreSQL with CREATEDB/CREATEROLE"]
@@ -720,6 +782,14 @@ mod postgres_tests {
                  installation_id UUID NOT NULL REFERENCES push_gateway_installations(id),
                  expires_at TIMESTAMPTZ NOT NULL,
                  revoked_at TIMESTAMPTZ
+             );
+             CREATE TABLE push_gateway_live_activity_starts (
+                 installation_id UUID PRIMARY KEY REFERENCES push_gateway_installations(id)
+             );
+             CREATE TABLE push_gateway_live_activities (
+                 installation_id UUID NOT NULL
+                     REFERENCES push_gateway_live_activity_starts(installation_id) ON DELETE CASCADE,
+                 expires_at TIMESTAMPTZ NOT NULL
              );",
         )
         .execute(&pool)
@@ -816,7 +886,7 @@ mod postgres_tests {
     // Full authority schema in a private search_path so a multi-connection pool
     // exercises the real PK/UNIQUE replay fences that the memory store's single
     // mutex cannot. Returns (pool, schema) for teardown.
-    async fn full_schema(max_connections: u32) -> (PgPool, String) {
+    pub(super) async fn full_schema(max_connections: u32) -> (PgPool, String) {
         let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
             .or_else(|_| std::env::var("DATABASE_URL"))
             .unwrap_or_else(|_| TEST_DB_URL.to_owned());
@@ -1278,7 +1348,7 @@ mod postgres_tests {
         drop_schema(&schema).await;
     }
 
-    async fn drop_schema(schema: &str) {
+    pub(super) async fn drop_schema(schema: &str) {
         let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
             .or_else(|_| std::env::var("DATABASE_URL"))
             .unwrap_or_else(|_| TEST_DB_URL.to_owned());
