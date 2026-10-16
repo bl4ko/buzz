@@ -817,17 +817,30 @@ async fn handle_channel_window_filter(
 
     // 3. Thread-summary overlays: one relay-signed 39005 per row with replies.
     if extension_flag(raw, "include_summaries") {
+        let summarized: Vec<String> = window
+            .rows
+            .iter()
+            .filter(|row| row.thread_summary.is_some())
+            .map(|row| row.stored_event.event.id.to_hex())
+            .collect();
+        let statuses = state
+            .db
+            .latest_thread_statuses(tenant.community(), ch_id, &summarized)
+            .await
+            .map_err(|e| internal_error(&format!("thread status overlay: {e}")))?;
+        let status_by_root: std::collections::HashMap<String, &buzz_core::StoredEvent> = statuses
+            .iter()
+            .filter_map(|s| buzz_db::event::extract_d_tag(&s.event).map(|d| (d, s)))
+            .collect();
         for row in &window.rows {
             let Some(summary) = &row.thread_summary else {
                 continue;
             };
             let root_hex = row.stored_event.event.id.to_hex();
-            let content = serde_json::json!({
-                "reply_count": summary.reply_count,
-                "descendant_count": summary.descendant_count,
-                "last_reply_at": summary.last_reply_at.map(|t| t.timestamp()),
-                "participants": summary.participants.iter().map(hex::encode).collect::<Vec<_>>(),
-            });
+            let content = crate::thread_summary::thread_summary_content(
+                summary,
+                status_by_root.get(&root_hex).copied(),
+            );
             let tags = vec![
                 parse_tag(["e", &root_hex])?,
                 parse_tag(["d", &root_hex])?,

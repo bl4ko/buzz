@@ -3578,6 +3578,13 @@ async fn ingest_event_inner(
         );
     }
 
+    if kind_u32 == KIND_THREAD_STATUS {
+        let status_root = buzz_db::event::extract_d_tag(&event).and_then(|d| hex::decode(d).ok());
+        if let (Some(channel), Some(root)) = (channel_id, status_root) {
+            crate::handlers::side_effects::emit_live_thread_summary(tenant, state, channel, root);
+        }
+    }
+
     let pubkey_hex = auth.pubkey().to_hex();
     // Spec WriteInsert (line 514) / WriteInsertGlobal (line 559) /
     // WriteDuplicate (line 606): emit the abstract write at the trailing
@@ -7249,6 +7256,145 @@ mod postgres_tests {
                 other => panic!("expected {want:?}, got {:?}", other.map(|r| r.message)),
             }
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn thread_status_tie_prefers_lower_event_id() {
+        use buzz_db::channel::{ChannelType, ChannelVisibility, MemberRole};
+        use nostr::{Tag, Timestamp};
+
+        let state = ingest_state().await;
+        let (tenant, _agent_owner, agent) = owned_agent_fixture(&state, "status-tie").await;
+        let community = tenant.community();
+        let (creator, boss) = (nostr::Keys::generate(), nostr::Keys::generate());
+        state
+            .db
+            .bootstrap_owner(community, &boss.public_key().to_hex())
+            .await
+            .expect("community owner");
+        let channel = Uuid::new_v4();
+        state
+            .db
+            .create_channel_with_id(
+                community,
+                channel,
+                &format!("tie-{}", channel.simple()),
+                ChannelType::Stream,
+                ChannelVisibility::Private,
+                None,
+                creator.public_key().as_bytes(),
+                None,
+            )
+            .await
+            .expect("create channel");
+        state
+            .db
+            .add_member(
+                community,
+                channel,
+                agent.public_key().as_bytes(),
+                MemberRole::Member,
+                Some(creator.public_key().as_bytes()),
+            )
+            .await
+            .expect("add agent");
+        state
+            .db
+            .add_member(
+                community,
+                channel,
+                boss.public_key().as_bytes(),
+                MemberRole::Member,
+                Some(creator.public_key().as_bytes()),
+            )
+            .await
+            .expect("add owner");
+        let auth = |keys: &nostr::Keys| IngestAuth::Http {
+            pubkey: keys.public_key(),
+            scopes: vec![Scope::MessagesWrite],
+            auth_method: HttpAuthMethod::Nip98,
+        };
+        let now = Timestamp::now().as_secs();
+        let h = Tag::parse(["h", channel.to_string().as_str()]).expect("h");
+        let mut roots = Vec::new();
+        for offset in 0..23u64 {
+            let root = EventBuilder::new(
+                Kind::Custom(KIND_STREAM_MESSAGE as u16),
+                format!("case {offset}"),
+            )
+            .tags([h.clone()])
+            .custom_created_at(Timestamp::from(now - 30 - offset))
+            .sign_with_keys(&agent)
+            .expect("sign root");
+            assert!(
+                ingest_event(&state, &tenant, root.clone(), auth(&agent))
+                    .await
+                    .expect("root")
+                    .accepted
+            );
+            roots.push(root.id.to_hex());
+        }
+        let status = |keys: &nostr::Keys, root: &str, value: &str, at: u64| {
+            EventBuilder::new(Kind::Custom(KIND_THREAD_STATUS as u16), "")
+                .tags([
+                    Tag::parse(["d", root]).expect("d"),
+                    h.clone(),
+                    Tag::parse(["e", root]).expect("e"),
+                    Tag::parse(["status", value]).expect("status"),
+                    Tag::parse(["title", "Case"]).expect("title"),
+                ])
+                .custom_created_at(Timestamp::from(at))
+                .sign_with_keys(keys)
+                .expect("sign status")
+        };
+        let first = status(&boss, &roots[0], "blocked", now);
+        let second = status(&agent, &roots[0], "in_progress", now);
+        let winner = first.id.min(second.id);
+        for (event, keys) in [(first, &boss), (second, &agent)] {
+            assert!(
+                ingest_event(&state, &tenant, event, auth(keys))
+                    .await
+                    .expect("status")
+                    .accepted
+            );
+        }
+        for (index, root) in roots.iter().enumerate().skip(1) {
+            let event = status(&agent, root, "done", now - index as u64);
+            assert!(
+                ingest_event(&state, &tenant, event, auth(&agent))
+                    .await
+                    .expect("done")
+                    .accepted
+            );
+        }
+        let latest = state
+            .db
+            .latest_thread_statuses(community, channel, std::slice::from_ref(&roots[0]))
+            .await
+            .expect("latest");
+        assert_eq!(latest.len(), 1);
+        assert_eq!(latest[0].event.id, winner);
+        let tasks = state
+            .db
+            .channel_task_statuses(community, channel, 20)
+            .await
+            .expect("tasks");
+        let done: Vec<_> = tasks
+            .iter()
+            .filter(|s| {
+                s.event
+                    .tags
+                    .iter()
+                    .any(|t| t.as_slice() == ["status", "done"])
+            })
+            .collect();
+        assert_eq!(tasks.len(), 21);
+        assert_eq!(done.len(), 20);
+        assert!(done.iter().all(|s| {
+            let d = buzz_db::event::extract_d_tag(&s.event).expect("d");
+            d != roots[21] && d != roots[22]
+        }));
     }
 
     /// An owner's timeout reaches its agent, and it is enforced before command
