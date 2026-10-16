@@ -665,6 +665,10 @@ pub async fn run_live_activity_worker(state: Arc<AppState>) {
 }
 
 #[cfg(test)]
+#[path = "live_activity_e2e_postgres_tests.rs"]
+mod live_activity_e2e_postgres_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;

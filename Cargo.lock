@@ -1439,6 +1439,7 @@ dependencies = [
  "buzz-deletion",
  "buzz-media",
  "buzz-pubsub",
+ "buzz-push-gateway",
  "buzz-relay-mesh",
  "buzz-sdk",
  "buzz-search",
