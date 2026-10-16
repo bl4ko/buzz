@@ -7113,6 +7113,144 @@ mod postgres_tests {
         assert_eq!(statuses, ["awaiting_owner", "open"]);
     }
 
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn channel_tabs_and_canvas_docs_enforce_roles_and_shape() {
+        use buzz_db::channel::{ChannelType, ChannelVisibility, MemberRole};
+        use nostr::Tag;
+
+        let state = ingest_state().await;
+        let host = format!("tabs-{}.test", Uuid::new_v4().simple());
+        let community = state
+            .db
+            .ensure_configured_community(&host)
+            .await
+            .expect("community")
+            .id;
+        let tenant = TenantContext::resolved(community, &host);
+        let (creator, admin, member, guest) = (
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+        );
+        let channel = Uuid::new_v4();
+        state
+            .db
+            .create_channel_with_id(
+                community,
+                channel,
+                &format!("tabs-{}", channel.simple()),
+                ChannelType::Stream,
+                ChannelVisibility::Private,
+                None,
+                creator.public_key().as_bytes(),
+                None,
+            )
+            .await
+            .expect("create channel");
+        for (keys, role) in [
+            (&admin, MemberRole::Admin),
+            (&member, MemberRole::Member),
+            (&guest, MemberRole::Guest),
+        ] {
+            state
+                .db
+                .add_member(
+                    community,
+                    channel,
+                    keys.public_key().as_bytes(),
+                    role,
+                    Some(creator.public_key().as_bytes()),
+                )
+                .await
+                .expect("add member");
+        }
+        let auth = |keys: &nostr::Keys| IngestAuth::Http {
+            pubkey: keys.public_key(),
+            scopes: vec![Scope::MessagesWrite],
+            auth_method: HttpAuthMethod::Nip98,
+        };
+        let ch = channel.to_string();
+        let signed = |keys: &nostr::Keys, kind: u32, d: &str, content: &str| {
+            EventBuilder::new(Kind::Custom(kind as u16), content)
+                .tags([
+                    Tag::parse(["d", d]).expect("d"),
+                    Tag::parse(["h", ch.as_str()]).expect("h"),
+                ])
+                .sign_with_keys(keys)
+                .expect("sign")
+        };
+        let tabs =
+            r#"[{"id":"t1","type":"link","title":"Grafana","value":"https://grafana.xqx.uk"}]"#;
+        let canvas_d = format!("{ch}:notes");
+        for (event, keys) in [
+            (signed(&creator, KIND_CHANNEL_TABS, &ch, tabs), &creator),
+            (signed(&admin, KIND_CHANNEL_TABS, &ch, tabs), &admin),
+            (
+                signed(&member, KIND_CHANNEL_CANVAS_DOC, &canvas_d, "# Notes"),
+                &member,
+            ),
+            (
+                signed(
+                    &admin,
+                    KIND_CHANNEL_CANVAS_DOC,
+                    &canvas_d,
+                    &"x".repeat(65_536),
+                ),
+                &admin,
+            ),
+        ] {
+            let result = ingest_event(&state, &tenant, event, auth(keys))
+                .await
+                .expect("accepted");
+            assert!(result.accepted, "{}", result.message);
+        }
+        let rejected = [
+            (
+                signed(&member, KIND_CHANNEL_TABS, &ch, tabs),
+                &member,
+                "restricted: channel tabs need a channel owner or admin",
+            ),
+            (
+                signed(&creator, KIND_CHANNEL_TABS, "other", tabs),
+                &creator,
+                "invalid: channel tabs d tag must equal the h channel",
+            ),
+            (
+                signed(&creator, KIND_CHANNEL_TABS, &ch, "{}"),
+                &creator,
+                "invalid: channel tabs content must be a JSON tab list",
+            ),
+            (
+                signed(&guest, KIND_CHANNEL_CANVAS_DOC, &canvas_d, "x"),
+                &guest,
+                "restricted: canvas author must be a channel member",
+            ),
+            (
+                signed(&member, KIND_CHANNEL_CANVAS_DOC, "other:notes", "x"),
+                &member,
+                "invalid: canvas d tag must be <channel-id>:<canvas-id>",
+            ),
+            (
+                signed(
+                    &member,
+                    KIND_CHANNEL_CANVAS_DOC,
+                    &canvas_d,
+                    &"x".repeat(65_537),
+                ),
+                &member,
+                "invalid: canvas content exceeds 65536 bytes",
+            ),
+        ];
+        for (event, keys, want) in rejected {
+            match ingest_event(&state, &tenant, event, auth(keys)).await {
+                Err(IngestError::Rejected(msg)) => assert!(msg.starts_with(want), "{msg}"),
+                other => panic!("expected {want:?}, got {:?}", other.map(|r| r.message)),
+            }
+        }
+    }
+
     /// An owner's timeout reaches its agent, and it is enforced before command
     /// routing: a DM open (a command kind) is refused, while a report and the
     /// restriction-lifting commands stay admitted.
