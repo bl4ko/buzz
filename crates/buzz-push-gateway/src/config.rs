@@ -16,6 +16,44 @@ pub struct AppProfileConfig {
     pub apns_cert_path: PathBuf,
     pub apns_topic: String,
     pub apns_environment: ApnsEnvironment,
+    pub live_activity: Option<LiveActivityCredentials>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveActivityCredentials {
+    pub auth_key_path: PathBuf,
+    pub key_id: String,
+    pub team_id: String,
+}
+
+fn parse_live_activity(
+    e: &HashMap<String, String>,
+) -> Result<Option<LiveActivityCredentials>, ConfigError> {
+    const KEYS: [&str; 3] = [
+        "BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_PATH",
+        "BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID",
+        "BUZZ_PUSH_DOGFOOD_APNS_TEAM_ID",
+    ];
+    let values = KEYS.map(|key| e.get(key).map(String::as_str).filter(|v| !v.is_empty()));
+    let [Some(path), Some(key_id), Some(team_id)] = values else {
+        return match KEYS.iter().zip(values).find(|(_, value)| value.is_none()) {
+            Some((key, _)) if values.iter().any(Option::is_some) => Err(ConfigError::Missing(key)),
+            _ => Ok(None),
+        };
+    };
+    let apple_id =
+        |value: &str| value.len() == 10 && value.bytes().all(|b| b.is_ascii_alphanumeric());
+    if !apple_id(key_id) {
+        return Err(ConfigError::Invalid(KEYS[1]));
+    }
+    if !apple_id(team_id) {
+        return Err(ConfigError::Invalid(KEYS[2]));
+    }
+    Ok(Some(LiveActivityCredentials {
+        auth_key_path: PathBuf::from(path),
+        key_id: key_id.to_owned(),
+        team_id: team_id.to_owned(),
+    }))
 }
 
 /// Apple App Attest environment, independent of the APNs transport environment.
@@ -143,6 +181,7 @@ fn parse_profile(e: &HashMap<String, String>) -> Result<AppProfileConfig, Config
         apns_cert_path,
         apns_topic,
         apns_environment,
+        live_activity: parse_live_activity(e)?,
     })
 }
 
@@ -362,6 +401,74 @@ mod tests {
             REVOKE_INSTALLATION_AUDIENCE,
             "https://push.buzz.xyz/v1/installations/revoke"
         );
+    }
+
+    #[test]
+    fn live_activity_credentials_are_all_or_none() {
+        let keys = [
+            (
+                "BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_PATH",
+                "/run/buzz/apns/auth-key.p8",
+            ),
+            ("BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID", "ABC123DEFG"),
+            ("BUZZ_PUSH_DOGFOOD_APNS_TEAM_ID", "55S37D9HA7"),
+        ];
+        let mut env = base();
+        env.extend(keys.map(|(k, v)| (k.to_owned(), v.to_owned())));
+        assert_eq!(
+            Config::from_map(&env).unwrap().profile.live_activity,
+            Some(LiveActivityCredentials {
+                auth_key_path: PathBuf::from("/run/buzz/apns/auth-key.p8"),
+                key_id: "ABC123DEFG".into(),
+                team_id: "55S37D9HA7".into(),
+            })
+        );
+        for (missing, _) in keys {
+            for absent in [None, Some("")] {
+                let mut partial = env.clone();
+                match absent {
+                    None => partial.remove(missing),
+                    Some(value) => partial.insert(missing.into(), value.into()),
+                };
+                assert!(
+                    matches!(Config::from_map(&partial), Err(ConfigError::Missing(key)) if key == missing),
+                    "{missing}"
+                );
+            }
+        }
+        for (key, value) in [
+            ("BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID", "short"),
+            ("BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID", "ABC123DEF!"),
+            ("BUZZ_PUSH_DOGFOOD_APNS_TEAM_ID", "55S37D9HA77"),
+        ] {
+            let mut invalid = env.clone();
+            invalid.insert(key.into(), value.into());
+            assert!(
+                matches!(Config::from_map(&invalid), Err(ConfigError::Invalid(k)) if k == key),
+                "{key}={value}"
+            );
+        }
+    }
+
+    #[test]
+    fn startup_without_live_activity_credentials_keeps_alert_push() {
+        let mut env = base();
+        for key in [
+            "BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_PATH",
+            "BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID",
+            "BUZZ_PUSH_DOGFOOD_APNS_TEAM_ID",
+        ] {
+            env.insert(key.into(), String::new());
+        }
+        let config = Config::from_map(&env).unwrap();
+        assert_eq!(config.profile.live_activity, None);
+        assert_eq!(
+            config.profile.apns_cert_path,
+            PathBuf::from("/dogfood-identity.pem")
+        );
+        assert!(crate::live_activity::transport_from_config(&config.profile)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

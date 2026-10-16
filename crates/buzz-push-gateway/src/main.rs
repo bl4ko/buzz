@@ -49,10 +49,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             configured.apns_topic.clone(),
             configured.apns_environment,
         )?);
+        let live_activity = buzz_push_gateway::live_activity::transport_from_config(configured)?;
+        tracing::info!(
+            enabled = live_activity.is_some(),
+            "Live Activity transport configured"
+        );
         buzz_push_gateway::http::ProfileRuntime {
             app_attest: Arc::new(apple),
             transport,
-            live_activity: None,
+            live_activity,
         }
     };
     let grant_keyring = GrantKeyring::new(

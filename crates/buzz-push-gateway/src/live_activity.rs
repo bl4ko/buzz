@@ -292,6 +292,28 @@ fn apple_identifier(value: &str) -> bool {
     value.len() == 10 && value.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
+pub fn transport_from_config(
+    profile: &crate::config::AppProfileConfig,
+) -> Result<Option<std::sync::Arc<dyn LiveActivityTransport>>, LiveActivitySetupError> {
+    let Some(credentials) = profile.live_activity.as_ref() else {
+        return Ok(None);
+    };
+    let key = std::fs::read(&credentials.auth_key_path).map_err(|_| LiveActivitySetupError)?;
+    let transport = ApnsTokenTransport::new(
+        &key,
+        credentials.key_id.clone(),
+        credentials.team_id.clone(),
+        profile.apns_topic.clone(),
+        profile.apns_environment,
+    )
+    .map_err(|_| LiveActivitySetupError)?;
+    Ok(Some(std::sync::Arc::new(transport)))
+}
+
+#[derive(Debug, Error)]
+#[error("invalid Live Activity APNs auth key")]
+pub struct LiveActivitySetupError;
+
 fn system_now() -> i64 {
     chrono::Utc::now().timestamp()
 }
@@ -670,6 +692,34 @@ mod tests {
                 ),
                 Err(ApnsError::Credential)
             ));
+        }
+    }
+
+    #[test]
+    fn transport_from_config_reads_the_auth_key() {
+        let profile = |path: &str| crate::config::AppProfileConfig {
+            app_attest_app_id: "TEAM.app".into(),
+            app_attest_environment: crate::config::AppAttestEnvironment::Production,
+            apns_cert_path: "/unused".into(),
+            apns_topic: "com.bl4ko.buzz".into(),
+            apns_environment: ApnsEnvironment::Production,
+            live_activity: Some(crate::config::LiveActivityCredentials {
+                auth_key_path: path.into(),
+                key_id: "ABC123DEFG".into(),
+                team_id: "55S37D9HA7".into(),
+            }),
+        };
+        let key = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/apns-test-auth-key.p8"
+        );
+        assert!(transport_from_config(&profile(key)).unwrap().is_some());
+        let cert_only = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/apns-test-cert-only.pem"
+        );
+        for path in ["/missing/auth-key.p8", cert_only] {
+            assert!(transport_from_config(&profile(path)).is_err(), "{path}");
         }
     }
 

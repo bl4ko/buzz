@@ -1,5 +1,12 @@
 # Chart release notes
 
+## 0.3.6
+
+Adds optional `profiles.dogfood.apnsAuthKey` (`secretName`, `secretKey`,
+`keyId`, `teamId`). When set, the chart mounts the APNs token auth key and
+renders the Live Activity credential variables. The empty default preserves
+existing manifests.
+
 ## 0.3.5
 
 Adds optional string-valued `deploymentAnnotations` for Deployment metadata,

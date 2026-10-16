@@ -12,7 +12,7 @@
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | PostgreSQL authority/admission store. Runtime credentials need DML on the six gateway tables, not DDL. |
+| `DATABASE_URL` | PostgreSQL authority/admission store. Runtime credentials need DML on the eight gateway tables, not DDL. |
 | `BUZZ_PUSH_MAX_GRANT_LIFETIME_SECONDS` | Maximum delegation capability lifetime (`1..=31536000`). |
 | `BUZZ_PUSH_MAX_INSTALLATION_LIFETIME_SECONDS` | Maximum encrypted-token installation lifetime (default 90 days, max one year). Clients must renew before expiry. |
 | `BUZZ_PUSH_APP_ATTEST_ROOT_CERT_PATH` | Read-only mounted Apple App Attest root certificate PEM. |
@@ -41,6 +41,16 @@ environment rather than baking a Block team identifier into this repository.
 Supporting another application identity requires an explicit code, schema,
 chart, credential, and deployment change; this gateway does not currently
 select among multiple application profiles.
+
+Optional Live Activity credentials enable APNs `liveactivity` pushes. Set all three or none; a partial set stops startup:
+
+| Variable | Purpose |
+|---|---|
+| `BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_PATH` | Read-only APNs token auth key (`.p8`, PKCS#8 P-256). `liveactivity` pushes need a token-based connection; the certificate does not work. |
+| `BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID` | 10-character key ID of that auth key. |
+| `BUZZ_PUSH_DOGFOOD_APNS_TEAM_ID` | 10-character Apple team ID (JWT `iss`). |
+
+The token connection uses the same environment and the topic `<BUZZ_PUSH_DOGFOOD_APNS_TOPIC>.push-type.liveactivity`. Alert pushes keep the certificate connection. Without these variables the gateway starts normally and answers every Live Activity delivery with `not_registered`.
 
 Optional endpoint quota policy variables are `BUZZ_PUSH_ENDPOINT_QUOTA_WINDOW_SECONDS` (default `10`, max `86400`) and `BUZZ_PUSH_ENDPOINT_QUOTA_MAX_DELIVERIES` (default `10`, max `10000`). These are Buzz policy hypotheses, not Apple-published limits; tune under load while retaining a hard ceiling.
 
@@ -99,9 +109,9 @@ that app identity; omitting it is not a push shutdown mechanism.
 
 The gateway's dedicated pool does not consume the relay-oriented `BUZZ_DB_LOCK_TIMEOUT_MS`, `BUZZ_DB_IDLE_TXN_TIMEOUT_MS`, or `BUZZ_DB_STATEMENT_TIMEOUT_MS` settings. Its session-timeout policy remains separate from the `buzz-db` writer policy and must be designed and rolled out independently.
 
-All replicas must share one PostgreSQL database. Delivery authority, replay admission, and endpoint quota reservation are transactional there, so replica count does not multiply the abuse ceiling. The gateway owns a scoped migration history under `crates/buzz-push-gateway/migrations`; it creates only the six `push_gateway_*` authority tables plus SQLx's migration-history table and never runs relay migrations.
+All replicas must share one PostgreSQL database. Delivery authority, replay admission, and endpoint quota reservation are transactional there, so replica count does not multiply the abuse ceiling. The gateway owns a scoped migration history under `crates/buzz-push-gateway/migrations`; it creates only the eight `push_gateway_*` authority tables, one immutable check function, plus SQLx's migration-history table and never runs relay migrations.
 
-The Helm chart runs a single pre-install/pre-upgrade migration Job using `migration.existingSecret`; that secret contains a DDL-capable `DATABASE_URL`. The URL MUST name a dedicated gateway database, not the relay database: SQLx stores its `_sqlx_migrations` history in `public`, so sharing a database would collide with another application's migration history. `migration.runtimeDatabaseRole` names an existing LOGIN role (the default is `buzz_push_gateway_runtime`) used by runtime `DATABASE_URL`. After scoped migrations, the Job revokes database `CREATE` from that role and schema `CREATE` from both `PUBLIC` and the role, then grants only database `CONNECT`, schema `USAGE`, and `SELECT, INSERT, UPDATE, DELETE` on the six gateway tables. The migration role must own the database/schema objects or otherwise be allowed to issue those grants; it is never provided to runtime replicas. Readiness rejects an empty/partial schema, missing DML, or a runtime role that retains database/schema `CREATE`. Helm waits for the migration hook before updating replicas, so rolling deployments never race unconditional startup migration. Readiness must be removed from load-balancer service endpoints before terminating a pod.
+The Helm chart runs a single pre-install/pre-upgrade migration Job using `migration.existingSecret`; that secret contains a DDL-capable `DATABASE_URL`. The URL MUST name a dedicated gateway database, not the relay database: SQLx stores its `_sqlx_migrations` history in `public`, so sharing a database would collide with another application's migration history. `migration.runtimeDatabaseRole` names an existing LOGIN role (the default is `buzz_push_gateway_runtime`) used by runtime `DATABASE_URL`. After scoped migrations, the Job revokes database `CREATE` from that role and schema `CREATE` from both `PUBLIC` and the role, then grants only database `CONNECT`, schema `USAGE`, and `SELECT, INSERT, UPDATE, DELETE` on the eight gateway tables. The migration role must own the database/schema objects or otherwise be allowed to issue those grants; it is never provided to runtime replicas. Readiness rejects an empty/partial schema, missing DML, or a runtime role that retains database/schema `CREATE`. Helm waits for the migration hook before updating replicas, so rolling deployments never race unconditional startup migration. Readiness must be removed from load-balancer service endpoints before terminating a pod.
 
 The service reaps expired challenges and replay rows, idle quota rows, expired/revoked delegations, and retention-eligible installations (including their encrypted token ciphertext) at startup and every five minutes. Monitor reaper failures and table growth; retention does not depend on process restarts.
 
@@ -118,6 +128,7 @@ The gateway serves Prometheus metrics at `GET /metrics` on the **private health 
 | `push_gateway_delivery_errors_total` | counter | `class` (static) | Selected delivery-handler exit classes only (see note). |
 | `push_gateway_reaper_failures_total` | counter | — | Retention reaper sweep failures. |
 | `push_gateway_readiness_failures_total` | counter | `cause` = `not_accepting` \| `authority` | Readiness probe failures by cause. |
+| `push_gateway_live_activity_deliveries_total` | counter | `op` = `upsert` \| `end` \| `restart`; `outcome` = `started` \| `updated` \| `ended` \| `pending` \| `not_registered` \| `invalid_endpoint` \| `retry` \| `configuration_fault` \| `invalid_request` \| `unavailable` | Admitted Live Activity deliveries by result. |
 
 `push_gateway_delivery_errors_total` is intentionally **narrow**: it counts only selected exit classes of the `/v1/deliveries/apns` handler. `class` ∈ `invalid_grant` (grant rejected at the admission seam, before a permit is issued), `rate_limited`, `temporarily_unavailable` (authority unavailable at the admission seam), `profile_mismatch`, `profile_disabled`, `token_custody` (endpoint-token open failure), `finish_failed` (detached disposition/join failure returned as 503). Request/auth/attestation/grant validation on the enrollment, delegation, rotation, and revocation handlers is **not** counted by this metric; it is a delivery-hot-path signal, not a total error rate across the API.
 
@@ -161,6 +172,18 @@ Alerting rules ship as an opt-in prometheus-operator `PrometheusRule` (`promethe
 | `PushGatewayReadinessAuthorityFailing` | readiness `authority` failures for 5m | warning | Replicas are being pulled from the Service on DB check failure. Fix DB health before capacity drops below the PodDisruptionBudget. |
 | `PushGatewayReaperFailing` | reaper failed ≥2 times within 30m (runs every 5m) | warning | Expired reservations aren't being swept, growing the bounded-until-expiry window. Check DB write availability. |
 | `PushGatewayHighApnsRetryRate` | retryable fraction > `prometheusRule.apnsRetryRatioThreshold` (default `0.25`) over a 10m window, above `apnsRetryMinSamples` (default `20`) attempts, held true for 15m | warning | APNs is throttling or degraded (429/500/503). Deliveries are delayed, not lost. |
+
+## Live Activities
+
+Approval Live Activities use two App Attest client routes and one relay route. Ask content is never stored or logged; only sealed tokens and SHA-256 origin hashes are stored.
+
+- `POST /v1/installations/live-activity` (transcript domain `buzz.push.live-activity.v1`, audience `https://push.buzz.xyz/v1/installations/live-activity`): `{v, challenge_id, challenge, installation_handle, start_token, origins, assertion}`. It replaces the push-to-start token and up to 16 unique lowercase-hex origin hashes. `start_token: null` or `origins: []` deletes the installation's rows. Answers `204`.
+- `POST /v1/installations/live-activity/update-token` (domain `buzz.push.live-activity-update.v1`, audience `.../live-activity/update-token`): `{v, challenge_id, challenge, installation_handle, origin_hash, update_token, assertion}`. `update_token: null` deletes the card row. An origin that is not registered answers `404 not_found`. Answers `204`.
+- `POST /v1/deliveries/live-activity`: NIP-98 signed by the relay key for this path, with the grant, replay, and quota checks of `/v1/deliveries/apns`. Body `{v, endpoint_grant, request_id, expires_at, origin, op, priority, state}`; `origin` must be `https://host[:port]` with a lowercase host. Answers `200` with `status` `started`, `updated`, `ended`, `pending`, or `not_registered`; `503` with `status: retry` (and `retry_after_seconds`) for a retryable APNs result; errors use the existing codes.
+
+Tokens are sealed with `BUZZ_PUSH_TOKEN_KEYS` and fingerprinted with the domains `buzz.push.la-start.v1` and `buzz.push.la-update.v1`. Tables `push_gateway_live_activity_starts` and `push_gateway_live_activities` (migration `0006`). Installation revocation deletes both rows. The reaper deletes card rows 12 h after their last change and start rows at installation expiry. A `410 Unregistered` for an update token clears the card row (`pending`); for the start token it deletes the registration (`not_registered`). Golden payloads: `crates/buzz-push-gateway/tests/vectors/live_activity_payloads.json`.
+
+Chart: set `profiles.dogfood.apnsAuthKey` (`secretName`, `secretKey`, `keyId`, `teamId`) to mount the key at `/run/buzz/apns-auth/auth-key.p8` (mode `0400`) and render the three variables.
 
 ## Relay configuration
 
@@ -328,7 +351,7 @@ helm pull oci://ghcr.io/block/buzz/charts/buzz-push-gateway --version X.Y.Z
 
 The gateway verifies the signed method and delivery path using the NIP-98 event
 format, rather than matching the full incoming HTTP(S) request URL. The signed
-method must be `POST`; the signed URL path must be `/v1/deliveries/apns`, without
+method must be `POST`; the signed URL path must be the route path (`/v1/deliveries/apns` or `/v1/deliveries/live-activity`), without
 query, fragment or credentials. Incoming request queries are rejected.
 Host and forwarding headers do not participate in delivery authentication.
 Event signatures, body hashes, timestamps, grant checks and replay protection
