@@ -66,6 +66,9 @@
 		E7C93DFC36D12A9AA3864AE5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 34C1280A39BA3E4A744C10B1 /* Foundation.framework */; };
 		B14000000000000000000001 = {isa = PBXBuildFile; fileRef = B14000000000000000000002; };
 		B14000000000000000000003 = {isa = PBXBuildFile; fileRef = B14000000000000000000004; };
+		B14000000000000000000008 = {isa = PBXBuildFile; fileRef = B14000000000000000000009; };
+		B1400000000000000000000A = {isa = PBXBuildFile; fileRef = B1400000000000000000000B; };
+		B1400000000000000000000C = {isa = PBXBuildFile; fileRef = B1400000000000000000000D; };
 		B14000000000000000000005 = {isa = PBXBuildFile; productRef = B14000000000000000000006; };
 /* End PBXBuildFile section */
 
@@ -199,6 +202,9 @@
 		E744B7A3ECCADF82CEA9A204 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B14000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRelay.swift; sourceTree = "<group>"; };
 		B14000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../BuzzPushKit/Sources/BuzzPushKit/NostrHTTPAuth.swift; sourceTree = "<group>"; };
+		B14000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../BuzzPushKit/Sources/BuzzPushKit/BuzzApprovalAction.swift; sourceTree = "<group>"; };
+		B1400000000000000000000B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchApprovalRouter.swift; sourceTree = "<group>"; };
+		B1400000000000000000000D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchApprovalActions.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -373,6 +379,9 @@
 			children = (
 				B14000000000000000000002,
 				B14000000000000000000004,
+				B14000000000000000000009,
+				B1400000000000000000000B,
+				B1400000000000000000000D,
 				6C5BF8F6E14FCE1CA5AB56EC /* Bl4uzzApp.swift */,
 				5911A2521C78AAF59475E6D3 /* Assets.xcassets */,
 				E744B7A3ECCADF82CEA9A204 /* Info.plist */,
@@ -699,6 +708,9 @@
 			files = (
 				B14000000000000000000001,
 				B14000000000000000000003,
+				B14000000000000000000008,
+				B1400000000000000000000A,
+				B1400000000000000000000C,
 				7C392911DA1EE25993DD94CD /* Bl4uzzApp.swift in Sources */,
 				2F685BB1FF7B95DEBDCEF9A7 /* WatchDraft.swift in Sources */,
 			);

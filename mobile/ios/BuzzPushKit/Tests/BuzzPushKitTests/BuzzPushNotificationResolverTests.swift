@@ -58,6 +58,9 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
       )))
       XCTAssertEqual(result.notificationType, isApproval ? .approval : nil)
       XCTAssertEqual(result.notificationSoundName, isApproval ? "approval.wav" : nil)
+      XCTAssertEqual(result.approvalTarget?.eventID, isApproval ? message.id : nil)
+      XCTAssertEqual(result.approvalTarget?.communityID, isApproval ? result.navigationTarget?.communityID : nil)
+      XCTAssertEqual(result.approvalTarget.flatMap { URL(string: $0.relayURL)?.scheme }, isApproval ? "https" : nil)
       XCTAssertEqual(result.subtitle, isApproval ? "Approval required · Community" : "Community")
       XCTAssertEqual(result.navigationTarget?.eventID, message.id)
     }

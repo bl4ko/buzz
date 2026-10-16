@@ -25,10 +25,17 @@ enum BuzzPushNotificationResponseCoordinator {
     actionIdentifier: String,
     userInfo: [AnyHashable: Any],
     onTarget: (BuzzPushNavigationTarget) -> Void,
+    onApproval: (BuzzApprovalTarget, BuzzApprovalDecision, @escaping () -> Void) -> Void = { _, _, done in done() },
     forwardToFlutter: (@escaping () -> Void) -> Void,
     completion: @escaping () -> Void
   ) {
     let completionGate = BuzzOneShotCompletion(completion)
+    if let decision = BuzzApprovalDecision(rawValue: actionIdentifier),
+      let target = BuzzApprovalTarget.decodeIfPresent(from: userInfo)
+    {
+      onApproval(target, decision) { completionGate.call() }
+      return
+    }
     defer { completionGate.call() }
 
     if actionIdentifier == UNNotificationDefaultActionIdentifier,

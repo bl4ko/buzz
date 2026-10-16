@@ -56,6 +56,7 @@ import os.log
     // Age checking and notification restoration run asynchronously from
     // Flutter. No age-related storage or platform request may delay launch.
     UNUserNotificationCenter.current().delegate = self
+    UNUserNotificationCenter.current().setNotificationCategories([BuzzApprovalCategory.category()])
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -491,6 +492,22 @@ import os.log
       onTarget: { target in
         pushNavigationBuffer.record(target)
         deliverPushNavigationTarget(target)
+      },
+      onApproval: { target, decision, done in
+        let accessGroup = Bundle.main.object(forInfoDictionaryKey: "BuzzKeychainAccessGroup") as? String
+        Task {
+          await BuzzApprovalActionHandler.handle(
+            target: target,
+            decision: decision,
+            storedRelayURL: { BuzzPushStoredRelay.relayURL(communityID: $0, appGroupIdentifier: self.appGroupIdentifier) },
+            loadKey: { BuzzPushSigningKeychain.privateKey(communityID: $0, accessGroup: accessGroup) },
+            send: { try await BuzzApprovalReactionSender().send($0, decision: $1, privateKeyHex: $2) },
+            notifyFailure: { body in
+              UNUserNotificationCenter.current().add(BuzzApprovalFailureNotice.request(body: body))
+            }
+          )
+          done()
+        }
       },
       forwardToFlutter: { pluginCompletion in
         self.forwardPushNotificationResponseToFlutter(
