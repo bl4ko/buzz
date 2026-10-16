@@ -14,27 +14,27 @@ use buzz_core::kind::{
     event_kind_u32, is_identity_archive_request_kind, is_parameterized_replaceable,
     is_relay_admin_kind, KIND_AGENT_ENGRAM, KIND_AGENT_PROFILE, KIND_AGENT_TURN_METRIC,
     KIND_APPROVAL_DENY, KIND_APPROVAL_GRANT, KIND_AUTH, KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET,
-    KIND_CANVAS, KIND_CONTACT_LIST, KIND_DELETION, KIND_DM_ADD_MEMBER, KIND_DM_HIDE, KIND_DM_OPEN,
-    KIND_EMOJI_LIST, KIND_EMOJI_SET, KIND_EVENT_REMINDER, KIND_FOLLOW_SET, KIND_FORUM_COMMENT,
-    KIND_FORUM_POST, KIND_FORUM_VOTE, KIND_GIFT_WRAP, KIND_GIT_ISSUE, KIND_GIT_PATCH,
-    KIND_GIT_PR_UPDATE, KIND_GIT_PULL_REQUEST, KIND_GIT_REPO_ANNOUNCEMENT, KIND_GIT_REPO_STATE,
-    KIND_GIT_STATUS_CLOSED, KIND_GIT_STATUS_DRAFT, KIND_GIT_STATUS_MERGED, KIND_GIT_STATUS_OPEN,
-    KIND_HUDDLE_ENDED, KIND_HUDDLE_GUIDELINES, KIND_HUDDLE_PARTICIPANT_JOINED,
-    KIND_HUDDLE_PARTICIPANT_LEFT, KIND_HUDDLE_STARTED, KIND_IA_ARCHIVE_REQUEST,
-    KIND_IA_UNARCHIVE_REQUEST, KIND_LONG_FORM, KIND_MANAGED_AGENT, KIND_MEMBER_ADDED_NOTIFICATION,
-    KIND_MEMBER_REMOVED_NOTIFICATION, KIND_MODERATION_BAN, KIND_MODERATION_RESOLVE_REPORT,
-    KIND_MODERATION_TIMEOUT, KIND_MODERATION_UNBAN, KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST,
-    KIND_NIP29_CREATE_GROUP, KIND_NIP29_DELETE_EVENT, KIND_NIP29_DELETE_GROUP,
-    KIND_NIP29_EDIT_METADATA, KIND_NIP29_JOIN_REQUEST, KIND_NIP29_LEAVE_REQUEST,
-    KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER, KIND_NIP43_LEAVE_REQUEST,
-    KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST, KIND_PRESENCE_UPDATE,
-    KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE, KIND_PROJECT, KIND_REACTION,
-    KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_BOOKMARKED,
-    KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT, KIND_STREAM_MESSAGE_PINNED,
-    KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2, KIND_STREAM_REMINDER, KIND_TEAM,
-    KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_USER_STATUS, KIND_WORKFLOW_DEF, KIND_WORKFLOW_TRIGGER,
-    RELAY_ADMIN_ADD_MEMBER, RELAY_ADMIN_CHANGE_ROLE, RELAY_ADMIN_REMOVE_MEMBER,
-    RELAY_ADMIN_SET_WORKSPACE_PROFILE,
+    KIND_CANVAS, KIND_CHANNEL_CANVAS_DOC, KIND_CHANNEL_TABS, KIND_CONTACT_LIST, KIND_DELETION,
+    KIND_DM_ADD_MEMBER, KIND_DM_HIDE, KIND_DM_OPEN, KIND_EMOJI_LIST, KIND_EMOJI_SET,
+    KIND_EVENT_REMINDER, KIND_FOLLOW_SET, KIND_FORUM_COMMENT, KIND_FORUM_POST, KIND_FORUM_VOTE,
+    KIND_GIFT_WRAP, KIND_GIT_ISSUE, KIND_GIT_PATCH, KIND_GIT_PR_UPDATE, KIND_GIT_PULL_REQUEST,
+    KIND_GIT_REPO_ANNOUNCEMENT, KIND_GIT_REPO_STATE, KIND_GIT_STATUS_CLOSED, KIND_GIT_STATUS_DRAFT,
+    KIND_GIT_STATUS_MERGED, KIND_GIT_STATUS_OPEN, KIND_HUDDLE_ENDED, KIND_HUDDLE_GUIDELINES,
+    KIND_HUDDLE_PARTICIPANT_JOINED, KIND_HUDDLE_PARTICIPANT_LEFT, KIND_HUDDLE_STARTED,
+    KIND_IA_ARCHIVE_REQUEST, KIND_IA_UNARCHIVE_REQUEST, KIND_LONG_FORM, KIND_MANAGED_AGENT,
+    KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION, KIND_MODERATION_BAN,
+    KIND_MODERATION_RESOLVE_REPORT, KIND_MODERATION_TIMEOUT, KIND_MODERATION_UNBAN,
+    KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST, KIND_NIP29_CREATE_GROUP, KIND_NIP29_DELETE_EVENT,
+    KIND_NIP29_DELETE_GROUP, KIND_NIP29_EDIT_METADATA, KIND_NIP29_JOIN_REQUEST,
+    KIND_NIP29_LEAVE_REQUEST, KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER,
+    KIND_NIP43_LEAVE_REQUEST, KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST,
+    KIND_PRESENCE_UPDATE, KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE,
+    KIND_PROJECT, KIND_REACTION, KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_BOOKMARKED, KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT,
+    KIND_STREAM_MESSAGE_PINNED, KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2,
+    KIND_STREAM_REMINDER, KIND_TEAM, KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_THREAD_STATUS,
+    KIND_USER_STATUS, KIND_WORKFLOW_DEF, KIND_WORKFLOW_TRIGGER, RELAY_ADMIN_ADD_MEMBER,
+    RELAY_ADMIN_CHANGE_ROLE, RELAY_ADMIN_REMOVE_MEMBER, RELAY_ADMIN_SET_WORKSPACE_PROFILE,
 };
 use buzz_core::tenant::TenantContext;
 use buzz_core::verification::verify_event;
@@ -537,6 +537,9 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         | KIND_NIP29_DELETE_EVENT
         | KIND_STREAM_MESSAGE_EDIT
         | KIND_STREAM_MESSAGE_PINNED
+        | KIND_THREAD_STATUS
+        | KIND_CHANNEL_TABS
+        | KIND_CHANNEL_CANVAS_DOC
         | KIND_STREAM_MESSAGE_BOOKMARKED
         | KIND_STREAM_MESSAGE_SCHEDULED
         | KIND_STREAM_REMINDER
@@ -778,6 +781,9 @@ pub(crate) fn requires_h_channel_scope(kind: u32) -> bool {
             | KIND_STREAM_REMINDER
             | KIND_STREAM_MESSAGE_DIFF
             | KIND_CANVAS
+            | KIND_THREAD_STATUS
+            | KIND_CHANNEL_TABS
+            | KIND_CHANNEL_CANVAS_DOC
             | KIND_FORUM_POST
             | KIND_FORUM_VOTE
             | KIND_FORUM_COMMENT
@@ -2989,6 +2995,24 @@ async fn ingest_event_inner(
         validate_pin_target(tenant.community(), &event, state)
             .await
             .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
+    }
+
+    if kind_u32 == KIND_THREAD_STATUS {
+        super::thread_status::validate_thread_status(tenant, &event, state)
+            .await
+            .map_err(IngestError::Rejected)?;
+    }
+
+    if kind_u32 == KIND_CHANNEL_TABS {
+        super::thread_status::validate_channel_tabs(tenant, &event, state)
+            .await
+            .map_err(IngestError::Rejected)?;
+    }
+
+    if kind_u32 == KIND_CHANNEL_CANVAS_DOC {
+        super::thread_status::validate_canvas_doc(tenant, &event, state)
+            .await
+            .map_err(IngestError::Rejected)?;
     }
 
     if kind_u32 == KIND_FORUM_VOTE {
@@ -6867,6 +6891,226 @@ mod postgres_tests {
             .await
             .expect("connect test Postgres");
         build_canvas_ingest_state(&db_url, &pool).await
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn thread_status_accepts_owner_and_channel_agents_only() {
+        use buzz_db::channel::{ChannelType, ChannelVisibility, MemberRole};
+        use nostr::Tag;
+
+        let state = ingest_state().await;
+        let (tenant, _agent_owner, agent) = owned_agent_fixture(&state, "thread-status").await;
+        let community = tenant.community();
+        let (creator, boss, member) = (
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+            nostr::Keys::generate(),
+        );
+        state
+            .db
+            .bootstrap_owner(community, &boss.public_key().to_hex())
+            .await
+            .expect("community owner");
+        let (channel, other) = (Uuid::new_v4(), Uuid::new_v4());
+        for ch in [channel, other] {
+            state
+                .db
+                .create_channel_with_id(
+                    community,
+                    ch,
+                    &format!("tasks-{}", ch.simple()),
+                    ChannelType::Stream,
+                    ChannelVisibility::Private,
+                    None,
+                    creator.public_key().as_bytes(),
+                    None,
+                )
+                .await
+                .expect("create channel");
+            for keys in [&boss, &member, &agent] {
+                state
+                    .db
+                    .add_member(
+                        community,
+                        ch,
+                        keys.public_key().as_bytes(),
+                        MemberRole::Member,
+                        Some(creator.public_key().as_bytes()),
+                    )
+                    .await
+                    .expect("add member");
+            }
+        }
+        let auth = |keys: &nostr::Keys| IngestAuth::Http {
+            pubkey: keys.public_key(),
+            scopes: vec![Scope::MessagesWrite],
+            auth_method: HttpAuthMethod::Nip98,
+        };
+        let tag = |parts: &[&str]| Tag::parse(parts.iter().copied()).expect("tag");
+        let post = |keys: &nostr::Keys, ch: Uuid, reply_to: Option<&str>| {
+            let mut tags = vec![tag(&["h", &ch.to_string()])];
+            if let Some(parent) = reply_to {
+                tags.push(tag(&["e", parent, "", "reply"]));
+            }
+            EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "case")
+                .tags(tags)
+                .sign_with_keys(keys)
+                .expect("sign message")
+        };
+        let root = post(&agent, channel, None);
+        let foreign = post(&agent, other, None);
+        for event in [root.clone(), foreign.clone()] {
+            assert!(
+                ingest_event(&state, &tenant, event, auth(&agent))
+                    .await
+                    .expect("root")
+                    .accepted
+            );
+        }
+        let root_hex = root.id.to_hex();
+        let reply = post(&agent, channel, Some(&root_hex));
+        let ask = post(&agent, channel, Some(&root_hex));
+        for event in [reply.clone(), ask.clone()] {
+            assert!(
+                ingest_event(&state, &tenant, event, auth(&agent))
+                    .await
+                    .expect("reply")
+                    .accepted
+            );
+        }
+        let clock = std::cell::Cell::new(nostr::Timestamp::now().as_secs() + 10);
+        let status = |keys: &nostr::Keys,
+                      root: &str,
+                      value: &str,
+                      title: &str,
+                      ask: Option<(&str, &str)>| {
+            let mut tags = vec![
+                tag(&["d", root]),
+                tag(&["h", &channel.to_string()]),
+                tag(&["e", root]),
+                tag(&["status", value]),
+                tag(&["title", title]),
+            ];
+            if let Some((text, id)) = ask {
+                tags.push(tag(&["ask", text, id]));
+            }
+            clock.set(clock.get() + 1);
+            EventBuilder::new(Kind::Custom(KIND_THREAD_STATUS as u16), "")
+                .custom_created_at(nostr::Timestamp::from_secs(clock.get()))
+                .tags(tags)
+                .sign_with_keys(keys)
+                .expect("sign status")
+        };
+        let ask_hex = ask.id.to_hex();
+        let accepted = [
+            (
+                status(&agent, &root_hex, "in_progress", "Rotate keys", None),
+                &agent,
+            ),
+            (
+                status(
+                    &boss,
+                    &root_hex,
+                    "awaiting_owner",
+                    "Rotate keys",
+                    Some(("Merge PR 7?", &ask_hex)),
+                ),
+                &boss,
+            ),
+            (
+                status(&agent, &root_hex, "open", &"é".repeat(80), None),
+                &agent,
+            ),
+        ];
+        for (event, keys) in accepted {
+            let result = ingest_event(&state, &tenant, event, auth(keys))
+                .await
+                .expect("accepted status");
+            assert!(result.accepted, "{}", result.message);
+        }
+        let foreign_hex = foreign.id.to_hex();
+        let reply_hex = reply.id.to_hex();
+        let missing = "c".repeat(64);
+        let rejected = [
+            (
+                status(&creator, &root_hex, "blocked", "T", None),
+                &creator,
+                "restricted: thread status author must be the owner or a channel agent",
+            ),
+            (
+                status(&member, &root_hex, "in_progress", "T", None),
+                &member,
+                "restricted: thread status author must be the owner or a channel agent",
+            ),
+            (
+                status(&agent, &foreign_hex, "open", "T", None),
+                &agent,
+                "invalid: thread status root belongs to a different channel",
+            ),
+            (
+                status(&agent, &reply_hex, "open", "T", None),
+                &agent,
+                "invalid: thread status root must be a top-level message",
+            ),
+            (
+                status(&agent, &missing, "open", "T", None),
+                &agent,
+                "invalid: thread status root not found",
+            ),
+            (
+                status(&agent, &root_hex, "awaiting_owner", "T", None),
+                &agent,
+                "invalid: awaiting_owner thread status requires an ask tag",
+            ),
+            (
+                status(
+                    &agent,
+                    &root_hex,
+                    "awaiting_owner",
+                    "T",
+                    Some(("Q?", &foreign_hex)),
+                ),
+                &agent,
+                "invalid: thread status ask event belongs to a different channel",
+            ),
+            (
+                status(&agent, &root_hex, "open", &"é".repeat(81), None),
+                &agent,
+                "invalid: thread status title must have 1 to 80 characters",
+            ),
+        ];
+        for (event, keys, want) in rejected {
+            match ingest_event(&state, &tenant, event, auth(keys)).await {
+                Err(IngestError::Rejected(msg)) => assert_eq!(msg, want),
+                other => panic!("expected {want:?}, got {:?}", other.map(|r| r.message)),
+            }
+        }
+        let filter = serde_json::from_value(serde_json::json!({
+            "kinds": [KIND_THREAD_STATUS],
+            "#h": [channel.to_string()],
+        }))
+        .expect("filter");
+        let query = crate::handlers::req::build_event_query_from_filter(
+            &filter,
+            boss.public_key().as_bytes(),
+            &state,
+            community,
+        )
+        .await;
+        let stored = state.db.query_events(&query).await.expect("query statuses");
+        let mut statuses: Vec<String> = stored
+            .iter()
+            .filter_map(|e| {
+                e.event
+                    .tags
+                    .iter()
+                    .find(|t| t.as_slice().first().map(String::as_str) == Some("status"))
+                    .map(|t| t.as_slice()[1].clone())
+            })
+            .collect();
+        statuses.sort();
+        assert_eq!(statuses, ["awaiting_owner", "open"]);
     }
 
     /// An owner's timeout reaches its agent, and it is enforced before command
