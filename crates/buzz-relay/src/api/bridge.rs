@@ -28,6 +28,8 @@ use super::{
     api_error, db_read_error, internal_error, not_found, parse_query_or_400, search_read_error,
 };
 
+mod channel_tasks;
+mod files_and_links;
 mod thread_roots;
 mod thread_window;
 
@@ -1863,6 +1865,20 @@ async fn query_member_events(
                 &named_only,
             );
             events.extend(thread_roots::query(state, tenant, filter, &scope).await?);
+            handled.insert(idx);
+        }
+    }
+
+    for (idx, (raw, filter)) in raw_filters.iter().zip(filters.iter()).enumerate() {
+        if handled.contains(&idx) {
+            continue;
+        }
+        if extension_flag(raw, "open_tasks") {
+            events.extend(channel_tasks::query(state, tenant, filter, &accessible_channels).await?);
+            handled.insert(idx);
+        } else if extension_flag(raw, "files_and_links") {
+            events
+                .extend(files_and_links::query(state, tenant, filter, &accessible_channels).await?);
             handled.insert(idx);
         }
     }
