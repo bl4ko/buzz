@@ -1,5 +1,5 @@
 {
-  "description": "Golden APNs liveactivity payloads built by crates/buzz-push-gateway/src/live_activity.rs payload(). Clients decode each `expected` body; `content-state` must decode into BuzzApprovalsActivityAttributes.ContentState with a default JSONDecoder. `origin_hashes` are SHA-256 of the exact origin bytes; `invalid_origins` must be rejected.",
+  "description": "Golden APNs liveactivity payloads built by crates/buzz-push-gateway/src/live_activity.rs payload(). Clients decode each `expected` body; `content-state` must decode into BuzzApprovalsActivityAttributes.ContentState with a default JSONDecoder. `bound_origin_hashes` are the registered and delivered origin hashes: SHA-256(\"buzz.push.la-origin.v1\" || 0x00 || origin || 0x00 || relay_pubkey), with the exact UTF-8 origin bytes and the 64-char lowercase hex relay key of the endpoint grant; the same origin under another relay key gives another hash. `invalid_origins` and `invalid_relay_pubkeys` must be rejected.",
   "attributes_type": "BuzzApprovalsActivityAttributes",
   "cases": [
     {
@@ -76,18 +76,26 @@
       "expected_bytes": 176
     }
   ],
-  "origin_hashes": [
+  "bound_origin_hashes": [
     {
       "origin": "https://buzz.bl4ko.com",
-      "sha256": "4711f18ac134e45b229e29b2bb3e3537488b8123b4d80045337a0411dfed59db"
+      "relay_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sha256": "2dfd263b6fd5b66e15ba6f73320d811991eaca636560781788e0b858a4d51a61"
+    },
+    {
+      "origin": "https://buzz.bl4ko.com",
+      "relay_pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      "sha256": "c813a758d73613acf38b44ec4ea9b662433bd0dfd5322f208d133049766d14a2"
     },
     {
       "origin": "https://buzz.bl4ko.com:8443",
-      "sha256": "eef9323221c3dac317be3d7811825f6fe1a7999a7ca0fd241a5cddb9fa397b60"
+      "relay_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sha256": "d93e84fc89654b9264d22b313e1f54b5732a2eeb9d2c9e8b973a64bf7643a836"
     },
     {
       "origin": "https://10.1.6.76:3000",
-      "sha256": "6220ddabe5fd8f935f29ca4fc3daba092ddc38a5fc325efa3962f37bf4f76571"
+      "relay_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sha256": "2825b611f83518ccb8e9462867be273cfbb670a3815625c403130fc58135f610"
     }
   ],
   "invalid_origins": [
@@ -101,5 +109,11 @@
     "https://buzz.bl4ko.com?x=1",
     "wss://buzz.bl4ko.com",
     "https://"
+  ],
+  "invalid_relay_pubkeys": [
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "02aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ""
   ]
 }
