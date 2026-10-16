@@ -1,8 +1,6 @@
 import * as React from "react";
 import type { VListHandle } from "virtua";
 
-import { isTabPanelTarget } from "./tabReturnScroll";
-
 const SCROLL_INTENT_KEYS = new Set([
   "ArrowDown",
   "ArrowUp",
@@ -80,7 +78,6 @@ export function useVirtualizedBottomSettle(
         !event.metaKey &&
         event.target instanceof Node &&
         scroller.contains(event.target) &&
-        !isTabPanelTarget(event.target) &&
         !isEditableKeyboardTarget(event.target) &&
         SCROLL_INTENT_KEYS.has(event.key)
       ) {
