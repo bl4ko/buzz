@@ -79,6 +79,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
   private let loadPrivateKey: (String) -> String?
   private let now: () -> Date
   private let presentationCacheLifetime: TimeInterval
+  private let presentedEvents: BuzzPushPresentedEventStore?
 
   /// Creates a resolver around the notification extension's App Group and Keychain I/O.
   public init(
@@ -87,7 +88,8 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
     loadPrivateKey: @escaping (String) -> String?,
     loadPresentationCacheData: @escaping () -> Data? = { nil },
     now: @escaping () -> Date = Date.init,
-    presentationCacheLifetime: TimeInterval = BuzzPushPresentationCacheStore.freshnessLifetime
+    presentationCacheLifetime: TimeInterval = BuzzPushPresentationCacheStore.freshnessLifetime,
+    presentedEvents: BuzzPushPresentedEventStore? = nil
   ) {
     self.session = session
     self.loadCommunitiesData = loadCommunitiesData
@@ -95,6 +97,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
     self.loadPrivateKey = loadPrivateKey
     self.now = now
     self.presentationCacheLifetime = presentationCacheLifetime
+    self.presentedEvents = presentedEvents
   }
 
   public func resolve(completion: @escaping (BuzzPushResolution?) -> Void) {
@@ -112,33 +115,31 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
     var candidates: [(VerifiedNostrEvent, PushLeaseCommunity)] = []
     for community in communities {
       group.enter()
-      query(community) { candidate in
-        if let candidate {
-          lock.lock()
-          candidates.append(candidate)
-          lock.unlock()
-        }
+      query(community) { found in
+        lock.lock()
+        candidates.append(contentsOf: found)
+        lock.unlock()
         group.leave()
       }
     }
     group.notify(queue: .global(qos: .userInitiated)) {
-      let newest = candidates.max {
-        $0.0.createdAt == $1.0.createdAt ? $0.0.id > $1.0.id : $0.0.createdAt < $1.0.createdAt
-      }
-      guard let newest else {
+      let ordered = candidates.sorted { Self.isPreferred($0.0, over: $1.0) }
+      let claimedID = self.presentedEvents?.claim(ordered.map(\.0.id))
+      let chosen = ordered.first { $0.0.id == claimedID } ?? ordered.first
+      guard let chosen else {
         completion(nil)
         return
       }
-      self.resolvePresentation(event: newest.0, community: newest.1, completion: completion)
+      self.resolvePresentation(event: chosen.0, community: chosen.1, completion: completion)
     }
   }
 
   private func query(
     _ community: PushLeaseCommunity,
-    completion: @escaping ((VerifiedNostrEvent, PushLeaseCommunity)?) -> Void
+    completion: @escaping ([(VerifiedNostrEvent, PushLeaseCommunity)]) -> Void
   ) {
     guard let privateKey = loadPrivateKey(community.id), community.pubkey?.isEmpty == false else {
-      completion(nil)
+      completion([])
       return
     }
     guard
@@ -149,7 +150,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
         withJSONObject: community.policies.map { $0.filter.queryFilter(since: nil, limit: 10) }
       )
     else {
-      completion(nil)
+      completion([])
       return
     }
     var request = URLRequest(url: url)
@@ -162,7 +163,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
         url: url, method: "POST", body: body, privateKeyHex: privateKey
       )
     else {
-      completion(nil)
+      completion([])
       return
     }
     request.setValue(auth, forHTTPHeaderField: "Authorization")
@@ -170,10 +171,10 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
       guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode),
         let data, let events = try? JSONDecoder().decode([VerifiedNostrEvent].self, from: data)
       else {
-        completion(nil)
+        completion([])
         return
       }
-      let candidate = Self.newestMessage(
+      let candidates = Self.orderedMessages(
         events: events.filter { event in
           event.hasValidIDAndSignature()
             && community.policies.contains { policy in
@@ -182,7 +183,7 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
         },
         community: community
       )
-      completion(candidate.map { ($0, community) })
+      completion(candidates.map { ($0, community) })
     }.resume()
   }
 
@@ -448,12 +449,24 @@ public final class BuzzPushNotificationResolver: BuzzPushNotificationResolving {
     events: [VerifiedNostrEvent],
     community: PushLeaseCommunity
   ) -> VerifiedNostrEvent? {
-    guard let mine = community.pubkey?.lowercased() else { return nil }
+    orderedMessages(events: events, community: community).first
+  }
+
+  private static func orderedMessages(
+    events: [VerifiedNostrEvent],
+    community: PushLeaseCommunity
+  ) -> [VerifiedNostrEvent] {
+    guard let mine = community.pubkey?.lowercased() else { return [] }
     return events.filter {
       $0.pubkey.lowercased() != mine && [9, 40002, 45001, 45003].contains($0.kind)
-    }.sorted {
-      $0.createdAt == $1.createdAt ? $0.id < $1.id : $0.createdAt > $1.createdAt
-    }.first
+    }.sorted { isPreferred($0, over: $1) }
+  }
+
+  static func isPreferred(_ lhs: VerifiedNostrEvent, over rhs: VerifiedNostrEvent) -> Bool {
+    if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+    let lhsApproval = lhs.tags.contains(["notification", "approval"])
+    if lhsApproval != rhs.tags.contains(["notification", "approval"]) { return lhsApproval }
+    return lhs.id < rhs.id
   }
 
   private static func makeResolution(

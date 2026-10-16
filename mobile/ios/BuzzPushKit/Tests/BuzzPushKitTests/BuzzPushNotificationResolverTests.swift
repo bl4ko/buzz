@@ -776,11 +776,181 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
     XCTAssertEqual(URLProtocolStub.requests.count, 1)
   }
 
+  func testSameSecondApprovalReplyIsPresentedBeforeItsRoot() throws {
+    let store = try makePresentedEventStore()
+    let (root, reply) = try sameSecondRootAndApprovalReply(rootIDSortsFirst: true)
+    URLProtocolStub.handler = { request in
+      Self.response(request, status: 200, data: try JSONEncoder().encode([root, reply]))
+    }
+    let communitiesData = try snapshotData([community()])
+
+    let first = try XCTUnwrap(resolve(makeResolver(
+      communitiesData: communitiesData, presentedEvents: store)))
+    let second = try XCTUnwrap(resolve(makeResolver(
+      communitiesData: communitiesData, presentedEvents: store)))
+
+    XCTAssertEqual(first.navigationTarget?.eventID, reply.id)
+    XCTAssertEqual(first.categoryIdentifier, BuzzApprovalCategory.identifier)
+    XCTAssertEqual(first.approvalTarget?.eventID, reply.id)
+    XCTAssertEqual(second.navigationTarget?.eventID, root.id)
+    XCTAssertNil(second.categoryIdentifier)
+  }
+
+  func testBurstOfPushesPresentsDistinctEventsThenFallsBackToNewest() throws {
+    let store = try makePresentedEventStore()
+    let messages = try (0..<3).map { index in
+      try Self.signedEvent(
+        privateKey: Self.profilePrivateKey,
+        createdAt: Self.now - index,
+        kind: 9,
+        tags: [["h", Self.channelID]],
+        content: "Burst \(index)"
+      )
+    }
+    URLProtocolStub.handler = { request in
+      Self.response(request, status: 200, data: try JSONEncoder().encode(messages))
+    }
+    let communitiesData = try snapshotData([community()])
+
+    let presented = try (0..<4).map { _ in
+      try XCTUnwrap(resolve(makeResolver(
+        communitiesData: communitiesData, presentedEvents: store
+      ))?.navigationTarget?.eventID)
+    }
+
+    XCTAssertEqual(Array(presented.prefix(3)), messages.map(\.id))
+    XCTAssertEqual(presented[3], messages[0].id)
+  }
+
+  func testConcurrentPushesClaimDistinctEvents() throws {
+    let store = try makePresentedEventStore()
+    let messages = try (0..<3).map { index in
+      try Self.signedEvent(
+        privateKey: Self.profilePrivateKey,
+        createdAt: Self.now,
+        kind: 9,
+        tags: [["h", Self.channelID]],
+        content: "Concurrent \(index)"
+      )
+    }
+    URLProtocolStub.handler = { request in
+      Self.response(request, status: 200, data: try JSONEncoder().encode(messages))
+    }
+    let communitiesData = try snapshotData([community()])
+    let lock = NSLock()
+    var presented: [String] = []
+    let completions = (0..<3).map { expectation(description: "resolve \($0)") }
+    for completion in completions {
+      makeResolver(communitiesData: communitiesData, presentedEvents: store).resolve {
+        lock.lock()
+        presented.append($0?.navigationTarget?.eventID ?? "")
+        lock.unlock()
+        completion.fulfill()
+      }
+    }
+    wait(for: completions, timeout: 4)
+
+    XCTAssertEqual(Set(presented), Set(messages.map(\.id)))
+  }
+
+  func testPresentedEventStoreKeepsOnlyTheNewestIDs() throws {
+    let store = try makePresentedEventStore()
+    for index in 0..<(BuzzPushPresentedEventStore.maximumEventIDs + 5) {
+      XCTAssertEqual(store.claim(["event-\(index)"]), "event-\(index)")
+    }
+
+    XCTAssertEqual(store.claim(["event-0"]), "event-0")
+    XCTAssertNil(store.claim(["event-\(BuzzPushPresentedEventStore.maximumEventIDs + 4)"]))
+  }
+
+  func testCrossCommunityPickAgreesWithPerCommunityTieBreak() throws {
+    let otherPrivateKey = String(repeating: "0", count: 63) + "4"
+    let (root, reply) = try sameSecondRootAndApprovalReply(rootIDSortsFirst: true)
+    let plainA = try Self.signedEvent(
+      privateKey: Self.profilePrivateKey, createdAt: Self.now, kind: 9,
+      tags: [["h", Self.channelID]], content: "Plain A")
+    let plainB = try Self.signedEvent(
+      privateKey: otherPrivateKey, createdAt: Self.now, kind: 9,
+      tags: [["h", Self.channelID]], content: "Plain B")
+    let cases: [([VerifiedNostrEvent], [VerifiedNostrEvent])] = [
+      ([root], [reply]),
+      ([reply], [root]),
+      ([plainA], [plainB]),
+      ([plainB], [plainA]),
+    ]
+    let communities = [
+      community(id: "community-a", relayUrl: "https://a.relay.example"),
+      community(id: "community-b", relayUrl: "https://b.relay.example"),
+    ]
+    for (eventsA, eventsB) in cases {
+      URLProtocolStub.reset()
+      URLProtocolStub.handler = { request in
+        let events = request.url?.host == "a.relay.example" ? eventsA : eventsB
+        return Self.response(request, status: 200, data: try JSONEncoder().encode(events))
+      }
+      let expected = try XCTUnwrap(BuzzPushNotificationResolver.decodeResolution(
+        events: eventsA + eventsB, community: community()
+      )?.1.id)
+
+      let result = try XCTUnwrap(resolve(makeResolver(
+        communitiesData: try snapshotData(communities),
+        privateKeys: ["community-a": Self.privateKey, "community-b": Self.privateKey]
+      )))
+
+      XCTAssertEqual(result.navigationTarget?.eventID, expected)
+    }
+    XCTAssertEqual(
+      BuzzPushNotificationResolver.decodeResolution(
+        events: [root, reply], community: community())?.1.id,
+      reply.id)
+    XCTAssertEqual(
+      BuzzPushNotificationResolver.decodeResolution(
+        events: [plainA, plainB], community: community())?.1.id,
+      min(plainA.id, plainB.id))
+  }
+
+  func makePresentedEventStore() throws -> BuzzPushPresentedEventStore {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("buzz-presented-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+    return BuzzPushPresentedEventStore(containerURL: directory)
+  }
+
+  func sameSecondRootAndApprovalReply(
+    rootIDSortsFirst: Bool
+  ) throws -> (VerifiedNostrEvent, VerifiedNostrEvent) {
+    for attempt in 0..<64 {
+      let root = try Self.signedEvent(
+        privateKey: Self.profilePrivateKey,
+        createdAt: Self.now,
+        kind: 9,
+        tags: [["h", Self.channelID]],
+        content: "TASKS-TEST-11 · in_progress \(attempt)"
+      )
+      let reply = try Self.signedEvent(
+        privateKey: Self.profilePrivateKey,
+        createdAt: Self.now,
+        kind: 9,
+        tags: [
+          ["h", Self.channelID],
+          ["e", root.id, "", "reply"],
+          ["p", Self.ownPubkey],
+          ["notification", "approval"],
+        ],
+        content: "@owner TASKS-TEST-11 · awaiting_owner"
+      )
+      if (root.id < reply.id) == rootIDSortsFirst { return (root, reply) }
+    }
+    throw XCTSkip("no id ordering found")
+  }
+
   func makeResolver(
     communitiesData: Data?,
     privateKeys: [String: String] = ["community-id": privateKey],
     presentationCacheData: Data? = nil,
-    now: Date = Date()
+    now: Date = Date(),
+    presentedEvents: BuzzPushPresentedEventStore? = nil
   ) -> BuzzPushNotificationResolver {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [URLProtocolStub.self]
@@ -789,7 +959,8 @@ final class BuzzPushNotificationResolverTests: XCTestCase {
       loadCommunitiesData: { communitiesData },
       loadPrivateKey: { privateKeys[$0] },
       loadPresentationCacheData: { presentationCacheData },
-      now: { now }
+      now: { now },
+      presentedEvents: presentedEvents
     )
   }
 

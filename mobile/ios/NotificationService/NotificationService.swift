@@ -51,7 +51,8 @@ final class NotificationService: UNNotificationServiceExtension {
       },
       loadPresentationCacheData: { [self] in
         Self.loadPushSnapshotData(appGroupIdentifier: self.appGroupIdentifier)
-      }
+      },
+      presentedEvents: BuzzPushPresentedEventStore(appGroupIdentifier: self.appGroupIdentifier)
     )
   }()
 
