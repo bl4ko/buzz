@@ -118,3 +118,38 @@ test("a decision replaces the buttons and a failed publish shows an error", asyn
   assert.ok(q("task-approve"));
   assert.equal(q("task-decision"), null);
 });
+
+test("a new ask on the same case shows the buttons again", async () => {
+  await render();
+  await act(async () => q("task-approve").click());
+  assert.equal(q("task-decision").textContent, "Approved");
+  const next = [
+    {
+      ...tasks[0],
+      eventId: "next",
+      createdAt: 20,
+      ask: { text: "Delete the branch?", eventId: "c".repeat(64) },
+    },
+    ...tasks.slice(1),
+  ];
+  await act(async () =>
+    root.render(
+      React.createElement(ChannelTasksTab, {
+        tasks: {
+          channelId: "c",
+          tasks: next,
+          groups: groupThreadTasks(next),
+          awaitingCount: 1,
+          isLoading: false,
+          setStatus: async () => {},
+        },
+        canSetStatus: true,
+        onOpenThread: () => {},
+        onReact: async () => {},
+      }),
+    ),
+  );
+  assert.equal(q("task-decision"), null);
+  assert.ok(q("task-approve"));
+  assert.match(q("tasks-group-needs-you").textContent, /Delete the branch\?/);
+});
