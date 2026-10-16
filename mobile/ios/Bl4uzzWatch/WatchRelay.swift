@@ -137,6 +137,18 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
         result["accepted"] as? Bool == true, result["event_id"] as? String == event.id
       else { throw WatchRelayError.unconfirmed }
       return ["sent": true, "scope": credentials.scope]
+    case "react":
+      guard message["scope"] as? String == credentials.scope,
+        let id = message["eventId"] as? String, id.utf8.count == 64,
+        id.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+        let emoji = message["emoji"] as? String, emoji == "\u{2705}" || emoji == "\u{274C}"
+      else { throw WatchRelayError.invalidSetup }
+      let event = try NostrHTTPAuth.signedEvent(kind: 7, tags: [["e", id]], content: emoji, privateKeyHex: credentials.privateKeyHex)
+      let response = try await post("events", body: JSONEncoder().encode(event))
+      guard let result = try JSONSerialization.jsonObject(with: response) as? [String: Any],
+        result["accepted"] as? Bool == true, result["event_id"] as? String == event.id
+      else { throw WatchRelayError.unconfirmed }
+      return ["sent": true, "scope": credentials.scope]
     default: throw WatchRelayError.invalidResponse
     }
   }

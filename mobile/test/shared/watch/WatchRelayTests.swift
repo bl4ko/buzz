@@ -122,6 +122,28 @@ final class WatchRelayTests: XCTestCase {
     XCTAssertEqual(sent.count, 1)
   }
 
+  func testReactSignsKind7OnTheAskEventOnly() async throws {
+    let relay = try makeRelay()
+    defer { relay.close() }
+    let ask = String(repeating: "b", count: 64)
+    let result = try await relay.request(["action": "react", "scope": relay.credentials.scope, "eventId": ask, "emoji": "\u{2705}"])
+    XCTAssertEqual(result["sent"] as? Bool, true)
+    XCTAssertEqual(sent.last?.kind, 7)
+    XCTAssertEqual(sent.last?.tags, [["e", ask]])
+    XCTAssertEqual(sent.last?.content, "\u{2705}")
+    let denied = try await relay.request(["action": "react", "scope": relay.credentials.scope, "eventId": ask, "emoji": "\u{274C}"])
+    XCTAssertEqual(denied["sent"] as? Bool, true)
+    XCTAssertEqual(sent.last?.content, "\u{274C}")
+    for bad: [String: Any] in [
+      ["action": "react", "scope": "other", "eventId": ask, "emoji": "\u{2705}"],
+      ["action": "react", "scope": relay.credentials.scope, "eventId": "xyz", "emoji": "\u{2705}"],
+      ["action": "react", "scope": relay.credentials.scope, "eventId": ask, "emoji": "\u{1F44D}"],
+    ] {
+      do { _ = try await relay.request(bad); XCTFail("invalid react accepted") } catch {}
+    }
+    XCTAssertEqual(sent.count, 2)
+  }
+
   func testRejectedOrWrongReceiptNeverConfirmsOrRetries() async throws {
     let relay = try makeRelay()
     defer { relay.close() }

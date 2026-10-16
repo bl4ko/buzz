@@ -1,5 +1,8 @@
+import BuzzPushKit
 import Flutter
 import WatchConnectivity
+
+final class WatchBridgeFlag: @unchecked Sendable { var value = false }
 
 final class WatchBridge: NSObject, WCSessionDelegate {
   private let channel: FlutterMethodChannel
@@ -55,6 +58,28 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     _ session: WCSession, didReceiveMessage message: [String: Any],
     replyHandler: @escaping ([String: Any]) -> Void
   ) {
+    if message["action"] as? String == "react" {
+      guard let raw = message["target"] as? [String: String],
+        let target = BuzzApprovalTarget.decodeIfPresent(from: [BuzzApprovalTarget.userInfoKey: raw]),
+        let decision = BuzzApprovalDecision(rawValue: message["decision"] as? String ?? "")
+      else {
+        replyHandler(["error": "Approval not sent."])
+        return
+      }
+      let accessGroup = Bundle.main.object(forInfoDictionaryKey: "BuzzKeychainAccessGroup") as? String
+      Task {
+        let failed = WatchBridgeFlag()
+        await BuzzApprovalActionHandler.handle(
+          target: target,
+          decision: decision,
+          loadKey: { BuzzPushSigningKeychain.privateKey(communityID: $0, accessGroup: accessGroup) },
+          send: { try await BuzzApprovalReactionSender().send($0, decision: $1, privateKeyHex: $2) },
+          notifyFailure: { _ in failed.value = true }
+        )
+        replyHandler(failed.value ? ["error": "Approval not sent."] : ["sent": true])
+      }
+      return
+    }
     DispatchQueue.main.async {
       self.channel.invokeMethod("request", arguments: message) { result in
         if let response = result as? [String: Any] {
