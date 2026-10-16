@@ -671,6 +671,19 @@ class ChannelDetailPage extends HookConsumerWidget {
       customTabs: customTabs,
     );
     final currentTab = resolveSelectedTab(tabItems, selectedTab.value);
+    final tabBodyOpen = currentTab != 'messages';
+    final composerFocusedBeforeTab = useRef(false);
+    useEffect(() {
+      if (tabBodyOpen) {
+        composerFocusedBeforeTab.value = composerFocusNode.hasFocus;
+      } else if (composerFocusedBeforeTab.value) {
+        composerFocusedBeforeTab.value = false;
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => restoreComposerFocus.value?.call(),
+        );
+      }
+      return null;
+    }, [tabBodyOpen]);
     final showTabRow =
         tabsEnabled && (tabItems.length > 1 || permissions.canEditTabs);
     final tabBarHeight = showTabRow ? channelTabRowHeightOf(context) : 0.0;
@@ -756,202 +769,219 @@ class ChannelDetailPage extends HookConsumerWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Column(
-            children: [
-              Expanded(
-                child: resolvedChannel.isForum
-                    ? Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          ForumPostsView(
-                            channel: resolvedChannel,
-                            currentPubkey: currentPubkey,
-                          ),
-                          if (showConnectionSkeleton.value &&
-                              ref.watch(forumPostsProvider(channel.id)).value ==
-                                  null)
-                            Positioned(
-                              top:
-                                  frostedAppBarHeight(
-                                    context,
-                                    titleContentHeight:
-                                        appBarTitleContentHeight,
-                                    bottomHeight: tabBarHeight,
-                                  ) +
-                                  Grid.xs,
-                              left: Grid.gutter,
-                              right: Grid.gutter,
-                              bottom: 0,
-                              child: _ForumConnectionSkeleton(
-                                status: sessionStatus,
-                              ),
-                            ),
-                        ],
-                      )
-                    : SkeletonReveal(
-                        key: ValueKey('message-loading:${channel.id}'),
-                        loading:
-                            showInitialConnectionSkeleton ||
-                            showConnectionSkeleton.value ||
-                            messagesState.isLoading,
-                        shimmerEnabled:
-                            sessionStatus != SessionStatus.disconnected,
-                        skeleton: _MessageTimelineSkeleton(
-                          messages: timelineEntries
-                              .map((entry) => entry.message)
-                              .toList(),
-                          appBarTitleContentHeight: appBarTitleContentHeight,
-                          appBarBottomHeight: tabBarHeight,
-                        ),
-                        loadingSemanticsKey: const Key(
-                          'channel-detail-connection-skeleton',
-                        ),
-                        loadingLabel: switch (sessionStatus) {
-                          SessionStatus.connecting => 'Connecting',
-                          SessionStatus.reconnecting => 'Reconnecting',
-                          _ => 'Loading',
-                        },
-                        skeletonPadding: EdgeInsets.only(
-                          bottom: showsComposer ? composerDockHeight.value : 0,
-                        ),
-                        content: messagesState.when(
-                          skipLoadingOnReload:
-                              messagesState.hasValue && !messagesState.hasError,
-                          skipLoadingOnRefresh: !messagesState.hasError,
-                          loading: SizedBox.shrink,
-                          error: (e, _) => Padding(
-                            padding: EdgeInsets.only(
-                              top: frostedAppBarHeight(
-                                context,
-                                titleContentHeight: appBarTitleContentHeight,
-                                bottomHeight: tabBarHeight,
-                              ),
-                            ),
-                            child: LoadErrorView(
-                              message: 'Failed to load messages',
-                              onRetry: () => ref.invalidate(
-                                channelMessagesProvider(channel.id),
-                              ),
-                            ),
-                          ),
-                          data: (events) {
-                            return _MessageList(
-                              entries: timelineEntries,
-                              allMessages: timelineMessages,
-                              initialMessageId: initialMessageId,
-                              initialThreadRootId: initialThreadRootId,
-                              initialThreadRouteBehavior:
-                                  initialThreadRouteBehavior,
-                              initialOrdinaryUnreadMessageIds:
-                                  initialOrdinaryUnreadMessageIds,
-                              initialOldestOrdinaryUnreadMessageId:
-                                  initialOldestOrdinaryUnreadMessageId,
-                              initialForcedUnreadMessageIds:
-                                  initialForcedUnreadMessageIds,
-                              initialChannelWasRead:
-                                  initialChannelWasReadRef.value,
-                              hasInitialUnread:
-                                  readState.isReady &&
-                                  (readState.isForcedUnread(channel.id) ||
-                                      initialForcedUnreadMessageIds
-                                          .isNotEmpty ||
-                                      initialOldestOrdinaryUnreadMessageId !=
-                                          null),
-                              channelId: channel.id,
+          Visibility(
+            visible: !tabBodyOpen,
+            maintainState: true,
+            maintainAnimation: true,
+            maintainSize: true,
+            child: Column(
+              children: [
+                Expanded(
+                  child: resolvedChannel.isForum
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ForumPostsView(
+                              channel: resolvedChannel,
                               currentPubkey: currentPubkey,
-                              isMember: resolvedChannel.isMember,
-                              isArchived: resolvedChannel.isArchived,
-                              appBarTitleContentHeight:
-                                  appBarTitleContentHeight,
-                              appBarBottomHeight: tabBarHeight,
-                              composerBottomInset: showsComposer
-                                  ? composerDockHeight.value
-                                  : 0,
-                              composerFocusNode: showsComposer
-                                  ? composerFocusNode
-                                  : null,
-                              restoreComposerFocus: showsComposer
-                                  ? () => restoreComposerFocus.value?.call()
-                                  : null,
-                            );
+                            ),
+                            if (showConnectionSkeleton.value &&
+                                ref
+                                        .watch(forumPostsProvider(channel.id))
+                                        .value ==
+                                    null)
+                              Positioned(
+                                top:
+                                    frostedAppBarHeight(
+                                      context,
+                                      titleContentHeight:
+                                          appBarTitleContentHeight,
+                                      bottomHeight: tabBarHeight,
+                                    ) +
+                                    Grid.xs,
+                                left: Grid.gutter,
+                                right: Grid.gutter,
+                                bottom: 0,
+                                child: _ForumConnectionSkeleton(
+                                  status: sessionStatus,
+                                ),
+                              ),
+                          ],
+                        )
+                      : SkeletonReveal(
+                          key: ValueKey('message-loading:${channel.id}'),
+                          loading:
+                              showInitialConnectionSkeleton ||
+                              showConnectionSkeleton.value ||
+                              messagesState.isLoading,
+                          shimmerEnabled:
+                              sessionStatus != SessionStatus.disconnected,
+                          skeleton: _MessageTimelineSkeleton(
+                            messages: timelineEntries
+                                .map((entry) => entry.message)
+                                .toList(),
+                            appBarTitleContentHeight: appBarTitleContentHeight,
+                            appBarBottomHeight: tabBarHeight,
+                          ),
+                          loadingSemanticsKey: const Key(
+                            'channel-detail-connection-skeleton',
+                          ),
+                          loadingLabel: switch (sessionStatus) {
+                            SessionStatus.connecting => 'Connecting',
+                            SessionStatus.reconnecting => 'Reconnecting',
+                            _ => 'Loading',
                           },
-                        ),
-                      ),
-              ),
-              if (!resolvedChannel.isForum &&
-                  (!resolvedChannel.isMember ||
-                      resolvedChannel.isArchived)) ...[
-                AnimatedSize(
-                  duration: MediaQuery.disableAnimationsOf(context)
-                      ? Duration.zero
-                      : const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  alignment: Alignment.bottomCenter,
-                  child: typingEntries.isEmpty
-                      ? const SizedBox.shrink()
-                      : ChannelTypingIndicator(
-                          channelId: resolvedChannel.id,
-                          entries: typingEntries,
+                          skeletonPadding: EdgeInsets.only(
+                            bottom: showsComposer
+                                ? composerDockHeight.value
+                                : 0,
+                          ),
+                          content: messagesState.when(
+                            skipLoadingOnReload:
+                                messagesState.hasValue &&
+                                !messagesState.hasError,
+                            skipLoadingOnRefresh: !messagesState.hasError,
+                            loading: SizedBox.shrink,
+                            error: (e, _) => Padding(
+                              padding: EdgeInsets.only(
+                                top: frostedAppBarHeight(
+                                  context,
+                                  titleContentHeight: appBarTitleContentHeight,
+                                  bottomHeight: tabBarHeight,
+                                ),
+                              ),
+                              child: LoadErrorView(
+                                message: 'Failed to load messages',
+                                onRetry: () => ref.invalidate(
+                                  channelMessagesProvider(channel.id),
+                                ),
+                              ),
+                            ),
+                            data: (events) {
+                              return _MessageList(
+                                entries: timelineEntries,
+                                allMessages: timelineMessages,
+                                initialMessageId: initialMessageId,
+                                initialThreadRootId: initialThreadRootId,
+                                initialThreadRouteBehavior:
+                                    initialThreadRouteBehavior,
+                                initialOrdinaryUnreadMessageIds:
+                                    initialOrdinaryUnreadMessageIds,
+                                initialOldestOrdinaryUnreadMessageId:
+                                    initialOldestOrdinaryUnreadMessageId,
+                                initialForcedUnreadMessageIds:
+                                    initialForcedUnreadMessageIds,
+                                initialChannelWasRead:
+                                    initialChannelWasReadRef.value,
+                                hasInitialUnread:
+                                    readState.isReady &&
+                                    (readState.isForcedUnread(channel.id) ||
+                                        initialForcedUnreadMessageIds
+                                            .isNotEmpty ||
+                                        initialOldestOrdinaryUnreadMessageId !=
+                                            null),
+                                channelId: channel.id,
+                                currentPubkey: currentPubkey,
+                                isMember: resolvedChannel.isMember,
+                                isArchived: resolvedChannel.isArchived,
+                                appBarTitleContentHeight:
+                                    appBarTitleContentHeight,
+                                appBarBottomHeight: tabBarHeight,
+                                composerBottomInset: showsComposer
+                                    ? composerDockHeight.value
+                                    : 0,
+                                composerFocusNode: showsComposer
+                                    ? composerFocusNode
+                                    : null,
+                                restoreComposerFocus: showsComposer
+                                    ? () => restoreComposerFocus.value?.call()
+                                    : null,
+                              );
+                            },
+                          ),
                         ),
                 ),
-                if (!resolvedChannel.isDm)
-                  _ReadOnlyNotice(channel: resolvedChannel),
+                if (!resolvedChannel.isForum &&
+                    (!resolvedChannel.isMember ||
+                        resolvedChannel.isArchived)) ...[
+                  AnimatedSize(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    alignment: Alignment.bottomCenter,
+                    child: typingEntries.isEmpty
+                        ? const SizedBox.shrink()
+                        : ChannelTypingIndicator(
+                            channelId: resolvedChannel.id,
+                            entries: typingEntries,
+                          ),
+                  ),
+                  if (!resolvedChannel.isDm)
+                    _ReadOnlyNotice(channel: resolvedChannel),
+                ],
               ],
-            ],
+            ),
           ),
           if (showsComposer)
-            AndroidImeLift(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: ComposerDockSizeReporter(
-                  key: const ValueKey('channel-composer-dock'),
-                  onHeightChanged: (height) {
-                    if ((composerDockHeight.value - height).abs() < 0.5) return;
-                    composerDockHeight.value = height;
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedSize(
-                        duration: MediaQuery.disableAnimationsOf(context)
-                            ? Duration.zero
-                            : const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.bottomCenter,
-                        child: typingEntries.isEmpty
-                            ? const SizedBox.shrink()
-                            : ChannelTypingIndicator(
-                                channelId: resolvedChannel.id,
-                                entries: typingEntries,
+            Visibility(
+              visible: !tabBodyOpen,
+              maintainState: true,
+              child: AndroidImeLift(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ComposerDockSizeReporter(
+                    key: const ValueKey('channel-composer-dock'),
+                    onHeightChanged: (height) {
+                      if ((composerDockHeight.value - height).abs() < 0.5) {
+                        return;
+                      }
+                      composerDockHeight.value = height;
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSize(
+                          duration: MediaQuery.disableAnimationsOf(context)
+                              ? Duration.zero
+                              : const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.bottomCenter,
+                          child: typingEntries.isEmpty
+                              ? const SizedBox.shrink()
+                              : ChannelTypingIndicator(
+                                  channelId: resolvedChannel.id,
+                                  entries: typingEntries,
+                                ),
+                        ),
+                        ComposeBar(
+                          channelId: channel.id,
+                          focusNode: composerFocusNode,
+                          onFocusRestorerChanged: (restoreFocus) =>
+                              restoreComposerFocus.value = restoreFocus,
+                          channelName: resolvedChannel.isDm
+                              ? ''
+                              : resolvedChannel.name,
+                          onSend:
+                              (
+                                content,
+                                mentionPubkeys, {
+                                mediaTags = const <List<String>>[],
+                              }) => sendMessage.call(
+                                channelId: channel.id,
+                                content: content,
+                                mentionPubkeys: mentionPubkeys,
+                                channel: resolvedChannel,
+                                mediaTags: mediaTags,
                               ),
-                      ),
-                      ComposeBar(
-                        channelId: channel.id,
-                        focusNode: composerFocusNode,
-                        onFocusRestorerChanged: (restoreFocus) =>
-                            restoreComposerFocus.value = restoreFocus,
-                        channelName: resolvedChannel.isDm
-                            ? ''
-                            : resolvedChannel.name,
-                        onSend:
-                            (
-                              content,
-                              mentionPubkeys, {
-                              mediaTags = const <List<String>>[],
-                            }) => sendMessage.call(
-                              channelId: channel.id,
-                              content: content,
-                              mentionPubkeys: mentionPubkeys,
-                              channel: resolvedChannel,
-                              mediaTags: mediaTags,
-                            ),
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          if (currentTab != 'messages')
+          if (tabBodyOpen)
             Positioned.fill(
               child: ColoredBox(
                 color: Theme.of(context).colorScheme.surface,

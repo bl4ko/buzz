@@ -29,6 +29,9 @@ import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_detail_page.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
+import 'package:buzz/features/channels/channel_tabs/channel_tasks_provider.dart';
+import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
+import 'package:buzz/features/channels/compose_bar.dart';
 import 'package:buzz/features/channels/channel_window.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_storage.dart';
@@ -85,6 +88,7 @@ part 'channel_detail_page_test/presence_tests.dart';
 part 'channel_detail_page_test/action_row_tests.dart';
 part 'channel_detail_page_test/huddle_thread_tests.dart';
 part 'channel_detail_page_test/huddle_call_layout_tests.dart';
+part 'channel_detail_page_test/channel_tab_composer_tests.dart';
 
 const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
@@ -273,6 +277,7 @@ Widget _buildTestable({
   SendMessage? sendMessage,
   http.Client? mediaClient,
   ChannelMessagePins? messagePins,
+  ChannelTasksState? tasks,
   Widget? home,
 }) {
   final resolvedChannel = channel ?? _testChannel;
@@ -408,6 +413,10 @@ Widget _buildTestable({
         channelMessagePinsProvider(
           _channelId,
         ).overrideWith(() => _FixedPinsNotifier(messagePins)),
+      if (tasks != null)
+        channelTasksProvider(
+          _channelId,
+        ).overrideWith(() => _FixedTasksNotifier(tasks)),
       appLifecycleProvider.overrideWith(_TestAppLifecycleNotifier.new),
       // Compose bar drafts persist through SharedPreferences.
       savedPrefsProvider.overrideWithValue(_testPrefs),
@@ -537,6 +546,7 @@ void main() {
   actionRowTests();
   huddleThreadTests();
   huddleCallLayoutTests();
+  channelTabComposerTests();
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _testPrefs = await SharedPreferences.getInstance();
@@ -16177,6 +16187,15 @@ class _TestAppLifecycleNotifier extends AppLifecycleNotifier {
   AppLifecycleState build() => AppLifecycleState.resumed;
 
   void setLifecycle(AppLifecycleState value) => state = value;
+}
+
+class _FixedTasksNotifier extends ChannelTasksNotifier {
+  _FixedTasksNotifier(this.tasks) : super(_channelId);
+
+  final ChannelTasksState tasks;
+
+  @override
+  ChannelTasksState build() => tasks;
 }
 
 class _FixedPinsNotifier extends ChannelMessagePinsNotifier {
