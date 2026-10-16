@@ -225,7 +225,7 @@ async fn owner_asks(
                  WHERE t ->> 0 = 'ask' LIMIT 1 \
              ) a \
              WHERE l.tags @> '[[\"status\",\"awaiting_owner\"]]'::jsonb \
-               AND a.tag ->> 1 IS NOT NULL \
+               AND a.tag ->> 1 <> '' \
          ), \
          open AS ( \
              SELECT o.owner, a.id, a.pubkey, a.created_at, a.channel_id, a.ask_text, \

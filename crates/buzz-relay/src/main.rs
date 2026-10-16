@@ -408,6 +408,7 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         max_frame_bytes = config.max_frame_bytes,
         audit_enabled = config.audit_enabled,
         push_enabled = config.push_enabled,
+        push_live_activity_enabled = config.push_live_activity_enabled,
         "Config loaded"
     );
 
@@ -433,6 +434,13 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
     boot.finish();
     metrics::gauge!("buzz_audit_enabled").set(if config.audit_enabled { 1.0 } else { 0.0 });
     metrics::gauge!("buzz_push_enabled").set(if config.push_enabled { 1.0 } else { 0.0 });
+    metrics::gauge!("buzz_push_live_activity_enabled").set(
+        if config.push_enabled && config.push_live_activity_enabled {
+            1.0
+        } else {
+            0.0
+        },
+    );
     info!(
         port = config.metrics_port,
         idle_timeout_secs = usage_idle_timeout_secs,
@@ -1203,6 +1211,11 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
             &state,
         )));
         info!("NIP-PL push matcher and delivery worker started");
+        if state.config.push_live_activity_enabled {
+            tokio::spawn(buzz_relay::live_activity::run_live_activity_worker(
+                Arc::clone(&state),
+            ));
+        }
     } else {
         info!("NIP-PL push disabled by BUZZ_PUSH_ENABLED");
     }

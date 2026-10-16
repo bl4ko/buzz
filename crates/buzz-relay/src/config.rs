@@ -373,6 +373,8 @@ pub struct Config {
     pub push_gateway_delivery_url: Option<url::Url>,
     /// Hard timeout for one push gateway delivery request.
     pub push_gateway_timeout: Duration,
+    /// Whether approval Live Activity deliveries run. Requires push.
+    pub push_live_activity_enabled: bool,
     /// Hard timeout for one operator-listener delivery request.
     pub operator_listener_timeout: Duration,
 
@@ -620,6 +622,13 @@ fn inert_env_vars<'a>(names: &[&'a str], lookup: impl Fn(&str) -> Option<String>
 }
 
 impl Config {
+    /// Gateway Live Activity delivery URL derived from the APNs delivery URL.
+    pub fn push_live_activity_url(&self) -> Option<url::Url> {
+        let mut url = self.push_gateway_delivery_url.clone()?;
+        url.set_path("/v1/deliveries/live-activity");
+        Some(url)
+    }
+
     /// Loads configuration from environment variables, falling back to development defaults.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind_addr_raw =
@@ -1132,6 +1141,12 @@ impl Config {
             Err(_) => 2_000,
         };
         let push_gateway_timeout = Duration::from_millis(push_gateway_timeout_millis);
+        let push_live_activity_enabled = parse_bool("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED", false)?;
+        if push_live_activity_enabled && !push_enabled {
+            return Err(ConfigError::InvalidValue(
+                "BUZZ_PUSH_LIVE_ACTIVITY_ENABLED=true requires BUZZ_PUSH_ENABLED=true".to_string(),
+            ));
+        }
         let operator_listener_timeout_millis = match std::env::var(
             "BUZZ_OPERATOR_LISTENER_TIMEOUT_MS",
         ) {
@@ -1440,6 +1455,7 @@ impl Config {
             push_executor_key_id,
             push_gateway_delivery_url,
             push_gateway_timeout,
+            push_live_activity_enabled,
             operator_listener_timeout,
             join_policy,
             admin,
@@ -2602,6 +2618,101 @@ mod tests {
         } else {
             std::env::remove_var("BUZZ_PUSH_GATEWAY_DELIVERY_URL");
         }
+    }
+
+    fn restore_env(name: &str, value: Option<std::ffi::OsString>) {
+        match value {
+            Some(value) => std::env::set_var(name, value),
+            None => std::env::remove_var(name),
+        }
+    }
+
+    #[test]
+    fn live_activity_requires_push_enabled() {
+        let _guards = env_guards();
+        let names = [
+            "BUZZ_PUSH_ENABLED",
+            "BUZZ_PUSH_GATEWAY_DELIVERY_URL",
+            "BUZZ_PUSH_LIVE_ACTIVITY_ENABLED",
+        ];
+        let previous: Vec<_> = names.iter().map(std::env::var_os).collect();
+        for name in names {
+            std::env::remove_var(name);
+        }
+        let default = Config::from_env().map(|config| config.push_live_activity_enabled);
+
+        std::env::set_var("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED", "true");
+        let without_push = Config::from_env();
+
+        std::env::set_var("BUZZ_PUSH_ENABLED", "true");
+        std::env::set_var(
+            "BUZZ_PUSH_GATEWAY_DELIVERY_URL",
+            "https://push.example/v1/deliveries/apns",
+        );
+        let with_push = Config::from_env().map(|config| config.push_live_activity_enabled);
+
+        std::env::set_var("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED", "maybe");
+        let invalid = Config::from_env();
+
+        for (name, value) in names.into_iter().zip(previous) {
+            restore_env(name, value);
+        }
+        assert!(matches!(default, Ok(false)));
+        assert!(matches!(
+            without_push,
+            Err(ConfigError::InvalidValue(ref message))
+                if message.contains("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED")
+                    && message.contains("BUZZ_PUSH_ENABLED")
+        ));
+        assert!(matches!(with_push, Ok(true)));
+        assert!(matches!(
+            invalid,
+            Err(ConfigError::InvalidValue(ref message))
+                if message.contains("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED")
+        ));
+    }
+
+    #[test]
+    fn live_activity_url_is_derived_from_delivery_url() {
+        let _guards = env_guards();
+        let names = [
+            "BUZZ_PUSH_ENABLED",
+            "BUZZ_PUSH_GATEWAY_DELIVERY_URL",
+            "BUZZ_PUSH_LIVE_ACTIVITY_ENABLED",
+        ];
+        let previous: Vec<_> = names.iter().map(std::env::var_os).collect();
+        std::env::set_var("BUZZ_PUSH_ENABLED", "true");
+        std::env::set_var("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED", "true");
+        let mut derived = Vec::new();
+        for url in [
+            "https://push.example/v1/deliveries/apns",
+            "http://push-gateway:8080/v1/deliveries/apns",
+        ] {
+            std::env::set_var("BUZZ_PUSH_GATEWAY_DELIVERY_URL", url);
+            derived.push(
+                Config::from_env()
+                    .ok()
+                    .and_then(|config| config.push_live_activity_url())
+                    .map(|url| url.to_string()),
+            );
+        }
+        std::env::set_var("BUZZ_PUSH_ENABLED", "false");
+        std::env::set_var("BUZZ_PUSH_LIVE_ACTIVITY_ENABLED", "false");
+        std::env::remove_var("BUZZ_PUSH_GATEWAY_DELIVERY_URL");
+        let disabled = Config::from_env()
+            .ok()
+            .map(|config| config.push_live_activity_url());
+        for (name, value) in names.into_iter().zip(previous) {
+            restore_env(name, value);
+        }
+        assert_eq!(
+            derived,
+            vec![
+                Some("https://push.example/v1/deliveries/live-activity".to_owned()),
+                Some("http://push-gateway:8080/v1/deliveries/live-activity".to_owned()),
+            ]
+        );
+        assert_eq!(disabled, Some(None));
     }
 
     #[test]
