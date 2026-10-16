@@ -678,9 +678,11 @@ class ChannelDetailPage extends HookConsumerWidget {
         composerFocusedBeforeTab.value = composerFocusNode.hasFocus;
       } else if (composerFocusedBeforeTab.value) {
         composerFocusedBeforeTab.value = false;
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => restoreComposerFocus.value?.call(),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted && ModalRoute.isCurrentOf(context) == true) {
+            restoreComposerFocus.value?.call();
+          }
+        });
       }
       return null;
     }, [tabBodyOpen]);
@@ -1001,6 +1003,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                       selected: currentTab,
                       permissions: permissions,
                       onOpenMessage: (messageId, rootId) {
+                        composerFocusedBeforeTab.value = false;
                         selectedTab.value = 'messages';
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -1013,6 +1016,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                         );
                       },
                       onOpenThread: (rootId) {
+                        composerFocusedBeforeTab.value = false;
                         selectedTab.value = 'messages';
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(

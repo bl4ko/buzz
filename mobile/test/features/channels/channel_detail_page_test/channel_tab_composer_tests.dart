@@ -116,6 +116,58 @@ void channelTabComposerTests() {
       });
     }
 
+    testWidgets('opening a task leaves the hidden channel composer unfocused', (
+      tester,
+    ) async {
+      final threadTasks = ChannelTasksState({
+        'm0': ThreadTask(
+          rootId: 'm0',
+          channelId: _channelId,
+          status: TaskStatus.inProgress,
+          title: 'Rotate relay key',
+          ask: null,
+          author: 'e' * 64,
+          createdAt: 10,
+          eventId: 'f' * 64,
+        ),
+      });
+      await tester.pumpWidget(
+        _buildTestable(messages: messages(3), tasks: threadTasks),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Message #general'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'half-written reply');
+      await tester.pumpAndSettle();
+      final channelFocus = tester
+          .widget<EditableText>(find.byType(EditableText, skipOffstage: false))
+          .focusNode;
+      expect(channelFocus.hasFocus, isTrue);
+
+      await openTab(tester, 'Tasks');
+      await tester.tap(find.text('Rotate relay key'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ThreadDetailPage), findsOneWidget);
+      expect(channelFocus.hasFocus, isFalse);
+
+      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.pumpAndSettle();
+      tester.testTextInput.enterText('thread answer');
+      await tester.pumpAndSettle();
+
+      expect(channelFocus.hasFocus, isFalse);
+      expect(
+        find.textContaining('thread answer', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('thread answer'), findsOneWidget);
+      expect(
+        find.text('half-written reply', skipOffstage: false),
+        findsWidgets,
+      );
+    });
+
     testWidgets('timeline keeps its scroll position after Tasks', (
       tester,
     ) async {
