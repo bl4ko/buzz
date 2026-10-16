@@ -30,6 +30,7 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
   bool _showDone = false;
   final Map<String, OwnerDecision> _decided = {};
   final Set<String> _pending = {};
+  final Set<String> _closing = {};
 
   Future<void> _run(
     Future<void> Function() action,
@@ -61,6 +62,12 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
       onSuccess: () => _decided[eventId] = decision,
     );
     if (mounted) setState(() => _pending.remove(eventId));
+  }
+
+  Future<void> _close(ThreadTask task) async {
+    setState(() => _closing.add(task.rootId));
+    await _run(() => widget.onDone(task), "Couldn't close the task");
+    if (mounted) setState(() => _closing.remove(task.rootId));
   }
 
   Widget _row(ThreadTask task) {
@@ -127,6 +134,7 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
                           onApprove: () =>
                               _send(ask.eventId, OwnerDecision.approve),
                           onDeny: () => _send(ask.eventId, OwnerDecision.deny),
+                          subject: task.title,
                         ),
                       ),
                   ],
@@ -135,15 +143,16 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
             ),
             if (widget.canSetStatus && task.status != TaskStatus.done)
               IconButton(
-                tooltip: 'Mark done',
+                tooltip: 'Mark ${task.title} done',
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
                   BuzzIcons.circleCheck,
                   size: 20,
                   color: context.colors.onSurfaceVariant,
                 ),
-                onPressed: () =>
-                    _run(() => widget.onDone(task), "Couldn't close the task"),
+                onPressed: _closing.contains(task.rootId)
+                    ? null
+                    : () => _close(task),
               ),
           ],
         ),
@@ -151,13 +160,18 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
     );
   }
 
-  Widget _header(String title, int count) => Padding(
-    padding: const EdgeInsets.fromLTRB(Grid.xs, Grid.xs, Grid.xs, Grid.half),
-    child: Text(
-      '$title · $count',
-      style: context.textTheme.labelLarge?.copyWith(
-        color: context.colors.onSurfaceVariant,
-        fontWeight: FontWeight.w600,
+  Widget _header(String title, int count) => Semantics(
+    header: true,
+    label: '$title, $count',
+    excludeSemantics: true,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(Grid.xs, Grid.xs, Grid.xs, Grid.half),
+      child: Text(
+        '$title · $count',
+        style: context.textTheme.labelLarge?.copyWith(
+          color: context.colors.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
   );
@@ -178,7 +192,9 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
   Widget _doneHeader(int count) => Semantics(
     key: const Key('tasks-done-toggle'),
     button: true,
+    header: true,
     expanded: _showDone,
+    label: 'Done, $count',
     hint: _showDone ? 'Hide done tasks' : 'Show done tasks',
     child: InkWell(
       onTap: () => setState(() => _showDone = !_showDone),
@@ -187,11 +203,13 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                'Done · $count',
-                style: context.textTheme.labelLarge?.copyWith(
-                  color: context.colors.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
+              child: ExcludeSemantics(
+                child: Text(
+                  'Done · $count',
+                  style: context.textTheme.labelLarge?.copyWith(
+                    color: context.colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

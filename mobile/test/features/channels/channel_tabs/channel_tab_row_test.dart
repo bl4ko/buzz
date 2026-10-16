@@ -127,7 +127,7 @@ void main() {
     );
     expect(node, isSemantics(isSelected: true, isButton: true));
     expect(node.label, contains('Tasks'));
-    expect(node.label, contains('2'));
+    expect(node.label, contains('2 need you'));
     semantics.dispose();
   });
 
