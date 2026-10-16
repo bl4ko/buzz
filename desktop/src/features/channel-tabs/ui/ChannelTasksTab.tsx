@@ -31,9 +31,10 @@ function TaskRow({
   onDone: (task: ThreadTask) => Promise<void>;
 }) {
   const [pending, setPending] = React.useState(false);
-  const [decision, setDecision] = React.useState<"approve" | "deny" | null>(
-    null,
-  );
+  const [answered, setAnswered] = React.useState<{
+    askId: string;
+    value: "approve" | "deny";
+  } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const run = async (
     action: () => Promise<void>,
@@ -54,6 +55,8 @@ function TaskRow({
     }
   };
   const ask = task.ask;
+  const decision =
+    ask && answered?.askId === ask.eventId ? answered.value : null;
   return (
     <li
       className="flex items-start gap-3 rounded-lg border border-border/60 px-3 py-2"
@@ -91,7 +94,7 @@ function TaskRow({
               void run(
                 () => onReact(ask.eventId, APPROVE_EMOJI),
                 "Couldn't send approval",
-                () => setDecision("approve"),
+                () => setAnswered({ askId: ask.eventId, value: "approve" }),
               )
             }
             size="sm"
@@ -107,7 +110,7 @@ function TaskRow({
               void run(
                 () => onReact(ask.eventId, DENY_EMOJI),
                 "Couldn't send denial",
-                () => setDecision("deny"),
+                () => setAnswered({ askId: ask.eventId, value: "deny" }),
               )
             }
             size="sm"
