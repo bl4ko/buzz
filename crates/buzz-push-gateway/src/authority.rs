@@ -798,7 +798,9 @@ impl AuthorityStore for MemoryAuthorityStore {
                 activity.expires_at = now.saturating_add(LIVE_ACTIVITY_UPDATE_RETENTION_SECONDS);
             }
             None => {
-                s.live_activities.remove(&key);
+                if let Some(activity) = s.live_activities.get_mut(&key) {
+                    activity.update = None;
+                }
             }
         }
         Ok(())
@@ -947,6 +949,12 @@ mod tests {
             &MemoryAuthorityStore::default(),
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn client_clear_keeps_card_start() {
+        live_activity_conformance::client_clear_keeps_card_start(&MemoryAuthorityStore::default())
+            .await;
     }
 
     #[tokio::test]

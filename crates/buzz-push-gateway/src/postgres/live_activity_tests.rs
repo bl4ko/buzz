@@ -38,6 +38,54 @@ async fn update_token_needs_registered_origin() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
+async fn client_clear_keeps_card_start() {
+    with_store(|store| async move {
+        conformance::client_clear_keeps_card_start(&store).await;
+        let id = conformance::seed(&store).await;
+        let a = [0xa; 32];
+        store
+            .replace_live_activity_registration(
+                id,
+                Some(conformance::sealed(1)),
+                vec![a],
+                conformance::NOW,
+            )
+            .await
+            .unwrap();
+        store
+            .record_live_activity_start(id, a, conformance::NOW)
+            .await
+            .unwrap();
+        store
+            .set_live_activity_update_token(
+                id,
+                a,
+                Some(conformance::sealed(2)),
+                conformance::NOW + 5,
+            )
+            .await
+            .unwrap();
+        store
+            .set_live_activity_update_token(id, a, None, conformance::NOW + 10)
+            .await
+            .unwrap();
+        let row: (bool, bool, bool) = sqlx::query_as(
+            "SELECT update_token_ciphertext IS NULL, update_token_fingerprint IS NULL,
+                    started_at IS NOT NULL
+             FROM push_gateway_live_activities WHERE installation_id=$1 AND origin_hash=$2",
+        )
+        .bind(id)
+        .bind(a.to_vec())
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(row, (true, true, true));
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
 async fn revoke_installation_drops_live_activity_rows() {
     with_store(|store| async move {
         conformance::revoke_installation_drops_live_activity_rows(&store).await;

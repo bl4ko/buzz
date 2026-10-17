@@ -132,7 +132,17 @@ pub(super) async fn set_update_token(
             .map_err(db)?;
         }
         None => {
-            clear_in(&mut tx, installation, origin_hash).await?;
+            sqlx::query(
+                "UPDATE push_gateway_live_activities
+                 SET update_token_ciphertext=NULL, update_token_fingerprint=NULL, updated_at=$3
+                 WHERE installation_id=$1 AND origin_hash=$2",
+            )
+            .bind(installation)
+            .bind(origin_hash.to_vec())
+            .bind(at(now)?)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
         }
     }
     tx.commit().await.map_err(db)
