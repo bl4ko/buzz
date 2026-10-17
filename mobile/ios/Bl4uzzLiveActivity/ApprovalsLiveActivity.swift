@@ -74,6 +74,7 @@ enum ApprovalsPalette {
   static let pill = Color(red: 58 / 255, green: 58 / 255, blue: 64 / 255)
   static let pillText = Color(white: 0.87)
   static let caseText = Color(red: 157 / 255, green: 180 / 255, blue: 255 / 255)
+  static let bee = Color(red: 215 / 255, green: 215 / 255, blue: 46 / 255)
   static let denyFill = Color(red: 1, green: 69 / 255, blue: 58 / 255).opacity(0.18)
   static let denyText = Color(red: 1, green: 107 / 255, blue: 97 / 255)
   static let approveFill = Color(red: 48 / 255, green: 209 / 255, blue: 88 / 255)
@@ -125,7 +126,7 @@ struct ApprovalsWatchCard: View {
         if let caseID = model.state.caseID, !caseID.isEmpty {
           Text(caseID)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(ApprovalsPalette.caseText)
+            .foregroundStyle(ApprovalsPalette.bee)
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.top, 4)
