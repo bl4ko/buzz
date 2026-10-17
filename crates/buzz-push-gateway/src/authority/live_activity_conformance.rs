@@ -409,9 +409,13 @@ pub(crate) async fn quota_buckets_are_separate(store: &dyn AuthorityStore) {
             );
         }
         event += 1;
+        let overflow = match bucket {
+            QuotaBucket::Alert => AuthorityError::Rejected,
+            QuotaBucket::LiveActivity => AuthorityError::RateLimited,
+        };
         assert_eq!(
             admit(store, delegation, event, bucket).await,
-            Err(AuthorityError::Rejected),
+            Err(overflow),
             "{bucket:?}"
         );
     }

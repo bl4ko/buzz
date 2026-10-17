@@ -976,7 +976,10 @@ async fn la_quota_is_separate_from_alert_quota() {
     for _ in 0..10 {
         h.admit(QuotaBucket::Alert).await.unwrap();
     }
-    assert!(h.admit(QuotaBucket::Alert).await.is_err());
+    assert_eq!(
+        h.admit(QuotaBucket::Alert).await,
+        Err(AuthorityError::Rejected)
+    );
     assert_eq!(h.upsert().await, status("started"));
     for _ in 0..9 {
         h.admit(QuotaBucket::LiveActivity).await.unwrap();
@@ -984,10 +987,11 @@ async fn la_quota_is_separate_from_alert_quota() {
     assert_eq!(
         h.upsert().await,
         (
-            StatusCode::NOT_FOUND,
-            serde_json::json!({"error": "invalid_grant"})
+            StatusCode::TOO_MANY_REQUESTS,
+            serde_json::json!({"error": "rate_limited"})
         )
     );
+    assert_eq!(h.la.sent().len(), 1);
 }
 
 #[tokio::test]
