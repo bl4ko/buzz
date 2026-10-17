@@ -211,7 +211,7 @@ struct MessageRow: View {
     var parts = [mine ? "You" : message.author]
     if isNew { parts.append("New") }
     parts.append(message.text.isEmpty ? "Attachment: open on iPhone." : message.text)
-    if let time { parts.append(time) }
+    if let createdAt = message.createdAt { parts.append(WatchTime.spokenLabel(createdAt: createdAt)) }
     if let notified = message.notified, !notified.isEmpty { parts.append("Notified: " + notified.joined(separator: ", ")) }
     return parts.joined(separator: ", ")
   }

@@ -33,6 +33,15 @@ enum WatchTime {
     formatter.setLocalizedDateFormatFromTemplate(age < 7 * 86_400 ? "EEE" : "dMMM")
     return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(createdAt)))
   }
+
+  static func spokenLabel(createdAt: Int, now: Date = Date(), locale: Locale = .current) -> String {
+    let age = Int(now.timeIntervalSince1970) - createdAt
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .full
+    formatter.dateTimeStyle = .named
+    formatter.locale = locale
+    return formatter.localizedString(fromTimeInterval: TimeInterval(age < 60 ? 0 : -age))
+  }
 }
 
 enum WatchUnread {
