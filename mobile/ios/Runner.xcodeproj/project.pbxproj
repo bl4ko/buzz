@@ -78,6 +78,12 @@
 		B1400000000000000000000A = {isa = PBXBuildFile; fileRef = B1400000000000000000000B; };
 		B1400000000000000000000C = {isa = PBXBuildFile; fileRef = B1400000000000000000000D; };
 		B14000000000000000000005 = {isa = PBXBuildFile; productRef = B14000000000000000000006; };
+		B14000000000000000000101 /* WatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14000000000000000000102 /* WatchStore.swift */; };
+		B14000000000000000000103 /* WatchPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14000000000000000000104 /* WatchPresentation.swift */; };
+		B14000000000000000000105 /* WatchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14000000000000000000106 /* WatchTheme.swift */; };
+		B14000000000000000000107 /* ChannelListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14000000000000000000108 /* ChannelListView.swift */; };
+		B14000000000000000000109 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1400000000000000000010A /* ConversationView.swift */; };
+		B1400000000000000000010B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1400000000000000000010C /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -229,6 +235,12 @@
 		B14000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../BuzzPushKit/Sources/BuzzPushKit/BuzzApprovalAction.swift; sourceTree = "<group>"; };
 		B1400000000000000000000B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchApprovalRouter.swift; sourceTree = "<group>"; };
 		B1400000000000000000000D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchApprovalActions.swift; sourceTree = "<group>"; };
+		B14000000000000000000102 /* WatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchStore.swift; sourceTree = "<group>"; };
+		B14000000000000000000104 /* WatchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchPresentation.swift; sourceTree = "<group>"; };
+		B14000000000000000000106 /* WatchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchTheme.swift; sourceTree = "<group>"; };
+		B14000000000000000000108 /* ChannelListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListView.swift; sourceTree = "<group>"; };
+		B1400000000000000000010A /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		B1400000000000000000010C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -439,6 +451,12 @@
 				B1400000000000000000000B,
 				B1400000000000000000000D,
 				6C5BF8F6E14FCE1CA5AB56EC /* Bl4uzzApp.swift */,
+				B14000000000000000000102 /* WatchStore.swift */,
+				B14000000000000000000104 /* WatchPresentation.swift */,
+				B14000000000000000000106 /* WatchTheme.swift */,
+				B14000000000000000000108 /* ChannelListView.swift */,
+				B1400000000000000000010A /* ConversationView.swift */,
+				B1400000000000000000010C /* SettingsView.swift */,
 				5911A2521C78AAF59475E6D3 /* Assets.xcassets */,
 				E744B7A3ECCADF82CEA9A204 /* Info.plist */,
 				3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */,
@@ -809,6 +827,12 @@
 				B14000000000000000000008,
 				B1400000000000000000000A,
 				B1400000000000000000000C,
+				B14000000000000000000101 /* WatchStore.swift in Sources */,
+				B14000000000000000000103 /* WatchPresentation.swift in Sources */,
+				B14000000000000000000105 /* WatchTheme.swift in Sources */,
+				B14000000000000000000107 /* ChannelListView.swift in Sources */,
+				B14000000000000000000109 /* ConversationView.swift in Sources */,
+				B1400000000000000000010B /* SettingsView.swift in Sources */,
 				7C392911DA1EE25993DD94CD /* Bl4uzzApp.swift in Sources */,
 				2F685BB1FF7B95DEBDCEF9A7 /* WatchDraft.swift in Sources */,
 			);
@@ -1005,6 +1029,7 @@
 			baseConfigurationReference = 4F5D4ECDCF96BADDA5D23C0B /* WatchDebug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
@@ -1161,6 +1186,7 @@
 			baseConfigurationReference = 3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
@@ -1344,6 +1370,7 @@
 			baseConfigurationReference = 3F5D4ECDCF96BADDA5D23C0B /* Watch.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "$(BUZZ_DEVELOPMENT_TEAM)";
