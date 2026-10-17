@@ -22,10 +22,13 @@ struct BuzzApprovalDecisionIntent: LiveActivityIntent {
     self.decision = BuzzApprovalIntentRunner.wire(decision)
   }
 
+  static func signingKey(communityID: String, accessGroup: String?) -> String? {
+    BuzzLiveActivitySigningKeychain.privateKey(communityID: communityID, accessGroup: accessGroup)
+  }
+
   func perform() async throws -> some IntentResult {
     await BuzzApprovalIntentRunner.perform(
-      origin: origin, askEventID: askEventID, decision: decision,
-      loadKey: BuzzLiveActivitySigningKeychain.privateKey)
+      origin: origin, askEventID: askEventID, decision: decision, loadKey: Self.signingKey)
     return .result()
   }
 }
@@ -48,10 +51,13 @@ struct BuzzWatchApprovalDecisionIntent: LiveActivityIntent {
     self.decision = BuzzApprovalIntentRunner.wire(decision)
   }
 
+  static func signingKey(communityID: String, accessGroup: String?) -> String? {
+    BuzzPushSigningKeychain.privateKey(communityID: communityID, accessGroup: accessGroup)
+  }
+
   func perform() async throws -> some IntentResult {
     await BuzzApprovalIntentRunner.perform(
-      origin: origin, askEventID: askEventID, decision: decision,
-      loadKey: BuzzPushSigningKeychain.privateKey)
+      origin: origin, askEventID: askEventID, decision: decision, loadKey: Self.signingKey)
     return .result()
   }
 }
