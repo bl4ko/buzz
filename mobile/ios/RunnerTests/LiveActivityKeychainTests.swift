@@ -1,5 +1,7 @@
+import AppIntents
 import BuzzPushKit
 import Security
+import UIKit
 import XCTest
 
 @testable import Buzz
@@ -45,5 +47,53 @@ final class LiveActivityKeychainTests: XCTestCase {
     try BuzzPushKeychain.replace(signingKeys: [:], accessGroup: nil)
     XCTAssertNil(attributes(service: BuzzLiveActivitySigningKeychain.service, account: communities[1]))
     XCTAssertNil(attributes(service: BuzzPushSigningKeychain.service, account: communities[1]))
+  }
+
+  func testLockedLiveActivityWriteKeepsExtensionKeysAndRetriesWhenUnlocked() throws {
+    try BuzzPushKeychain.replace(signingKeys: [communities[0]: "11"], accessGroup: nil)
+    var attempts = 0
+    try BuzzPushKeychain.replace(
+      signingKeys: [communities[0]: "22", communities[1]: "33"], accessGroup: nil,
+      liveActivityAdd: { query in
+        attempts += 1
+        return attempts <= 1 ? errSecInteractionNotAllowed : SecItemAdd(query, nil)
+      })
+    XCTAssertEqual(BuzzPushSigningKeychain.privateKey(communityID: communities[0], accessGroup: nil), "22")
+    XCTAssertEqual(BuzzPushSigningKeychain.privateKey(communityID: communities[1], accessGroup: nil), "33")
+    XCTAssertNil(BuzzLiveActivitySigningKeychain.privateKey(communityID: communities[0], accessGroup: nil))
+    XCTAssertNil(BuzzLiveActivitySigningKeychain.privateKey(communityID: communities[1], accessGroup: nil))
+    NotificationCenter.default.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+    XCTAssertEqual(BuzzLiveActivitySigningKeychain.privateKey(communityID: communities[0], accessGroup: nil), "22")
+    XCTAssertEqual(BuzzLiveActivitySigningKeychain.privateKey(communityID: communities[1], accessGroup: nil), "33")
+    XCTAssertEqual(BuzzPushSigningKeychain.privateKey(communityID: communities[0], accessGroup: nil), "22")
+    XCTAssertEqual(attempts, 3)
+    NotificationCenter.default.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+    XCTAssertEqual(attempts, 3)
+  }
+
+  func testFailedLiveActivityWriteNeverRemovesExtensionKeys() throws {
+    try BuzzPushKeychain.replace(
+      signingKeys: [communities[0]: "44"], accessGroup: nil, liveActivityAdd: { _ in errSecDuplicateItem })
+    XCTAssertEqual(BuzzPushSigningKeychain.privateKey(communityID: communities[0], accessGroup: nil), "44")
+    XCTAssertNil(BuzzLiveActivitySigningKeychain.privateKey(communityID: communities[0], accessGroup: nil))
+  }
+
+  func testIntentsUseTheirAuthenticationPolicyAndSigningKey() throws {
+    guard #available(iOS 18.0, *) else { throw XCTSkip("Live Activity intents need iOS 18") }
+    XCTAssertEqual(BuzzApprovalDecisionIntent.authenticationPolicy, .requiresLocalDeviceAuthentication)
+    XCTAssertEqual(BuzzWatchApprovalDecisionIntent.authenticationPolicy, .requiresAuthentication)
+    XCTAssertFalse(BuzzApprovalDecisionIntent.isDiscoverable)
+    XCTAssertFalse(BuzzWatchApprovalDecisionIntent.isDiscoverable)
+    XCTAssertEqual(BuzzLiveActivitySigningKeychain.service, "buzz.liveactivity.signing")
+    try BuzzPushKeychain.replace(signingKeys: [communities[0]: "55"], accessGroup: nil)
+    let update: [String: Any] = [kSecValueData as String: Data("66".utf8)]
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "buzz.liveactivity.signing",
+      kSecAttrAccount as String: communities[0],
+    ]
+    XCTAssertEqual(SecItemUpdate(query as CFDictionary, update as CFDictionary), errSecSuccess)
+    XCTAssertEqual(BuzzApprovalDecisionIntent.signingKey(communityID: communities[0], accessGroup: nil), "66")
+    XCTAssertEqual(BuzzWatchApprovalDecisionIntent.signingKey(communityID: communities[0], accessGroup: nil), "55")
   }
 }
