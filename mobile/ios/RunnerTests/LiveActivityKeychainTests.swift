@@ -71,6 +71,41 @@ final class LiveActivityKeychainTests: XCTestCase {
     XCTAssertEqual(attempts, 3)
   }
 
+  func testPendingKeyWriteRetriesWhenTheAppBecomesActive() {
+    let attempts = Counter()
+    BuzzLiveActivityKeyWriter.shared.write {
+      attempts.increment() == 1 ? errSecInteractionNotAllowed : errSecSuccess
+    }
+    XCTAssertEqual(attempts.value, 1)
+    NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+    XCTAssertEqual(attempts.value, 2)
+    NotificationCenter.default.post(name: UIApplication.didBecomeActiveNotification, object: nil)
+    XCTAssertEqual(attempts.value, 2)
+  }
+
+  func testOlderPendingWriteNeverRunsAfterANewerWrite() {
+    for _ in 0..<300 {
+      let order = Recorder()
+      let old = Counter()
+      BuzzLiveActivityKeyWriter.shared.write {
+        order.append("old")
+        return old.increment() == 1 ? errSecInteractionNotAllowed : errSecSuccess
+      }
+      DispatchQueue.concurrentPerform(iterations: 2) { index in
+        if index == 0 {
+          NotificationCenter.default.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+        } else {
+          BuzzLiveActivityKeyWriter.shared.write {
+            order.append("new")
+            return errSecSuccess
+          }
+        }
+      }
+      XCTAssertEqual(order.values.last, "new", "\(order.values)")
+      guard order.values.last == "new" else { return }
+    }
+  }
+
   func testFailedLiveActivityWriteNeverRemovesExtensionKeys() throws {
     try BuzzPushKeychain.replace(
       signingKeys: [communities[0]: "44"], accessGroup: nil, liveActivityAdd: { _ in errSecDuplicateItem })
@@ -95,5 +130,40 @@ final class LiveActivityKeychainTests: XCTestCase {
     XCTAssertEqual(SecItemUpdate(query as CFDictionary, update as CFDictionary), errSecSuccess)
     XCTAssertEqual(BuzzApprovalDecisionIntent.signingKey(communityID: communities[0], accessGroup: nil), "66")
     XCTAssertEqual(BuzzWatchApprovalDecisionIntent.signingKey(communityID: communities[0], accessGroup: nil), "55")
+  }
+}
+
+private final class Counter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+
+  var value: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return count
+  }
+
+  func increment() -> Int {
+    lock.lock()
+    defer { lock.unlock() }
+    count += 1
+    return count
+  }
+}
+
+private final class Recorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var items: [String] = []
+
+  var values: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return items
+  }
+
+  func append(_ item: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    items.append(item)
   }
 }
