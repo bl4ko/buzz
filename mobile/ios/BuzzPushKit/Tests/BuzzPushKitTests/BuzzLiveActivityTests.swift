@@ -441,7 +441,23 @@ final class BuzzLiveActivityRegistrarTests: XCTestCase {
       try await subject.setUpdateToken(origin: "https://buzz.bl4ko.com", token: Data([1]))
       XCTFail("expected rejection")
     } catch {
-      XCTAssertEqual(error as? BuzzLiveActivityRegistrationError, .rejected(status: 404))
+      XCTAssertEqual(error as? BuzzLiveActivityRegistrationError, .rejected(status: 404, code: "not_found"))
+    }
+  }
+
+  func testRegistrarKeepsStatusWhenTheErrorBodyIsNotJSON() async throws {
+    LiveActivityHTTPStub.handler = { request in
+      if request.url?.path == "/v1/installations/challenges" {
+        return (200, Data("{\"challenge_id\":\"\(self.challengeID)\",\"challenge\":\"\(self.challenge)\",\"expires_at\":4000000000}".utf8))
+      }
+      return (502, Data("bad gateway".utf8))
+    }
+    let subject = try registrar(records: [record(handle: installation)], appAttest: LiveActivityAppAttest())
+    do {
+      try await subject.setUpdateToken(origin: "https://buzz.bl4ko.com", token: nil)
+      XCTFail("expected rejection")
+    } catch {
+      XCTAssertEqual(error as? BuzzLiveActivityRegistrationError, .rejected(status: 502, code: nil))
     }
   }
 }

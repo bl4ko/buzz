@@ -226,17 +226,19 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
 
   private final class Gateway: @unchecked Sendable {
     private let lock = NSLock()
-    private var failures: Int
-    private let error: Error
+    private var script: [Error?]
     private var calls: [(String, Data?)] = []
     private var delays: [UInt64] = []
     private var waiters: [(Int, XCTestExpectation)] = []
-    private var held: CheckedContinuation<Void, Never>?
+    private var held: [CheckedContinuation<Void, Never>] = []
     private var holding: Bool
 
-    init(failures: Int = 0, error: Error = URLError(.notConnectedToInternet), holdRetries: Bool = false) {
-      self.failures = failures
-      self.error = error
+    convenience init(failures: Int = 0, error: Error = URLError(.notConnectedToInternet), holdRetries: Bool = false) {
+      self.init(script: Array(repeating: error, count: failures), holdRetries: holdRetries)
+    }
+
+    init(script: [Error?], holdRetries: Bool = false) {
+      self.script = script
       holding = holdRetries
     }
 
@@ -257,9 +259,7 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
     func send(_ origin: String, _ token: Data?) throws {
       let failure: Error? = locked {
         calls.append((origin, token))
-        guard failures > 0 else { return nil }
-        failures -= 1
-        return error
+        return script.isEmpty ? nil : script.removeFirst()
       }
       fire()
       if let failure { throw failure }
@@ -270,7 +270,7 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
       await withCheckedContinuation { continuation in
         let resume = locked { () -> Bool in
           guard holding else { return true }
-          held = continuation
+          held.append(continuation)
           return false
         }
         if resume { continuation.resume() }
@@ -278,12 +278,12 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
     }
 
     func releaseRetries() {
-      let continuation = locked { () -> CheckedContinuation<Void, Never>? in
+      let continuations = locked { () -> [CheckedContinuation<Void, Never>] in
         holding = false
-        defer { held = nil }
+        defer { held = [] }
         return held
       }
-      continuation?.resume()
+      continuations.forEach { $0.resume() }
     }
 
     private func fire() {
@@ -389,13 +389,57 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
     XCTAssertEqual(gateway.slept, [2])
   }
 
-  func testInvalidOriginIsNotRetried() async {
-    let gateway = Gateway(failures: 1, error: BuzzLiveActivityRegistrationError.invalidOrigin)
+  func testTerminalErrorsAreNotRetried() async {
+    let terminal: [BuzzLiveActivityRegistrationError] = [.invalidOrigin, .unboundOrigin, .notEnrolled]
+    for error in terminal {
+      let gateway = Gateway(failures: 1, error: error)
+      let subject = sync(gateway)
+      await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
+      await waitForSends(gateway, 1)
+      try? await Task.sleep(nanoseconds: 100_000_000)
+      XCTAssertEqual(gateway.sent.count, 1, "\(error)")
+      XCTAssertTrue(gateway.slept.isEmpty, "\(error)")
+      let registered = await subject.registeredActivities()
+      XCTAssertEqual(registered, [origin: "a"], "\(error)")
+    }
+  }
+
+  func testClearOfAnUnregisteredOriginStops() async {
+    let gateway = Gateway(script: [nil, BuzzLiveActivityRegistrationError.rejected(status: 404, code: "not_found")])
     let subject = sync(gateway)
-    await subject.tokenChanged(origin: "https://x.example/", activityID: "a", token: Data([1]))
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
     await waitForSends(gateway, 1)
+    await subject.activityEnded(origin: origin, activityID: "a")
+    await waitForSends(gateway, 2)
     try? await Task.sleep(nanoseconds: 100_000_000)
-    XCTAssertEqual(gateway.sent.count, 1)
+    XCTAssertEqual(gateway.sent.map(\.1), [Data([1]), nil])
     XCTAssertTrue(gateway.slept.isEmpty)
+  }
+
+  func testNotFoundForANewTokenAndCounterConflictForAClearAreRetried() async {
+    let notFound = BuzzLiveActivityRegistrationError.rejected(status: 404, code: "not_found")
+    let conflict = BuzzLiveActivityRegistrationError.rejected(status: 404, code: "not_authorized")
+    let gateway = Gateway(script: [notFound, nil, conflict])
+    let subject = sync(gateway)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
+    await waitForSends(gateway, 2)
+    await subject.activityEnded(origin: origin, activityID: "a")
+    await waitForSends(gateway, 4)
+    XCTAssertEqual(gateway.sent.map(\.1), [Data([1]), Data([1]), nil, nil])
+    XCTAssertEqual(gateway.slept.count, 2)
+  }
+
+  func testNewTokenInterruptsTheBackoff() async {
+    let gateway = Gateway(failures: 1, holdRetries: true)
+    let subject = sync(gateway)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
+    await waitForSends(gateway, 1)
+    XCTAssertEqual(gateway.slept.count, 1)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([2]))
+    await waitForSends(gateway, 2)
+    XCTAssertEqual(gateway.sent.map(\.1), [Data([1]), Data([2])])
+    let registered = await subject.registeredActivities()
+    XCTAssertEqual(registered, [origin: "a"])
+    gateway.releaseRetries()
   }
 }

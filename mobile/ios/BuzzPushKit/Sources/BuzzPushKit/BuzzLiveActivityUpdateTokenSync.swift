@@ -22,6 +22,7 @@ public actor BuzzLiveActivityUpdateTokenSync {
   private var desired: [String: Target] = [:]
   private var sent: [String: Target] = [:]
   private var draining: Set<String> = []
+  private var wakeups: [String: BuzzLiveActivityWakeup] = [:]
   private var sequence = 0
 
   public init(
@@ -53,6 +54,7 @@ public actor BuzzLiveActivityUpdateTokenSync {
 
   private func want(_ target: Target, for origin: String) {
     desired[origin] = target
+    wakeups[origin]?.fire()
     guard draining.insert(origin).inserted else { return }
     Task { await drain(origin) }
   }
@@ -64,13 +66,66 @@ public actor BuzzLiveActivityUpdateTokenSync {
         try await send(origin, target.token)
         sent[origin] = target
         delay = Self.initialRetrySeconds
-      } catch BuzzLiveActivityRegistrationError.invalidOrigin {
+      } catch where Self.isFinal(error, clearing: target.token == nil) {
         sent[origin] = target
       } catch {
-        await sleep(delay)
+        await pause(origin, seconds: delay)
         delay = min(delay * 2, Self.maximumRetrySeconds)
       }
     }
     draining.remove(origin)
+  }
+
+  private func pause(_ origin: String, seconds: UInt64) async {
+    let wakeup = BuzzLiveActivityWakeup()
+    wakeups[origin] = wakeup
+    let sleep = sleep
+    let sleeper = Task {
+      await sleep(seconds)
+      wakeup.fire()
+    }
+    await wakeup.wait()
+    sleeper.cancel()
+    wakeups[origin] = nil
+  }
+
+  static func isFinal(_ error: Error, clearing: Bool) -> Bool {
+    switch error as? BuzzLiveActivityRegistrationError {
+    case .invalidOrigin, .unboundOrigin, .notEnrolled: return true
+    case .rejected(status: 404, code: "not_found"?): return clearing
+    default: return false
+    }
+  }
+}
+
+final class BuzzLiveActivityWakeup: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var fired = false
+
+  func wait() async {
+    await withCheckedContinuation { continuation in
+      let resume = locked { () -> Bool in
+        guard !fired else { return true }
+        self.continuation = continuation
+        return false
+      }
+      if resume { continuation.resume() }
+    }
+  }
+
+  func fire() {
+    let continuation = locked { () -> CheckedContinuation<Void, Never>? in
+      fired = true
+      defer { self.continuation = nil }
+      return self.continuation
+    }
+    continuation?.resume()
+  }
+
+  private func locked<T>(_ body: () -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body()
   }
 }
