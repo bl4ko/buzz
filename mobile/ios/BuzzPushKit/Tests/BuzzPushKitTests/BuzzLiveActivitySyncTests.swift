@@ -221,14 +221,29 @@ final class BuzzLiveActivityDuplicateTests: XCTestCase {
   }
 }
 
-final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
+final class BuzzLiveActivityGatewaySyncTests: XCTestCase {
+  private static let second: UInt64 = 1_000_000_000
   private let origin = "https://buzz.bl4ko.com"
+  private let zeta = "https://zeta.example"
+  private let conflict = BuzzLiveActivityRegistrationError.rejected(status: 404, code: "not_authorized")
+
+  private enum Call: Equatable {
+    case token(String, Data?)
+    case register(String)
+  }
 
   private final class Gateway: @unchecked Sendable {
     private let lock = NSLock()
     private var script: [Error?]
-    private var calls: [(String, Data?)] = []
+    private var registrationScript: [Error?]
+    private let callNanoseconds: UInt64
+    private let pick: (ClosedRange<UInt64>) -> UInt64
+    private var calls: [Call] = []
     private var delays: [UInt64] = []
+    private var ranges: [ClosedRange<UInt64>] = []
+    private var fingerprints: [String] = []
+    private var inFlight = 0
+    private var mostInFlight = 0
     private var waiters: [(Int, XCTestExpectation)] = []
     private var held: [CheckedContinuation<Void, Never>] = []
     private var holding: Bool
@@ -237,8 +252,17 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
       self.init(script: Array(repeating: error, count: failures), holdRetries: holdRetries)
     }
 
-    init(script: [Error?], holdRetries: Bool = false) {
+    init(
+      script: [Error?] = [],
+      registrationScript: [Error?] = [],
+      holdRetries: Bool = false,
+      callNanoseconds: UInt64 = 0,
+      pick: @escaping (ClosedRange<UInt64>) -> UInt64 = { $0.upperBound }
+    ) {
       self.script = script
+      self.registrationScript = registrationScript
+      self.callNanoseconds = callNanoseconds
+      self.pick = pick
       holding = holdRetries
     }
 
@@ -248,25 +272,60 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
       return body()
     }
 
-    var sent: [(String, Data?)] { locked { calls } }
+    var log: [Call] { locked { calls } }
+    var sent: [(String, Data?)] {
+      locked {
+        calls.compactMap { call in
+          guard case let .token(origin, token) = call else { return nil }
+          return (origin, token)
+        }
+      }
+    }
     var slept: [UInt64] { locked { delays } }
+    var jitterRanges: [ClosedRange<UInt64>] { locked { ranges } }
+    var saved: [String] { locked { fingerprints } }
+    var peak: Int { locked { mostInFlight } }
 
     func expect(_ count: Int, _ expectation: XCTestExpectation) {
       locked { waiters.append((count, expectation)) }
       fire()
     }
 
-    func send(_ origin: String, _ token: Data?) throws {
+    func send(_ origin: String, _ token: Data?) async throws {
+      try await call(.token(origin, token))
+    }
+
+    func register(_ request: BuzzLiveActivityStartRequest) async throws {
+      try await call(.register(request.fingerprint))
+    }
+
+    func didRegister(_ request: BuzzLiveActivityStartRequest) {
+      locked { fingerprints.append(request.fingerprint) }
+    }
+
+    func random(_ range: ClosedRange<UInt64>) -> UInt64 {
+      locked { ranges.append(range) }
+      return pick(range)
+    }
+
+    private func call(_ call: Call) async throws {
       let failure: Error? = locked {
-        calls.append((origin, token))
+        calls.append(call)
+        inFlight += 1
+        mostInFlight = max(mostInFlight, inFlight)
+        if case .register = call {
+          return registrationScript.isEmpty ? nil : registrationScript.removeFirst()
+        }
         return script.isEmpty ? nil : script.removeFirst()
       }
       fire()
+      if callNanoseconds > 0 { try? await Task.sleep(nanoseconds: callNanoseconds) }
+      locked { inFlight -= 1 }
       if let failure { throw failure }
     }
 
-    func sleep(_ seconds: UInt64) async {
-      locked { delays.append(seconds) }
+    func sleep(_ nanoseconds: UInt64) async {
+      locked { delays.append(nanoseconds) }
       await withCheckedContinuation { continuation in
         let resume = locked { () -> Bool in
           guard holding else { return true }
@@ -297,17 +356,106 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
     }
   }
 
-  private func sync(_ gateway: Gateway) -> BuzzLiveActivityUpdateTokenSync {
-    BuzzLiveActivityUpdateTokenSync(
-      send: { try gateway.send($0, $1) },
-      sleep: { await gateway.sleep($0) })
+  private func sync(_ gateway: Gateway) -> BuzzLiveActivityGatewaySync {
+    BuzzLiveActivityGatewaySync(
+      register: { try await gateway.register($0) },
+      setUpdateToken: { try await gateway.send($0, $1) },
+      didRegister: { gateway.didRegister($0) },
+      sleep: { await gateway.sleep($0) },
+      random: { gateway.random($0) })
   }
 
-  private func waitForSends(_ gateway: Gateway, _ count: Int) async {
-    let expectation = expectation(description: "\(count) sends")
+  private func request(_ startToken: String) -> BuzzLiveActivityStartRequest {
+    BuzzLiveActivityStartRequest(
+      installation: BuzzLiveActivityInstallation(
+        gatewayOrigin: "https://push.example", handle: "22222222-2222-4222-8222-222222222222",
+        appAttestKeyId: "key-1", relayPubkeys: [:]),
+      startToken: startToken, originHashes: [String(repeating: "a", count: 64)])
+  }
+
+  private func waitForSends(_ gateway: Gateway, _ count: Int, settle: UInt64 = 50_000_000) async {
+    let expectation = expectation(description: "\(count) calls")
     gateway.expect(count, expectation)
     await fulfillment(of: [expectation], timeout: 5)
-    try? await Task.sleep(nanoseconds: 50_000_000)
+    if settle > 0 { try? await Task.sleep(nanoseconds: settle) }
+  }
+
+  func testGatewayCallsNeverOverlap() async {
+    let gateway = Gateway(callNanoseconds: 50_000_000)
+    let subject = sync(gateway)
+    let first = request("01")
+    let second = request("02")
+    await subject.register(first)
+    await waitForSends(gateway, 1, settle: 0)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
+    await subject.tokenChanged(origin: zeta, activityID: "z", token: Data([9]))
+    await subject.register(second)
+    await waitForSends(gateway, 4, settle: 100_000_000)
+    XCTAssertEqual(gateway.peak, 1)
+    XCTAssertEqual(
+      gateway.log,
+      [.register(first.fingerprint), .register(second.fingerprint), .token(origin, Data([1])), .token(zeta, Data([9]))])
+    XCTAssertEqual(gateway.saved, [first.fingerprint, second.fingerprint])
+  }
+
+  func testRegistrationRetriesACounterConflictWithJitter() async {
+    let gateway = Gateway(registrationScript: [conflict, conflict], pick: { $0.lowerBound })
+    let subject = sync(gateway)
+    let start = request("01")
+    await subject.register(start)
+    await waitForSends(gateway, 3)
+    XCTAssertEqual(gateway.log, Array(repeating: .register(start.fingerprint), count: 3))
+    XCTAssertEqual(gateway.saved, [start.fingerprint])
+    XCTAssertEqual(gateway.jitterRanges, [(Self.second)...(2 * Self.second), (2 * Self.second)...(4 * Self.second)])
+    XCTAssertEqual(gateway.slept, [Self.second, 2 * Self.second])
+  }
+
+  func testRegistrationRetryIsBounded() async {
+    let attempts = BuzzLiveActivityGatewaySync.maximumRegistrationAttempts
+    let gateway = Gateway(registrationScript: Array(repeating: conflict, count: attempts + 3))
+    let subject = sync(gateway)
+    await subject.register(request("01"))
+    await waitForSends(gateway, attempts, settle: 200_000_000)
+    XCTAssertEqual(gateway.log.count, attempts)
+    XCTAssertEqual(gateway.slept.count, attempts - 1)
+    XCTAssertTrue(gateway.saved.isEmpty)
+  }
+
+  func testRegistrationWithoutEnrollmentIsNotRetried() async {
+    let gateway = Gateway(registrationScript: [BuzzLiveActivityRegistrationError.notEnrolled])
+    let subject = sync(gateway)
+    await subject.register(request("01"))
+    await waitForSends(gateway, 1, settle: 100_000_000)
+    XCTAssertEqual(gateway.log.count, 1)
+    XCTAssertTrue(gateway.slept.isEmpty)
+    XCTAssertTrue(gateway.saved.isEmpty)
+  }
+
+  func testSameRegistrationIsSentOnce() async {
+    let gateway = Gateway()
+    let subject = sync(gateway)
+    let start = request("01")
+    await subject.register(start)
+    await waitForSends(gateway, 1)
+    await subject.register(start)
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertEqual(gateway.log, [.register(start.fingerprint)])
+    XCTAssertEqual(gateway.saved, [start.fingerprint])
+  }
+
+  func testNewRegistrationInterruptsTheBackoff() async {
+    let gateway = Gateway(registrationScript: [conflict], holdRetries: true)
+    let subject = sync(gateway)
+    let first = request("01")
+    let second = request("02")
+    await subject.register(first)
+    await waitForSends(gateway, 1)
+    XCTAssertEqual(gateway.slept.count, 1)
+    await subject.register(second)
+    await waitForSends(gateway, 2)
+    XCTAssertEqual(gateway.log, [.register(first.fingerprint), .register(second.fingerprint)])
+    XCTAssertEqual(gateway.saved, [second.fingerprint])
+    gateway.releaseRetries()
   }
 
   func testClearsOnlyWhenTheRegisteredActivityEnds() async {
@@ -370,7 +518,9 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
     let subject = sync(gateway)
     await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
     await waitForSends(gateway, 10)
-    XCTAssertEqual(gateway.slept, [2, 4, 8, 16, 32, 64, 128, 256, 300])
+    let delays: [UInt64] = [2, 4, 8, 16, 32, 64, 128, 256, 300]
+    XCTAssertEqual(gateway.slept, delays.map { $0 * Self.second })
+    XCTAssertEqual(gateway.jitterRanges, delays.map { ($0 * Self.second / 2)...($0 * Self.second) })
     XCTAssertEqual(gateway.sent.count, 10)
     let registered = await subject.registeredActivities()
     XCTAssertEqual(registered, [origin: "a"])
@@ -386,7 +536,7 @@ final class BuzzLiveActivityUpdateTokenSyncTests: XCTestCase {
     await waitForSends(gateway, 2)
     try? await Task.sleep(nanoseconds: 100_000_000)
     XCTAssertEqual(gateway.sent.map(\.1), [Data([1]), Data([2])])
-    XCTAssertEqual(gateway.slept, [2])
+    XCTAssertEqual(gateway.slept, [2 * Self.second])
   }
 
   func testTerminalErrorsAreNotRetried() async {

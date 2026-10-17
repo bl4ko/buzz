@@ -11,7 +11,7 @@ final class LiveActivityCoordinator: @unchecked Sendable {
   private let appGroupIdentifier: String?
   private let endpointGrantStore: BuzzPushEndpointGrantKeychainStore
   private let keychainAccessGroup: String?
-  private let updateTokens: BuzzLiveActivityUpdateTokenSync
+  private let gateway: BuzzLiveActivityGatewaySync
   private static let log = Logger(subsystem: "com.bl4ko.buzz", category: "live-activity")
   private let lock = NSLock()
   private var startToken: Data?
@@ -27,15 +27,31 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     self.appGroupIdentifier = appGroupIdentifier
     self.endpointGrantStore = endpointGrantStore
     self.keychainAccessGroup = keychainAccessGroup
-    updateTokens = BuzzLiveActivityUpdateTokenSync { origin, token in
-      do {
-        try await Self.registrar(store: endpointGrantStore, accessGroup: keychainAccessGroup, gatewayOrigin: nil)
-          .setUpdateToken(origin: origin, token: token)
-      } catch {
-        Self.log.error("Live Activity update token failed: \(String(describing: error), privacy: .public)")
-        throw error
-      }
-    }
+    let registrationKey = Self.registrationKey
+    gateway = BuzzLiveActivityGatewaySync(
+      register: { request in
+        do {
+          try await Self.registrar(
+            store: endpointGrantStore, accessGroup: keychainAccessGroup,
+            gatewayOrigin: request.installation.gatewayOrigin
+          ).register(request)
+        } catch {
+          Self.log.error("Live Activity registration failed: \(String(describing: error), privacy: .public)")
+          throw error
+        }
+      },
+      setUpdateToken: { origin, token in
+        do {
+          try await Self.registrar(store: endpointGrantStore, accessGroup: keychainAccessGroup, gatewayOrigin: nil)
+            .setUpdateToken(origin: origin, token: token)
+        } catch {
+          Self.log.error("Live Activity update token failed: \(String(describing: error), privacy: .public)")
+          throw error
+        }
+      },
+      didRegister: { request in
+        appGroupIdentifier.flatMap(UserDefaults.init(suiteName:))?.set(request.fingerprint, forKey: registrationKey)
+      })
   }
 
   private var defaults: UserDefaults? { appGroupIdentifier.flatMap(UserDefaults.init(suiteName:)) }
@@ -92,7 +108,7 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     let origins = snapshot.map(BuzzLiveActivityOrigin.origins(in:))
     if snapshot != nil || !enabled {
       let allowed = Set(enabled ? origins ?? [] : [])
-      let registered = await updateTokens.registeredActivities()
+      let registered = await gateway.registeredActivities()
       await endActivities(
         BuzzLiveActivityInstance.activitiesToEnd(instances(), allowedOrigins: allowed, registered: registered))
     }
@@ -107,14 +123,7 @@ final class LiveActivityCoordinator: @unchecked Sendable {
         registeredFingerprint: defaults?.string(forKey: Self.registrationKey)
       )
     else { return }
-    do {
-      try await Self.registrar(
-        store: endpointGrantStore, accessGroup: keychainAccessGroup, gatewayOrigin: request.installation.gatewayOrigin
-      ).register(request)
-      defaults?.set(request.fingerprint, forKey: Self.registrationKey)
-    } catch {
-      Self.log.error("Live Activity registration failed: \(String(describing: error), privacy: .public)")
-    }
+    await gateway.register(request)
   }
 
   private func observe(_ activity: Activity<Attributes>) {
@@ -122,19 +131,19 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     guard isNew else { return }
     let origin = activity.attributes.origin
     let id = activity.id
-    let updateTokens = updateTokens
+    let gateway = gateway
     Task {
       for await token in activity.pushTokenUpdates {
-        await updateTokens.tokenChanged(origin: origin, activityID: id, token: token)
+        await gateway.tokenChanged(origin: origin, activityID: id, token: token)
       }
     }
     Task {
       if activity.activityState == .ended || activity.activityState == .dismissed {
-        await updateTokens.activityEnded(origin: origin, activityID: id)
+        await gateway.activityEnded(origin: origin, activityID: id)
         return
       }
       for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
-        await updateTokens.activityEnded(origin: origin, activityID: id)
+        await gateway.activityEnded(origin: origin, activityID: id)
         break
       }
     }
