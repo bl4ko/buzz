@@ -686,6 +686,9 @@ void main() {
       String activeId = 'community-1',
       Key key = const ValueKey('tasks-dispatcher'),
       ProviderContainer? reuse,
+      Future<List<Channel>>? channels,
+      PendingDeepLinkNotifier Function()? pending,
+      bool settle = true,
     }) async {
       final container =
           reuse ??
@@ -699,10 +702,12 @@ void main() {
                 communityStorageProvider.overrideWithValue(storage),
                 communitySnapshotWriterProvider.overrideWithValue((_) async {}),
                 pendingDeepLinkProvider.overrideWith(
-                  () => _RecordingPendingDeepLinkNotifier(link),
+                  pending ?? () => _RecordingPendingDeepLinkNotifier(link),
                 ),
                 channelsProvider.overrideWith(
-                  () => _FakeChannelsNotifier(Future.value([_channel])),
+                  () => _FakeChannelsNotifier(
+                    channels ?? Future.value([_channel]),
+                  ),
                 ),
                 taskAskChannelLookupProvider.overrideWithValue(lookup),
               ],
@@ -722,9 +727,116 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      if (settle) await tester.pumpAndSettle();
       return container;
     }
+
+    testWidgets('cold-start link waits for the relay, then opens Tasks', (
+      tester,
+    ) async {
+      final uris = StreamController<Uri>();
+      PendingDeepLinkNotifier.debugUriStreamOverride = uris.stream;
+      addTearDown(() async {
+        PendingDeepLinkNotifier.debugUriStreamOverride = null;
+        await uris.close();
+      });
+      final link = TasksDeepLink(
+        origin: 'https://first.example',
+        eventId: askId,
+      );
+      uris.add(
+        Uri.parse(
+          'buzz://tasks?origin=${Uri.encodeComponent(link.origin)}'
+          '&event=$askId',
+        ),
+      );
+      final channels = Completer<List<Channel>>();
+      var connected = false;
+      final lookups = <String>[];
+      final container = await pumpTasks(
+        tester,
+        link: link,
+        channels: channels.future,
+        pending: PendingDeepLinkNotifier.new,
+        settle: false,
+        lookup: (id) async {
+          lookups.add(id);
+          if (!connected) throw StateError('Relay session is unavailable');
+          return 'channel-1';
+        },
+      );
+      await tester.pump(const Duration(seconds: 5));
+
+      expect(container.read(pendingDeepLinkProvider), link);
+      expect(lookups, isEmpty);
+      expect(find.byType(_CapturedDestination), findsNothing);
+
+      connected = true;
+      channels.complete([_channel]);
+      await tester.pumpAndSettle();
+
+      final destination = tester.widget<_CapturedDestination>(
+        find.byType(_CapturedDestination),
+      );
+      expect(destination.channel.id, 'channel-1');
+      expect(destination.link, link);
+      expect(lookups, [askId]);
+      expect(container.read(pendingDeepLinkProvider), isNull);
+    });
+
+    testWidgets(
+      'cold-start link is dropped silently if the relay never loads',
+      (tester) async {
+        final link = TasksDeepLink(
+          origin: 'https://first.example',
+          eventId: askId,
+        );
+        var lookups = 0;
+        final container = await pumpTasks(
+          tester,
+          link: link,
+          channels: Completer<List<Channel>>().future,
+          settle: false,
+          lookup: (_) async {
+            lookups++;
+            return 'channel-1';
+          },
+        );
+        await tester.pump(const Duration(seconds: 14));
+        expect(container.read(pendingDeepLinkProvider), link);
+
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+        expect(find.byType(_CapturedDestination), findsNothing);
+        expect(find.byType(SnackBar), findsNothing);
+        expect(lookups, 0);
+        expect(container.read(pendingDeepLinkProvider), isNull);
+      },
+    );
+
+    testWidgets('cold-start lookup failure after the relay loads is silent', (
+      tester,
+    ) async {
+      final link = TasksDeepLink(
+        origin: 'https://first.example',
+        eventId: askId,
+      );
+      final channels = Completer<List<Channel>>();
+      final container = await pumpTasks(
+        tester,
+        link: link,
+        channels: channels.future,
+        settle: false,
+        lookup: (_) async => throw StateError('offline'),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      channels.complete([_channel]);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(_CapturedDestination), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(container.read(pendingDeepLinkProvider), isNull);
+    });
 
     testWidgets('dispatcher opens Tasks tab of the ask channel', (
       tester,

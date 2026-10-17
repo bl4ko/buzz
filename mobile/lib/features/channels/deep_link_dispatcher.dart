@@ -24,6 +24,8 @@ typedef DeepLinkDestinationBuilder =
 
 typedef TaskAskChannelLookup = Future<String?> Function(String eventId);
 
+const tasksLinkReadyTimeout = Duration(seconds: 15);
+
 final taskAskChannelLookupProvider = Provider<TaskAskChannelLookup>(
   (ref) => (eventId) async {
     final events = await ref.read(relaySessionProvider.notifier).queryRelay([
@@ -152,18 +154,22 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
         notifier.consume();
         return;
       }
-      String? channelId;
-      List<Channel>? channels;
+      Channel? channel;
       try {
-        channelId = await ref.read(taskAskChannelLookupProvider)(link.eventId);
-        channels = await ref.read(channelsProvider.future);
+        final channels = await ref
+            .read(channelsProvider.future)
+            .timeout(tasksLinkReadyTimeout);
+        if (!mounted || ref.read(pendingDeepLinkProvider) != link) return;
+        final channelId = await ref.read(taskAskChannelLookupProvider)(
+          link.eventId,
+        );
+        channel = channels
+            .where((candidate) => candidate.id == channelId)
+            .firstOrNull;
       } catch (error) {
         debugPrint('deep-link: tasks link lookup failed: $error');
       }
       if (!mounted || ref.read(pendingDeepLinkProvider) != link) return;
-      final channel = channels
-          ?.where((candidate) => candidate.id == channelId)
-          .firstOrNull;
       if (channel != null && context.mounted) _pushChannel(channel, link);
       notifier.consume();
     } finally {
