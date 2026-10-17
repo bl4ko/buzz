@@ -23,11 +23,13 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
   @Published var messages: [WatchMessage] = []
   @Published var scope = ""
   @Published var error: String?
-  @Published var busy = false
+  @Published private var pendingAction: String?
   @Published var reachable = false
   @Published var independent = false
   @Published var synced = false
   private var generation = 0
+  var busy: Bool { pendingAction != nil }
+  var sending: Bool { pendingAction == "send" }
   private var messageChannelID: String?
   private var relay: WatchRelay?
 
@@ -85,7 +87,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
     relay = nil
     independent = false
     synced = false
-    busy = false
+    pendingAction = nil
     channels = []
     messages = []
     messageChannelID = nil
@@ -165,17 +167,17 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
     guard !busy else { return }
     if let relay, message["action"] as? String != "setupStandalone" {
       error = nil
-      busy = true
+      pendingAction = message["action"] as? String ?? ""
       let requestGeneration = generation
       Task {
         do {
           let response = try await relay.request(message)
           guard self.generation == requestGeneration else { return }
-          self.busy = false
+          self.pendingAction = nil
           completion(response)
         } catch {
           guard self.generation == requestGeneration else { return }
-          self.busy = false
+          self.pendingAction = nil
           if message["action"] as? String == "send" {
             self.error = "\(error.localizedDescription) Check the channel before you send again."
           } else {
@@ -190,7 +192,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
       return
     }
     error = nil
-    busy = true
+    pendingAction = message["action"] as? String ?? ""
     let requestGeneration = generation
     var finished = false
     var timer: Timer?
@@ -199,7 +201,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
       finished = true
       timer?.invalidate()
       guard self.generation == requestGeneration else { return }
-      self.busy = false
+      self.pendingAction = nil
       if let error = response["error"] as? String {
         self.error = error
       } else {
@@ -252,7 +254,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
       }
       if newScope != self.scope || applicationContext["available"] as? Bool != true {
         self.generation += 1
-        self.busy = false
+        self.pendingAction = nil
         self.channels = []
         self.synced = false
         self.messages = []

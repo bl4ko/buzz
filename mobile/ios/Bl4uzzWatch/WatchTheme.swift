@@ -114,21 +114,25 @@ private struct StyledButton: View {
 }
 
 struct SendButtonStyle: ButtonStyle {
+  var sending = false
+
   func makeBody(configuration: Configuration) -> some View {
-    SendButton(configuration: configuration)
+    SendButton(configuration: configuration, sending: sending)
   }
 }
 
 private struct SendButton: View {
   let configuration: ButtonStyleConfiguration
+  let sending: Bool
   @Environment(\.isEnabled) private var isEnabled
 
   var body: some View {
+    let active = isEnabled || sending
     configuration.label
       .font(.system(size: 17, weight: .bold))
-      .foregroundStyle(isEnabled ? Color.black : Color.white.opacity(0.35))
+      .foregroundStyle(active ? Color.black : Color.white.opacity(0.35))
       .frame(width: 42, height: 42)
-      .background(isEnabled ? Color.bee : Color.white.opacity(0.12), in: Circle())
+      .background(active ? Color.bee : Color.white.opacity(0.12), in: Circle())
       .contentShape(Circle())
       .scaleEffect(configuration.isPressed ? 0.9 : 1)
       .animation(.easeOut(duration: 0.12), value: configuration.isPressed)

@@ -52,6 +52,8 @@ enum WatchComposer {
 
   static func isTooLong(_ draft: String) -> Bool { draft.utf16.count > 2000 }
 
+  static func sendLabel(sending: Bool) -> String { sending ? "Sending" : "Send" }
+
   static func canSend(draft: String, busy: Bool, independent: Bool, reachable: Bool) -> Bool {
     !busy && (independent || reachable)
       && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isTooLong(draft)
