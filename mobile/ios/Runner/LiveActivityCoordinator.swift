@@ -51,6 +51,7 @@ final class LiveActivityCoordinator: @unchecked Sendable {
       },
       didRegister: { request in
         appGroupIdentifier.flatMap(UserDefaults.init(suiteName:))?.set(request.fingerprint, forKey: registrationKey)
+        BuzzLiveActivities.refresh()
       })
   }
 
@@ -113,17 +114,15 @@ final class LiveActivityCoordinator: @unchecked Sendable {
         BuzzLiveActivityInstance.activitiesToEnd(instances(), allowedOrigins: allowed, registered: registered))
     }
     guard !Task.isCancelled, let records = try? endpointGrantStore.records() else { return }
-    guard
-      let request = BuzzLiveActivityStartPlanner.request(
+    await gateway.register(
+      BuzzLiveActivityStartPlanner.request(
         records: records,
         origins: origins,
         activitiesEnabled: enabled,
         startToken: locked { startToken },
         now: Int64(Date().timeIntervalSince1970),
         registeredFingerprint: defaults?.string(forKey: Self.registrationKey)
-      )
-    else { return }
-    await gateway.register(request)
+      ))
   }
 
   private func observe(_ activity: Activity<Attributes>) {

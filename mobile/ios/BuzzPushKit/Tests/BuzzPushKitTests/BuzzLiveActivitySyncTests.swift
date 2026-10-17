@@ -458,6 +458,22 @@ final class BuzzLiveActivityGatewaySyncTests: XCTestCase {
     gateway.releaseRetries()
   }
 
+  func testWithdrawnRegistrationIsNotRetried() async {
+    let gateway = Gateway(registrationScript: [conflict], holdRetries: true)
+    let subject = sync(gateway)
+    let start = request("01")
+    await subject.register(start)
+    await waitForSends(gateway, 1)
+    await subject.register(nil)
+    gateway.releaseRetries()
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    XCTAssertEqual(gateway.log, [.register(start.fingerprint)])
+    XCTAssertTrue(gateway.saved.isEmpty)
+    await subject.register(start)
+    await waitForSends(gateway, 2)
+    XCTAssertEqual(gateway.saved, [start.fingerprint])
+  }
+
   func testClearsOnlyWhenTheRegisteredActivityEnds() async {
     let gateway = Gateway()
     let subject = sync(gateway)
