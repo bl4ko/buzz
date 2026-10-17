@@ -119,11 +119,13 @@ struct ComposerCard: View {
         .accessibilityLabel(WatchComposer.sendLabel(sending: sending))
         .disabled(!canSend)
       }
-      FlowLayout {
-        ForEach(WatchComposer.quickReplies, id: \.self) { reply in
-          Button(reply) { draft = reply }
-            .buttonStyle(ChipStyle(selected: draft == reply))
-            .accessibilityHint("Quick reply")
+      WatchGlassGroup {
+        FlowLayout {
+          ForEach(WatchComposer.quickReplies, id: \.self) { reply in
+            Button(reply) { draft = reply }
+              .buttonStyle(ChipStyle(selected: draft == reply))
+              .accessibilityHint("Quick reply")
+          }
         }
       }
       if WatchComposer.isTooLong(draft) {
@@ -201,7 +203,7 @@ struct MessageRow: View {
         Spacer(minLength: 18)
         content.background(Color.bee, in: shape)
       } else {
-        content.watchGlass(in: shape)
+        content.background(WatchPalette.bubble, in: shape)
         Spacer(minLength: 18)
       }
     }

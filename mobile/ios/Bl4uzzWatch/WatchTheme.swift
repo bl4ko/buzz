@@ -14,6 +14,7 @@ enum WatchPalette {
     Color(red: 0.45, green: 0.62, blue: 1),
   ]
   static let danger = Color(red: 1, green: 0.41, blue: 0.38)
+  static let bubble = Color.white.opacity(0.14)
   static let success = Color(red: 0.19, green: 0.82, blue: 0.35)
   static let backdrop = LinearGradient(
     colors: [Color.bee.opacity(0.34), Color.bee.opacity(0.08), .black],
@@ -39,6 +40,19 @@ extension View {
 
   func toolbarGlyph() -> some View {
     foregroundStyle(.white).tint(Color(white: 0.24))
+  }
+}
+
+struct WatchGlassGroup<Content: View>: View {
+  var spacing: CGFloat = 0
+  @ViewBuilder var content: Content
+
+  var body: some View {
+    if #available(watchOS 26.0, *) {
+      GlassEffectContainer(spacing: spacing) { content }
+    } else {
+      content
+    }
   }
 }
 
