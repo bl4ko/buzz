@@ -25,11 +25,12 @@ def main():
         for source in [
             root / "mobile/ios/Bl4uzzWatch/WatchRelay.swift",
             root / "mobile/ios/Bl4uzzWatch/WatchApprovalRouter.swift",
+            root / "mobile/ios/Bl4uzzWatch/WatchPresentation.swift",
             root / "mobile/ios/BuzzPushKit/Sources/BuzzPushKit/NostrHTTPAuth.swift",
             root / "mobile/ios/BuzzPushKit/Sources/BuzzPushKit/BuzzApprovalAction.swift",
         ]:
             shutil.copy2(source, sources / source.name)
-        for test in ["WatchRelayTests.swift", "WatchApprovalRouterTests.swift"]:
+        for test in ["WatchRelayTests.swift", "WatchApprovalRouterTests.swift", "WatchPresentationTests.swift"]:
             shutil.copy2(Path(__file__).with_name(test), tests)
         signer_tests = root / "mobile/ios/BuzzPushKit/Tests/BuzzPushKitTests/NostrHTTPAuthTests.swift"
         (tests / signer_tests.name).write_text(

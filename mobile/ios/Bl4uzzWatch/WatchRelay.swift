@@ -290,10 +290,12 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
     ])
     let recipients = dm ? [] : originals.flatMap { $0.tags.filter { $0.count >= 2 && $0[0] == "p" }.map { $0[1].lowercased() } }
     let labels = try await profileLabels(Array(Set(originals.map(\.pubkey) + recipients).sorted().prefix(256)))
-    return ["scope": credentials.scope, "messages": Self.timeline(originals + changes, channelID: id, labels: labels, dm: dm)]
+    return ["scope": credentials.scope, "messages": Self.timeline(originals + changes, channelID: id, labels: labels, dm: dm, own: credentials.pubkey)]
   }
 
-  static func timeline(_ events: [VerifiedNostrEvent], channelID: String, labels: [String: String], dm: Bool = false) -> [[String: Any]] {
+  static func timeline(
+    _ events: [VerifiedNostrEvent], channelID: String, labels: [String: String], dm: Bool = false, own: String? = nil
+  ) -> [[String: Any]] {
     let scoped = events.filter { $0.tag("h") == channelID }
     let deleted = Set(scoped.filter { $0.kind == 5 || $0.kind == 9005 }.flatMap {
       $0.tags.filter { $0.count >= 2 && $0[0] == "e" }.map { $0[1] }
@@ -307,7 +309,8 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
         let text = edits[event.id]?.content ?? event.content
         return ["id": event.id, "author": labels[event.pubkey] ?? String(event.pubkey.prefix(8)),
           "text": String(text.unicodeScalars.prefix(300)),
-          "notified": dm ? [] : notifiedLabels(event, text: text, labels: labels)]
+          "notified": dm ? [] : notifiedLabels(event, text: text, labels: labels),
+          "createdAt": event.createdAt, "mine": event.pubkey == own]
       }
   }
 
