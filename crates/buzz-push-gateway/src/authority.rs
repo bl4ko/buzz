@@ -124,6 +124,13 @@ impl QuotaBucket {
                 .into(),
         }
     }
+
+    pub fn exhausted(self) -> AuthorityError {
+        match self {
+            Self::Alert => AuthorityError::Rejected,
+            Self::LiveActivity => AuthorityError::RateLimited,
+        }
+    }
 }
 
 pub const MAX_LIVE_ACTIVITY_ORIGINS: usize = 16;
@@ -687,7 +694,7 @@ impl AuthorityStore for MemoryAuthorityStore {
             *quota = (now, 0);
         }
         if quota.1 >= quota_max_deliveries {
-            return Err(AuthorityError::Rejected);
+            return Err(quota_bucket.exhausted());
         }
         quota.1 += 1;
         s.delivery_auth_replays.insert(auth_key, request_expires_at);

@@ -52,7 +52,7 @@ Optional Live Activity credentials enable APNs `liveactivity` pushes. Set all th
 
 The token connection uses the same environment and the topic `<BUZZ_PUSH_DOGFOOD_APNS_TOPIC>.push-type.liveactivity`. Alert pushes keep the certificate connection. Without these variables the gateway starts normally and answers every Live Activity delivery with `not_registered`.
 
-Optional endpoint quota policy variables are `BUZZ_PUSH_ENDPOINT_QUOTA_WINDOW_SECONDS` (default `10`, max `86400`) and `BUZZ_PUSH_ENDPOINT_QUOTA_MAX_DELIVERIES` (default `10`, max `10000`). These are Buzz policy hypotheses, not Apple-published limits; tune under load while retaining a hard ceiling. Live Activity deliveries use a separate per-endpoint bucket, so card bursts cannot use the alert budget: `BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_WINDOW_SECONDS` (default `10`, max `86400`) and `BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES` (default `10`, max `10000`).
+Optional endpoint quota policy variables are `BUZZ_PUSH_ENDPOINT_QUOTA_WINDOW_SECONDS` (default `10`, max `86400`) and `BUZZ_PUSH_ENDPOINT_QUOTA_MAX_DELIVERIES` (default `10`, max `10000`). These are Buzz policy hypotheses, not Apple-published limits; tune under load while retaining a hard ceiling. Live Activity deliveries use a separate per-endpoint bucket, so card bursts cannot use the alert budget: `BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_WINDOW_SECONDS` (default `10`, max `86400`) and `BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES` (default `10`, max `10000`). A full Live Activity bucket answers `429` `{"error":"rate_limited"}`, and the relay retries the community job with backoff; a full alert bucket still answers `404` `invalid_grant`.
 
 ## Personal device development
 

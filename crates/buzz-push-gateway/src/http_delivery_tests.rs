@@ -371,3 +371,28 @@ async fn grant_signer_and_replay_checks_remain_enforced() {
     );
     assert_eq!(sends.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn alert_quota_overflow_keeps_invalid_grant() {
+    let (app, keys, body, sends) = fixture().await;
+    let mut request_body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let mut deliver = || {
+        request_body["request_id"] = serde_json::json!(Uuid::new_v4());
+        let body = serde_json::to_vec(&request_body).unwrap();
+        let auth = signed_header(&keys, DIRECT_URL, "POST", &body);
+        app.clone().oneshot(request(DIRECT_URL, None, auth, body))
+    };
+    for _ in 0..10 {
+        assert_eq!(deliver().await.unwrap().status(), StatusCode::OK);
+    }
+    let response = deliver().await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let bytes = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+        serde_json::json!({"error": "invalid_grant"})
+    );
+    assert_eq!(sends.load(Ordering::SeqCst), 10);
+}
