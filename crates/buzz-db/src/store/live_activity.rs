@@ -10,6 +10,7 @@ use crate::Db;
 
 const REFRESH_AFTER_SECS: i64 = 90 * 60;
 const RESTART_AFTER_SECS: i64 = 7 * 60 * 60;
+const NOT_REGISTERED_RETRY_SECS: i64 = 6 * 60 * 60;
 
 /// One claimed community job from the Live Activity queue.
 #[derive(Debug, Clone)]
@@ -133,25 +134,34 @@ async fn claim_due_job(
 }
 
 async fn complete_job(pool: &PgPool, community: CommunityId, claim_id: Uuid) -> Result<()> {
-    let mut connection = maintenance_connection(pool).await?;
-    sqlx::query(
-        "UPDATE push_live_activity_queue \
-         SET state = 'pending', due_at = now() + interval '1 second', attempts = 0, \
-             claim_id = NULL, lease_until = NULL, dirty = false \
-         WHERE community_id = $1 AND claim_id = $2 AND state = 'running' AND dirty",
+    let mut tx = sqlx::Transaction::begin(maintenance_connection(pool).await?, None).await?;
+    let dirty: Option<bool> = sqlx::query_scalar(
+        "SELECT dirty FROM push_live_activity_queue \
+         WHERE community_id = $1 AND claim_id = $2 AND state = 'running' \
+         FOR UPDATE",
     )
     .bind(community.as_uuid())
     .bind(claim_id)
-    .execute(&mut *connection)
+    .fetch_optional(&mut *tx)
     .await?;
-    sqlx::query(
-        "DELETE FROM push_live_activity_queue \
-         WHERE community_id = $1 AND claim_id = $2 AND state = 'running' AND NOT dirty",
-    )
-    .bind(community.as_uuid())
-    .bind(claim_id)
-    .execute(&mut *connection)
-    .await?;
+    let release = match dirty {
+        Some(true) => {
+            "UPDATE push_live_activity_queue \
+             SET state = 'pending', due_at = now() + interval '1 second', attempts = 0, \
+                 claim_id = NULL, lease_until = NULL, dirty = false \
+             WHERE community_id = $1 AND claim_id = $2"
+        }
+        Some(false) => {
+            "DELETE FROM push_live_activity_queue WHERE community_id = $1 AND claim_id = $2"
+        }
+        None => return Ok(tx.commit().await?),
+    };
+    sqlx::query(release)
+        .bind(community.as_uuid())
+        .bind(claim_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -160,6 +170,7 @@ async fn retry_job(
     community: CommunityId,
     claim_id: Uuid,
     delay: Duration,
+    refresh: bool,
 ) -> Result<()> {
     let mut connection = maintenance_connection(pool).await?;
     sqlx::query(
@@ -167,12 +178,13 @@ async fn retry_job(
          SET state = 'pending', \
              due_at = CASE WHEN dirty THEN now() + interval '1 second' \
                  ELSE now() + make_interval(secs => $3) END, \
-             claim_id = NULL, lease_until = NULL, dirty = false \
+             claim_id = NULL, lease_until = NULL, dirty = false, refresh = refresh OR $4 \
          WHERE community_id = $1 AND claim_id = $2 AND state = 'running'",
     )
     .bind(community.as_uuid())
     .bind(claim_id)
     .bind(delay.as_secs_f64())
+    .bind(refresh)
     .execute(&mut *connection)
     .await?;
     Ok(())
@@ -182,10 +194,18 @@ async fn mark_refresh_due(pool: &PgPool, now: i64) -> Result<u64> {
     let mut connection = maintenance_connection(pool).await?;
     Ok(sqlx::query(
         "INSERT INTO push_live_activity_queue (community_id, due_at, refresh) \
-         SELECT DISTINCT community_id, now(), true FROM push_live_activity_state \
-         WHERE open_count > 0 AND result IN ('started', 'updated', 'pending') \
-           AND (last_sent_at < $1 - $2 OR started_at < $1 - $3) \
-           AND community_write_allowed(community_id) \
+         SELECT DISTINCT s.community_id, now(), true FROM push_live_activity_state s \
+         WHERE s.open_count > 0 \
+           AND ((s.result IN ('started', 'updated', 'pending') \
+                 AND (s.last_sent_at < $1 - $2 OR s.started_at < $1 - $3)) \
+             OR (s.result = 'not_registered' AND s.last_sent_at < $1 - $4)) \
+           AND EXISTS ( \
+               SELECT 1 FROM push_leases l \
+               WHERE l.community_id = s.community_id AND l.author = s.author \
+                 AND l.installation_id = s.installation_id \
+                 AND l.active AND l.endpoint_enabled AND l.expires_at > $1 \
+           ) \
+           AND community_write_allowed(s.community_id) \
          ON CONFLICT (community_id) DO UPDATE \
          SET refresh = true, \
              dirty = push_live_activity_queue.dirty OR push_live_activity_queue.state = 'running'",
@@ -193,6 +213,7 @@ async fn mark_refresh_due(pool: &PgPool, now: i64) -> Result<u64> {
     .bind(now)
     .bind(REFRESH_AFTER_SECS)
     .bind(RESTART_AFTER_SECS)
+    .bind(NOT_REGISTERED_RETRY_SECS)
     .execute(&mut *connection)
     .await?
     .rows_affected())
@@ -387,17 +408,18 @@ impl Db {
         complete_job(&self.pool, community, claim_id).await
     }
 
-    /// Release a claimed job for another attempt after `delay`.
+    /// Release a claimed job for another attempt after `delay`, keeping its refresh flag.
     pub async fn retry_live_activity_job(
         &self,
         community: CommunityId,
         claim_id: Uuid,
         delay: Duration,
+        refresh: bool,
     ) -> Result<()> {
-        retry_job(&self.pool, community, claim_id, delay).await
+        retry_job(&self.pool, community, claim_id, delay, refresh).await
     }
 
-    /// Queue refresh jobs for open cards that are old or near their age limit.
+    /// Queue refresh jobs for aging open cards and for unregistered cards older than 6 h.
     pub async fn mark_live_activity_refresh_due(&self, now: i64) -> Result<u64> {
         mark_refresh_due(&self.pool, now).await
     }

@@ -35,6 +35,7 @@ pub(crate) enum Action {
 
 const HASH_DOMAIN: &[u8] = b"buzz.relay.la-state.v1\0";
 const RESTART_AFTER_SECS: i64 = 7 * 60 * 60;
+const NOT_REGISTERED_RETRY_SECS: i64 = 6 * 60 * 60;
 const MAX_CASE_ID_CHARS: usize = 96;
 
 pub(crate) fn case_id_from_content(content: &str) -> Option<String> {
@@ -135,6 +136,11 @@ pub(crate) fn decide(
     }
     if refresh && open {
         Action::Upsert { priority: 5 }
+    } else if refresh
+        && previous.result == "not_registered"
+        && now.saturating_sub(previous.last_sent_at) >= NOT_REGISTERED_RETRY_SECS
+    {
+        Action::Upsert { priority: 10 }
     } else {
         Action::None
     }
@@ -557,6 +563,7 @@ async fn process_job(
                         community,
                         job.claim_id,
                         retry_delay(None, job.attempts),
+                        job.refresh,
                     )
                     .await
             };
@@ -593,7 +600,7 @@ async fn process_job(
             record_job("retried");
             state
                 .db
-                .retry_live_activity_job(community, job.claim_id, delay)
+                .retry_live_activity_job(community, job.claim_id, delay, job.refresh)
                 .await
         }
         None => {
@@ -1139,6 +1146,27 @@ mod tests {
             decide(Some(&previous), Some(&current), true, NOW),
             Action::None
         );
+    }
+
+    #[test]
+    fn decide_retries_not_registered_after_6h_on_refresh() {
+        let current = view('a', 1);
+        let at = |last_sent_at| LiveActivityStateRow {
+            last_sent_at,
+            ..row(Some(&current), "not_registered", None)
+        };
+        let due = at(NOW - NOT_REGISTERED_RETRY_SECS);
+        assert_eq!(
+            decide(Some(&due), Some(&current), true, NOW),
+            Action::Upsert { priority: 10 }
+        );
+        assert_eq!(decide(Some(&due), Some(&current), false, NOW), Action::None);
+        let early = at(NOW - NOT_REGISTERED_RETRY_SECS + 1);
+        assert_eq!(
+            decide(Some(&early), Some(&current), true, NOW),
+            Action::None
+        );
+        assert_eq!(decide(Some(&due), None, true, NOW), Action::None);
     }
 
     #[test]
