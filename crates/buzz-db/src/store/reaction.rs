@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::AdmittedTx;
 use crate::{
-    error::Result,
+    error::{DbError, Result},
     event::{insert_event_with_thread_metadata_tx, ThreadMetadataParams},
     Db,
 };
@@ -206,7 +206,7 @@ pub async fn insert_reaction_event_with_thread_metadata(
     let target_created_at: DateTime<Utc> = target_row.get("created_at");
 
     // Preserve add_reaction's exact new / re-activate / active-duplicate semantics.
-    let reaction_inserted = add_reaction_tx(
+    let reaction_inserted = match add_reaction_tx(
         &mut tx,
         target_event_id,
         target_created_at,
@@ -214,7 +214,11 @@ pub async fn insert_reaction_event_with_thread_metadata(
         emoji,
         Some(reaction_event.id.as_bytes()),
     )
-    .await?;
+    .await
+    {
+        Err(DbError::Sqlx(error)) if is_source_event_conflict(&error) => false,
+        result => result?,
+    };
 
     if !reaction_inserted {
         tx.rollback().await?;
@@ -237,6 +241,12 @@ pub async fn insert_reaction_event_with_thread_metadata(
         stored_event: Box::new(stored_event),
         was_inserted,
     })
+}
+
+fn is_source_event_conflict(error: &sqlx::Error) -> bool {
+    matches!(error, sqlx::Error::Database(error)
+        if error.code().as_deref() == Some("23505")
+            && error.constraint() == Some("idx_reactions_source_event"))
 }
 
 /// Soft-delete a reaction by setting `removed_at`.
@@ -952,6 +962,155 @@ mod postgres_tests {
             duplicate_event.is_none(),
             "active duplicate reaction must short-circuit before storing kind:7 event"
         );
+    }
+
+    async fn wait_for_writers_blocked_by(pool: &PgPool, blocker_pid: i32, writers: i64) {
+        for _ in 0..400 {
+            let blocked: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+            )
+            .bind(blocker_pid)
+            .fetch_one(pool)
+            .await
+            .expect("count blocked writers");
+            if blocked >= writers {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+        panic!("{writers} writers never waited on backend {blocker_pid}");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn reaction_source_event_conflict_after_wait_is_duplicate() {
+        let pool = setup_pool().await;
+        let community = CommunityId::from_uuid(make_test_community(&pool).await);
+        let target = make_text_event("source event conflict target");
+        insert_event(&pool, community, &target, None)
+            .await
+            .expect("insert target");
+        let target_created_at = DateTime::from_timestamp(target.created_at.as_secs() as i64, 0)
+            .expect("target timestamp");
+        let actor = Keys::generate();
+        let actor_pubkey = actor.public_key().to_bytes();
+        let reaction = make_reaction_event(&actor, &target.id.to_hex(), "❌");
+
+        let mut holder = crate::begin_community_event_write_transaction(
+            &pool,
+            community,
+            crate::observability::WriterOperation::EventWrite,
+        )
+        .await
+        .expect("open holder transaction");
+        let holder_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(holder.conn())
+            .await
+            .expect("holder backend pid");
+        assert!(add_reaction_tx(
+            &mut holder,
+            target.id.as_bytes(),
+            target_created_at,
+            &actor_pubkey,
+            "✅",
+            Some(reaction.id.as_bytes()),
+        )
+        .await
+        .expect("holder claims the reaction source event id"));
+
+        let racer = tokio::spawn({
+            let pool = pool.clone();
+            let reaction = reaction.clone();
+            let target_id = target.id.as_bytes().to_vec();
+            async move {
+                insert_reaction_event_with_thread_metadata(
+                    &pool,
+                    community,
+                    &reaction,
+                    None,
+                    None,
+                    &target_id,
+                    &actor_pubkey,
+                    "❌",
+                )
+                .await
+            }
+        });
+        wait_for_writers_blocked_by(&pool, holder_pid, 1).await;
+        holder.commit().await.expect("commit holder");
+
+        let outcome = racer
+            .await
+            .expect("join racer")
+            .expect("a source event id stored meanwhile is a duplicate, not an error");
+        assert!(matches!(outcome, ReactionEventInsertOutcome::Duplicate));
+        assert!(get_event_by_id(&pool, community, reaction.id.as_bytes())
+            .await
+            .expect("lookup reaction event")
+            .is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    #[ignore = "requires Postgres"]
+    async fn concurrent_identical_reactions_store_once_and_report_duplicates() {
+        let pool = setup_pool().await;
+        let community = CommunityId::from_uuid(make_test_community(&pool).await);
+        for round in 0..25 {
+            let target = make_text_event(&format!("concurrent reaction target {round}"));
+            insert_event(&pool, community, &target, None)
+                .await
+                .expect("insert target");
+            let actor = Keys::generate();
+            let actor_pubkey = actor.public_key().to_bytes();
+            let reaction = make_reaction_event(&actor, &target.id.to_hex(), "❌");
+
+            let mut gate = pool.begin().await.expect("begin gate");
+            let gate_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+                .fetch_one(&mut *gate)
+                .await
+                .expect("gate backend pid");
+            sqlx::query("LOCK TABLE reactions IN SHARE MODE")
+                .execute(&mut *gate)
+                .await
+                .expect("hold reaction writers");
+            let racers: Vec<_> = (0..4)
+                .map(|_| {
+                    let pool = pool.clone();
+                    let reaction = reaction.clone();
+                    let target_id = target.id.as_bytes().to_vec();
+                    tokio::spawn(async move {
+                        insert_reaction_event_with_thread_metadata(
+                            &pool,
+                            community,
+                            &reaction,
+                            None,
+                            None,
+                            &target_id,
+                            &actor_pubkey,
+                            "❌",
+                        )
+                        .await
+                    })
+                })
+                .collect();
+            wait_for_writers_blocked_by(&pool, gate_pid, 4).await;
+            gate.commit().await.expect("release reaction writers");
+
+            let mut inserted = 0;
+            let mut duplicates = 0;
+            for racer in racers {
+                match racer
+                    .await
+                    .expect("join racer")
+                    .expect("identical concurrent reaction must not fail")
+                {
+                    ReactionEventInsertOutcome::Inserted { .. } => inserted += 1,
+                    ReactionEventInsertOutcome::Duplicate => duplicates += 1,
+                    ReactionEventInsertOutcome::TargetMissing => panic!("target exists"),
+                }
+            }
+            assert_eq!((inserted, duplicates), (1, 3), "round {round}");
+        }
     }
 
     #[tokio::test]
