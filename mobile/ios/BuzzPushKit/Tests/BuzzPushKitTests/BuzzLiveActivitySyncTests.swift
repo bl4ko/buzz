@@ -53,7 +53,7 @@ final class BuzzLiveActivityStartPlannerTests: XCTestCase {
       gatewayOrigin: gatewayOrigin ?? gateway, relayOrigin: relay, relayPubkey: relayPubkey ?? relayA,
       relayMetadataPubkey: relayPubkey ?? relayA, gatewayInstallationHandle: handle ?? self.handle,
       appAttestKeyId: keyId, installationId: String(repeating: "0", count: 32), endpointGrant: "grant",
-      endpointHash: String(repeating: "1", count: 64), appProfile: BuzzDevPushEnrollmentDriver.appProfile,
+      endpointHash: String(repeating: "1", count: 64),
       endpointEpoch: 1, generation: generation, expiresAt: expiresAt)
   }
 
@@ -455,6 +455,18 @@ final class BuzzLiveActivityGatewaySyncTests: XCTestCase {
     await waitForSends(gateway, 2)
     XCTAssertEqual(gateway.log, [.register(first.fingerprint), .register(second.fingerprint)])
     XCTAssertEqual(gateway.saved, [second.fingerprint])
+    gateway.releaseRetries()
+  }
+
+  func testNewTokenDuringAFailingSendSkipsTheBackoff() async {
+    let gateway = Gateway(script: [URLError(.timedOut)], holdRetries: true, callNanoseconds: 100_000_000)
+    let subject = sync(gateway)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
+    await waitForSends(gateway, 1, settle: 0)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([2]))
+    await waitForSends(gateway, 2, settle: 150_000_000)
+    XCTAssertEqual(gateway.sent.map(\.1), [Data([1]), Data([2])])
+    XCTAssertTrue(gateway.slept.isEmpty)
     gateway.releaseRetries()
   }
 
