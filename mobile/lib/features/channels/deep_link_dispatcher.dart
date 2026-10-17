@@ -22,10 +22,8 @@ import 'channels_provider.dart';
 typedef DeepLinkDestinationBuilder =
     Widget Function(Channel channel, BuzzDeepLink link);
 
-/// Resolves the channel ID (`h` tag) of an ask event, or `null`.
 typedef TaskAskChannelLookup = Future<String?> Function(String eventId);
 
-/// Looks up the channel of a Live Activity ask event on the active relay.
 final taskAskChannelLookupProvider = Provider<TaskAskChannelLookup>(
   (ref) => (eventId) async {
     final events = await ref.read(relaySessionProvider.notifier).queryRelay([
@@ -38,7 +36,6 @@ final taskAskChannelLookupProvider = Provider<TaskAskChannelLookup>(
   },
 );
 
-/// The page that a dispatched deep link opens for [channel].
 Widget deepLinkDestination(Channel channel, BuzzDeepLink link) =>
     ChannelDetailPage(
       channel: channel,

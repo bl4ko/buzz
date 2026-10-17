@@ -110,12 +110,8 @@ class MessageDeepLink extends BuzzDeepLink {
       'thread: $threadRootId)';
 }
 
-/// A parsed `buzz://tasks?origin=<https origin>&event=<ask event id>` link.
 class TasksDeepLink extends BuzzDeepLink {
-  /// HTTPS origin of the community relay.
   final String origin;
-
-  /// Ask event ID whose channel Tasks tab opens.
   final String eventId;
 
   const TasksDeepLink({required this.origin, required this.eventId});
@@ -133,15 +129,17 @@ class TasksDeepLink extends BuzzDeepLink {
   String toString() => 'TasksDeepLink(origin: $origin, event: $eventId)';
 }
 
-/// HTTPS origin of a `wss://` or `https://` relay URL, or `null`.
 String? relayHttpsOrigin(String relayUrl) {
-  final uri = Uri.tryParse(relayUrl.trim());
+  final trimmed = relayUrl.trim();
+  final scheme = Uri.tryParse(trimmed)?.scheme;
+  if (scheme != 'wss' && scheme != 'https') return null;
+  final uri = Uri.tryParse('https${trimmed.substring(scheme!.length)}');
   if (uri == null ||
-      (uri.scheme != 'wss' && uri.scheme != 'https') ||
       uri.host.isEmpty ||
       uri.userInfo.isNotEmpty ||
       uri.hasQuery ||
       uri.hasFragment ||
+      (uri.hasPort && (uri.port < 1 || uri.port > 65535)) ||
       (uri.path.isNotEmpty && uri.path != '/')) {
     return null;
   }
@@ -152,7 +150,6 @@ String? relayHttpsOrigin(String relayUrl) {
   ).toString();
 }
 
-/// Parse a `buzz://tasks` link from an approvals Live Activity.
 TasksDeepLink? parseTasksDeepLink(Uri uri) {
   if (uri.scheme != 'buzz' || uri.host != 'tasks') return null;
   if (uri.path.isNotEmpty ||

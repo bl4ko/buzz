@@ -269,8 +269,6 @@ class ChannelDetailPage extends HookConsumerWidget {
   final Channel channel;
   final String? initialMessageId;
   final String? initialThreadRootId;
-
-  /// Tab key selected when the page opens, for example `tasks`.
   final String? initialTab;
   final bool markChannelReadOnOpen;
 
