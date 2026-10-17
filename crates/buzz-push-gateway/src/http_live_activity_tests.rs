@@ -574,6 +574,23 @@ async fn la_registration_and_update_token_round_trip() {
 }
 
 #[tokio::test]
+async fn la_client_clear_keeps_the_start_bound() {
+    let h = harness(true).await;
+    h.seed(Some(now() - 100), true).await;
+    assert_eq!(
+        h.set_update(&h.hash_hex(ORIGIN), None).await.0,
+        StatusCode::NO_CONTENT
+    );
+    let target = h.target(ORIGIN).await.unwrap();
+    assert_eq!(
+        (target.update_ciphertext, target.started_at),
+        (None, Some(now() - 100))
+    );
+    assert_eq!(h.upsert().await, status("pending"));
+    assert!(h.la.sent().is_empty());
+}
+
+#[tokio::test]
 async fn la_registration_rejects_bad_input() {
     let h = harness(true).await;
     let a = h.hash_hex(ORIGIN);

@@ -215,7 +215,7 @@ pub(crate) async fn update_token_needs_registered_origin(store: &dyn AuthoritySt
         Ok(Some(LiveActivityTarget {
             start_ciphertext: sealed(1).ciphertext,
             update_ciphertext: None,
-            started_at: None,
+            started_at: Some(NOW + 20),
         }))
     );
     store
@@ -231,6 +231,61 @@ pub(crate) async fn update_token_needs_registered_origin(store: &dyn AuthoritySt
             update_ciphertext: None,
             started_at: None,
         }))
+    );
+}
+
+pub(crate) async fn client_clear_keeps_card_start(store: &dyn AuthorityStore) {
+    let id = seed(store).await;
+    let (a, b) = ([0xa; 32], [0xb; 32]);
+    store
+        .replace_live_activity_registration(id, Some(sealed(1)), vec![a, b], NOW)
+        .await
+        .unwrap();
+    store.record_live_activity_start(id, a, NOW).await.unwrap();
+    store
+        .set_live_activity_update_token(id, a, Some(sealed(2)), NOW + 5)
+        .await
+        .unwrap();
+    store
+        .set_live_activity_update_token(id, a, None, NOW + 10)
+        .await
+        .unwrap();
+    let kept = Ok(Some(LiveActivityTarget {
+        start_ciphertext: sealed(1).ciphertext,
+        update_ciphertext: None,
+        started_at: Some(NOW),
+    }));
+    assert_eq!(store.live_activity_target(id, a, NOW + 10).await, kept);
+    store
+        .set_live_activity_update_token(id, a, None, NOW + 11)
+        .await
+        .unwrap();
+    assert_eq!(store.live_activity_target(id, a, NOW + 11).await, kept);
+    store
+        .set_live_activity_update_token(id, b, None, NOW + 12)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.live_activity_target(id, b, NOW + 12).await,
+        Ok(Some(LiveActivityTarget {
+            start_ciphertext: sealed(1).ciphertext,
+            update_ciphertext: None,
+            started_at: None,
+        }))
+    );
+    store
+        .set_live_activity_update_token(id, a, Some(sealed(3)), NOW + 20)
+        .await
+        .unwrap();
+    store.clear_live_activity(id, a, NOW + 30).await.unwrap();
+    assert_eq!(
+        store.live_activity_target(id, a, NOW + 30).await,
+        Ok(Some(LiveActivityTarget {
+            start_ciphertext: sealed(1).ciphertext,
+            update_ciphertext: None,
+            started_at: None,
+        })),
+        "a delivery end still drops the card start"
     );
 }
 
