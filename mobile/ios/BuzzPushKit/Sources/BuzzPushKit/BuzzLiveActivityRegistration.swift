@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 #if canImport(FoundationNetworking)
@@ -7,14 +8,93 @@ import Foundation
 public enum BuzzLiveActivityRegistrationError: Error, Equatable {
   case notEnrolled
   case invalidOrigin
+  case unboundOrigin
   case rejected(status: Int)
   case invalidResponse
+}
+
+public struct BuzzLiveActivityInstallation: Equatable, Sendable {
+  public let gatewayOrigin: String
+  public let handle: String
+  public let appAttestKeyId: String
+  public let relayPubkeys: [String: String]
+
+  public static func current(records: [BuzzPushEndpointGrantRecord], now: Int64) -> BuzzLiveActivityInstallation? {
+    let live = records.filter { record in
+      guard record.appProfile == BuzzDevPushEnrollmentDriver.appProfile, record.expiresAt > now,
+        let handle = record.gatewayInstallationHandle, let uuid = UUID(uuidString: handle)
+      else { return false }
+      return handle == uuid.uuidString.lowercased()
+    }
+    guard
+      let newest = live.max(by: {
+        ($0.expiresAt, $0.gatewayOrigin, $0.gatewayInstallationHandle ?? "")
+          < ($1.expiresAt, $1.gatewayOrigin, $1.gatewayInstallationHandle ?? "")
+      }),
+      let handle = newest.gatewayInstallationHandle
+    else { return nil }
+    var keys: [String: (generation: Int64, pubkey: String)] = [:]
+    for record in live where record.gatewayOrigin == newest.gatewayOrigin && record.gatewayInstallationHandle == handle {
+      guard let origin = BuzzLiveActivityOrigin.canonical(record.relayOrigin),
+        BuzzLiveActivityOrigin.isLowercaseHex64(record.relayPubkey)
+      else { continue }
+      if let known = keys[origin], known.generation >= record.generation { continue }
+      keys[origin] = (record.generation, record.relayPubkey)
+    }
+    return BuzzLiveActivityInstallation(
+      gatewayOrigin: newest.gatewayOrigin, handle: handle, appAttestKeyId: newest.appAttestKeyId,
+      relayPubkeys: keys.mapValues(\.pubkey))
+  }
+
+  public func originHash(_ origin: String) -> String? {
+    relayPubkeys[origin].flatMap { BuzzLiveActivityOrigin.boundHashHex(origin: origin, relayPubkey: $0) }
+  }
+}
+
+public struct BuzzLiveActivityStartRequest: Equatable, Sendable {
+  public let installation: BuzzLiveActivityInstallation
+  public let startToken: String?
+  public let originHashes: [String]
+
+  public var fingerprint: String {
+    let fields = [installation.gatewayOrigin, installation.handle, startToken ?? "off"] + originHashes
+    return SHA256.hash(data: Data(fields.joined(separator: "\n").utf8)).map { String(format: "%02x", $0) }.joined()
+  }
+}
+
+public enum BuzzLiveActivityStartPlanner {
+  public static func request(
+    records: [BuzzPushEndpointGrantRecord],
+    origins: [String]?,
+    activitiesEnabled: Bool,
+    startToken: Data?,
+    now: Int64,
+    registeredFingerprint: String?
+  ) -> BuzzLiveActivityStartRequest? {
+    guard !activitiesEnabled || origins != nil,
+      let installation = BuzzLiveActivityInstallation.current(records: records, now: now)
+    else { return nil }
+    let wanted = activitiesEnabled ? origins ?? [] : []
+    let hashes = Array(Set(wanted.compactMap(installation.originHash)).sorted().prefix(BuzzLiveActivityRegistrar.maximumOrigins))
+    let request: BuzzLiveActivityStartRequest
+    if hashes.isEmpty {
+      guard registeredFingerprint != nil else { return nil }
+      request = BuzzLiveActivityStartRequest(installation: installation, startToken: nil, originHashes: [])
+    } else {
+      guard let startToken else { return nil }
+      request = BuzzLiveActivityStartRequest(
+        installation: installation, startToken: startToken.map { String(format: "%02x", $0) }.joined(),
+        originHashes: hashes)
+    }
+    return request.fingerprint == registeredFingerprint ? nil : request
+  }
 }
 
 public final class BuzzLiveActivityRegistrar {
   public static let maximumOrigins = 16
 
   private let gatewayBaseURL: URL
+  private let gatewayOrigin: String
   private let driver: BuzzDevPushEnrollmentDriver
   private let session: URLSession
   private let appAttest: BuzzDevAppAttesting
@@ -52,64 +132,66 @@ public final class BuzzLiveActivityRegistrar {
       now: now,
       lifetimeSeconds: 2_592_000
     )
-    self.gatewayBaseURL = try BuzzPushTranscript.canonicalGatewayOrigin(gatewayBaseURL).url
+    let canonical = try BuzzPushTranscript.canonicalGatewayOrigin(gatewayBaseURL)
+    self.gatewayBaseURL = canonical.url
+    gatewayOrigin = canonical.text
     self.session = session
     self.appAttest = appAttest
     self.now = now
   }
 
-  public func registerStart(token: Data?, origins: [String]) async throws {
-    let startToken = token.map(Self.hex)
-    let hashes =
-      startToken == nil
-      ? []
-      : Array(Set(origins.compactMap(BuzzLiveActivityOrigin.hashHex)).sorted().prefix(Self.maximumOrigins))
-    let installation = try installation()
+  public func register(_ request: BuzzLiveActivityStartRequest) async throws {
+    guard request.installation.gatewayOrigin == gatewayOrigin,
+      let handle = UUID(uuidString: request.installation.handle)
+    else { throw BuzzLiveActivityRegistrationError.notEnrolled }
     let challenge = try await driver.challenge()
     let clientData = try BuzzPushTranscript.liveActivity(
       gatewayOrigin: gatewayBaseURL,
       challengeId: challenge.id,
       challenge: challenge.value,
-      installationHandle: installation.handle,
-      startToken: startToken,
-      origins: hashes
+      installationHandle: handle,
+      startToken: request.startToken,
+      origins: request.originHashes
     )
-    let assertion = try await appAttest.assertion(keyId: installation.keyId, clientData: clientData)
+    let assertion = try await appAttest.assertion(keyId: request.installation.appAttestKeyId, clientData: clientData)
     try await post(
       route: "v1/installations/live-activity",
       body: StartRequest(
         challengeId: challenge.id.uuidString.lowercased(),
         challenge: challenge.value,
-        installationHandle: installation.handle.uuidString.lowercased(),
-        startToken: startToken,
-        origins: hashes,
+        installationHandle: request.installation.handle,
+        startToken: request.startToken,
+        origins: request.originHashes,
         assertion: assertion
       )
     )
   }
 
   public func setUpdateToken(origin: String, token: Data?) async throws {
-    guard let originHash = BuzzLiveActivityOrigin.hashHex(origin) else {
+    guard BuzzLiveActivityOrigin.canonical(origin) == origin else {
       throw BuzzLiveActivityRegistrationError.invalidOrigin
     }
-    let updateToken = token.map(Self.hex)
     let installation = try installation()
+    guard let originHash = installation.originHash(origin), let handle = UUID(uuidString: installation.handle) else {
+      throw BuzzLiveActivityRegistrationError.unboundOrigin
+    }
+    let updateToken = token.map(Self.hex)
     let challenge = try await driver.challenge()
     let clientData = try BuzzPushTranscript.liveActivityUpdate(
       gatewayOrigin: gatewayBaseURL,
       challengeId: challenge.id,
       challenge: challenge.value,
-      installationHandle: installation.handle,
+      installationHandle: handle,
       originHash: originHash,
       updateToken: updateToken
     )
-    let assertion = try await appAttest.assertion(keyId: installation.keyId, clientData: clientData)
+    let assertion = try await appAttest.assertion(keyId: installation.appAttestKeyId, clientData: clientData)
     try await post(
       route: "v1/installations/live-activity/update-token",
       body: UpdateRequest(
         challengeId: challenge.id.uuidString.lowercased(),
         challenge: challenge.value,
-        installationHandle: installation.handle.uuidString.lowercased(),
+        installationHandle: installation.handle,
         originHash: originHash,
         updateToken: updateToken,
         assertion: assertion
@@ -117,20 +199,11 @@ public final class BuzzLiveActivityRegistrar {
     )
   }
 
-  private func installation() throws -> (handle: UUID, keyId: String) {
-    let nowSeconds = Int64(now().timeIntervalSince1970)
-    let record = try driver.endpointGrants().filter { record in
-      guard record.appProfile == BuzzDevPushEnrollmentDriver.appProfile,
-        record.expiresAt > nowSeconds,
-        let handle = record.gatewayInstallationHandle,
-        let uuid = UUID(uuidString: handle)
-      else { return false }
-      return handle == uuid.uuidString.lowercased()
-    }.max { $0.expiresAt < $1.expiresAt }
-    guard let record, let handle = record.gatewayInstallationHandle.flatMap(UUID.init(uuidString:)) else {
-      throw BuzzLiveActivityRegistrationError.notEnrolled
-    }
-    return (handle, record.appAttestKeyId)
+  private func installation() throws -> BuzzLiveActivityInstallation {
+    let records = try driver.endpointGrants()
+    guard let installation = BuzzLiveActivityInstallation.current(records: records, now: Int64(now().timeIntervalSince1970))
+    else { throw BuzzLiveActivityRegistrationError.notEnrolled }
+    return installation
   }
 
   private func post<Body: Encodable>(route: String, body: Body) async throws {

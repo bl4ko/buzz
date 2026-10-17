@@ -706,7 +706,10 @@ import os.log
         ) as? String
       )
       enrollmentTask = Task { [weak self] in
-        defer { self?.enrollmentTask = nil }
+        defer {
+          self?.enrollmentTask = nil
+          BuzzLiveActivities.refresh()
+        }
         do {
           let record = try await driver.enroll(
             deviceToken: deviceToken,
