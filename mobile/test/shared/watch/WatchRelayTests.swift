@@ -222,6 +222,27 @@ final class WatchRelayTests: XCTestCase {
     XCTAssertEqual((bounded[0]["text"] as! String).unicodeScalars.count, 300)
   }
 
+  func testTimelineCarriesTimeAndOwnership() throws {
+    let other = try event(kind: 0, tags: [], key: String(repeating: "0", count: 63) + "3")
+    let mine = try event(kind: 9, tags: [["h", "joined"]], content: "Mine", time: 120)
+    let theirs = try event(kind: 9, tags: [["h", "joined"]], content: "Theirs", key: String(repeating: "0", count: 63) + "3", time: 110)
+    let messages = WatchRelay.timeline([mine, theirs], channelID: "joined", labels: [:], own: mine.pubkey)
+    XCTAssertEqual(messages.map { $0["text"] as? String }, ["Theirs", "Mine"])
+    XCTAssertEqual(messages.map { $0["createdAt"] as? Int }, [110, 120])
+    XCTAssertEqual(messages.map { $0["mine"] as? Bool }, [false, true])
+    XCTAssertEqual(WatchRelay.timeline([mine], channelID: "joined", labels: [:])[0]["mine"] as? Bool, false)
+    XCTAssertNotEqual(other.pubkey, mine.pubkey)
+  }
+
+  func testDirectReadMarksOwnMessages() async throws {
+    let relay = try makeRelay()
+    defer { relay.close() }
+    let read = try await relay.request(["action": "messages", "scope": relay.credentials.scope, "channelId": "joined"])
+    let first = try XCTUnwrap((read["messages"] as? [[String: Any]])?.first)
+    XCTAssertEqual(first["mine"] as? Bool, true)
+    XCTAssertEqual(first["createdAt"] as? Int, 100)
+  }
+
   func testTimelineListsOnlyHiddenRecipients() throws {
     let zeus = String(repeating: "a", count: 64), argus = String(repeating: "b", count: 64)
     let message = try event(kind: 9, tags: [["h", "joined"], ["p", zeus], ["p", argus.uppercased()], ["p", argus]], content: "@Zeus Argus: evidence please")
