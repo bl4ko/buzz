@@ -179,6 +179,14 @@ async fn claim_only(
     .execute(&db.pool)
     .await
     .expect("isolate due job");
+    sqlx::query(
+        "UPDATE push_live_activity_queue SET lease_until = now() + interval '1 day' \
+         WHERE state = 'running' AND community_id <> $1",
+    )
+    .bind(community.as_uuid())
+    .execute(&db.pool)
+    .await
+    .expect("park stale running jobs");
     let job = db
         .claim_due_live_activity_job(Utc::now() + TimeDelta::seconds(30))
         .await
@@ -335,7 +343,7 @@ async fn dirty_while_running_requeues_on_complete() {
         .await
         .expect("stale complete");
     assert_eq!(queue_rows(&db, community).await.len(), 1);
-    db.retry_live_activity_job(community, job.claim_id, Duration::from_secs(15))
+    db.retry_live_activity_job(community, job.claim_id, Duration::from_secs(15), false)
         .await
         .expect("retry");
     let delay: f64 = sqlx::query_scalar(
@@ -350,6 +358,81 @@ async fn dirty_while_running_requeues_on_complete() {
 
     let job = claim_only(&db, community).await;
     assert_eq!(job.attempts, 2);
+    db.complete_live_activity_job(community, job.claim_id)
+        .await
+        .expect("complete");
+    assert!(queue_rows(&db, community).await.is_empty());
+}
+
+async fn queue_job(db: &Db, community: CommunityId, refresh: bool) {
+    sqlx::query(
+        "INSERT INTO push_live_activity_queue (community_id, due_at, refresh) \
+         VALUES ($1, now(), $2)",
+    )
+    .bind(community.as_uuid())
+    .bind(refresh)
+    .execute(&db.pool)
+    .await
+    .expect("queue job");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn complete_requeues_when_marked_dirty_concurrently() {
+    let _guard = CLAIM_LOCK.lock().await;
+    let db = db().await;
+    let community = community(&db).await;
+    queue_job(&db, community, false).await;
+    let job = claim_only(&db, community).await;
+
+    let mut marker = db.pool.begin().await.expect("begin marker");
+    sqlx::query(
+        "INSERT INTO push_live_activity_queue (community_id, due_at) \
+         VALUES ($1, now() + interval '1 second') \
+         ON CONFLICT (community_id) DO UPDATE \
+         SET dirty = push_live_activity_queue.dirty OR push_live_activity_queue.state = 'running'",
+    )
+    .bind(community.as_uuid())
+    .execute(&mut *marker)
+    .await
+    .expect("mark dirty");
+    let completing = tokio::spawn({
+        let db = db.clone();
+        async move { db.complete_live_activity_job(community, job.claim_id).await }
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    marker.commit().await.expect("commit marker");
+    completing.await.expect("join complete").expect("complete");
+    assert_eq!(
+        queue_rows(&db, community).await,
+        vec![("pending".to_owned(), false, false)]
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn retry_keeps_the_refresh_flag() {
+    let _guard = CLAIM_LOCK.lock().await;
+    let db = db().await;
+    let community = community(&db).await;
+    queue_job(&db, community, true).await;
+    let job = claim_only(&db, community).await;
+    assert!(job.refresh);
+    db.retry_live_activity_job(community, job.claim_id, Duration::ZERO, job.refresh)
+        .await
+        .expect("retry");
+    assert_eq!(
+        queue_rows(&db, community).await,
+        vec![("pending".to_owned(), false, true)]
+    );
+    let job = claim_only(&db, community).await;
+    assert!(job.refresh);
+    assert_eq!(job.attempts, 2);
+    db.retry_live_activity_job(community, job.claim_id, Duration::ZERO, false)
+        .await
+        .expect("retry");
+    let job = claim_only(&db, community).await;
+    assert!(!job.refresh);
     db.complete_live_activity_job(community, job.claim_id)
         .await
         .expect("complete");
@@ -399,21 +482,31 @@ fn state_row(
 #[tokio::test]
 #[ignore = "requires Postgres"]
 async fn refresh_sweep_marks_old_and_aged_rows() {
+    let _guard = CLAIM_LOCK.lock().await;
     let db = db().await;
     let now = Utc::now().timestamp();
     let owner = Keys::generate();
     let cases = [
-        (1, "updated", Some(now - 600), now - 5_500, true),
-        (1, "started", Some(now - 25_300), now - 60, true),
-        (1, "pending", Some(now - 600), now - 5_500, true),
-        (1, "updated", Some(now - 600), now - 60, false),
-        (0, "ended", None, now - 9_000, false),
-        (1, "not_registered", None, now - 9_000, false),
+        (1, "updated", Some(now - 600), now - 5_500, true, true),
+        (1, "started", Some(now - 25_300), now - 60, true, true),
+        (1, "pending", Some(now - 600), now - 5_500, true, true),
+        (1, "updated", Some(now - 600), now - 60, true, false),
+        (0, "ended", None, now - 9_000, true, false),
+        (1, "not_registered", None, now - 9_000, true, false),
+        (1, "not_registered", None, now - 21_700, true, true),
+        (1, "updated", Some(now - 600), now - 5_500, false, false),
+        (1, "not_registered", None, now - 21_700, false, false),
     ];
     let mut communities = Vec::new();
-    for (open_count, result, started_at, last_sent_at, expected) in cases {
+    for (open_count, result, started_at, last_sent_at, enabled, expected) in cases {
         let community = community(&db).await;
         lease(&db, community, &owner, "install").await;
+        sqlx::query("UPDATE push_leases SET endpoint_enabled = $2 WHERE community_id = $1")
+            .bind(community.as_uuid())
+            .bind(enabled)
+            .execute(&db.pool)
+            .await
+            .expect("set endpoint state");
         let row = state_row(
             &owner,
             "install",
@@ -432,7 +525,7 @@ async fn refresh_sweep_marks_old_and_aged_rows() {
         communities.push((community, expected));
     }
     let marked = db.mark_live_activity_refresh_due(now).await.expect("sweep");
-    assert!(marked >= 3);
+    assert!(marked >= 4);
     for (community, expected) in communities {
         let rows = queue_rows(&db, community).await;
         if expected {
