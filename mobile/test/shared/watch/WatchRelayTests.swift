@@ -25,6 +25,7 @@ final class WatchRelayTests: XCTestCase {
   private let relayKey = String(repeating: "0", count: 63) + "2"
   private var accepted = true
   private var matchReceipt = true
+  private var receiptMessage: String?
   private var failReads = false
   private var member = true
   private var peers: [String] = []
@@ -82,7 +83,9 @@ final class WatchRelayTests: XCTestCase {
         let message = try JSONDecoder().decode(VerifiedNostrEvent.self, from: body)
         XCTAssertTrue(message.hasValidIDAndSignature())
         sent.append(message)
-        return (200, try JSONSerialization.data(withJSONObject: ["accepted": accepted, "event_id": matchReceipt ? message.id : "wrong"]))
+        var receipt: [String: Any] = ["accepted": accepted, "event_id": matchReceipt ? message.id : "wrong"]
+        receipt["message"] = receiptMessage
+        return (200, try JSONSerialization.data(withJSONObject: receipt))
       }
       if failReads { return (403, Data()) }
       let filters = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [[String: Any]])
@@ -142,6 +145,22 @@ final class WatchRelayTests: XCTestCase {
       do { _ = try await relay.request(bad); XCTFail("invalid react accepted") } catch {}
     }
     XCTAssertEqual(sent.count, 2)
+  }
+
+  func testDuplicateReactAnswerConfirmsTheStoredDecision() async throws {
+    let relay = try makeRelay()
+    defer { relay.close() }
+    let args: [String: Any] = ["action": "react", "scope": relay.credentials.scope, "eventId": String(repeating: "b", count: 64), "emoji": "\u{274C}"]
+    accepted = false
+    receiptMessage = "duplicate: reaction already exists"
+    let result = try await relay.request(args)
+    XCTAssertEqual(result["sent"] as? Bool, true)
+    receiptMessage = "blocked: not a member"
+    do { _ = try await relay.request(args); XCTFail("Refused react confirmed") } catch {}
+    receiptMessage = "duplicate: reaction already exists"
+    matchReceipt = false
+    do { _ = try await relay.request(args); XCTFail("Wrong receipt confirmed") } catch {}
+    XCTAssertEqual(sent.count, 3)
   }
 
   func testRejectedOrWrongReceiptNeverConfirmsOrRetries() async throws {

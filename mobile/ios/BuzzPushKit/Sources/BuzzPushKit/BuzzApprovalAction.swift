@@ -127,10 +127,19 @@ public struct BuzzApprovalReactionSender {
       forHTTPHeaderField: "Authorization"
     )
     let (data, response) = try await session.data(for: request)
-    guard (response as? HTTPURLResponse)?.statusCode == 200,
-      let result = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-      result["accepted"] as? Bool == true, result["event_id"] as? String == event.id
+    guard (response as? HTTPURLResponse)?.statusCode == 200, Self.isStored(data, eventID: event.id)
     else { throw BuzzApprovalReactionError.rejected }
+  }
+
+  public static func isStored(_ data: Data, eventID: String) -> Bool {
+    guard let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+      result["event_id"] as? String == eventID
+    else { return false }
+    switch result["accepted"] as? Bool {
+    case true: return true
+    case false: return (result["message"] as? String)?.hasPrefix("duplicate:") == true
+    default: return false
+    }
   }
 }
 

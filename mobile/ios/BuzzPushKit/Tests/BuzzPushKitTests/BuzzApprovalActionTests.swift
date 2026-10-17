@@ -91,6 +91,60 @@ final class BuzzApprovalActionTests: XCTestCase {
     await XCTAssertThrowsErrorAsync { try await sender.send(self.target, decision: .approve, privateKeyHex: self.key) }
   }
 
+  func testDuplicateAnswerForTheSameReactionCountsAsSent() async throws {
+    var status = 200
+    var answer: (String) -> [String: Any] = { _ in [:] }
+    ApprovalHTTPStub.handler = { request in
+      let event = try JSONDecoder().decode(VerifiedNostrEvent.self, from: Self.body(of: request))
+      return (status, try JSONSerialization.data(withJSONObject: answer(event.id)))
+    }
+    let sender = BuzzApprovalReactionSender(session: session())
+    answer = { ["accepted": false, "event_id": $0, "message": "duplicate: reaction already exists"] }
+    try await sender.send(target, decision: .deny, privateKeyHex: key)
+
+    let refusals: [(Int, (String) -> [String: Any])] = [
+      (200, { _ in ["accepted": false, "event_id": "wrong", "message": "duplicate: reaction already exists"] }),
+      (200, { ["accepted": false, "event_id": $0, "message": "blocked: not a member"] }),
+      (200, { ["accepted": false, "event_id": $0, "message": "reaction already exists"] }),
+      (200, { ["accepted": false, "event_id": $0] }),
+      (500, { _ in ["error": "internal server error"] }),
+      (400, { _ in ["error": "duplicate: reaction already exists"] }),
+    ]
+    for (code, body) in refusals {
+      status = code
+      answer = body
+      await XCTAssertThrowsErrorAsync { try await sender.send(self.target, decision: .deny, privateKeyHex: self.key) }
+    }
+  }
+
+  func testStoredReceiptRule() throws {
+    func json(_ object: [String: Any]) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+    XCTAssertTrue(BuzzApprovalReactionSender.isStored(try json(["accepted": true, "event_id": eventID, "message": ""]), eventID: eventID))
+    XCTAssertTrue(
+      BuzzApprovalReactionSender.isStored(
+        try json(["accepted": false, "event_id": eventID, "message": "duplicate: reaction already exists"]), eventID: eventID))
+    XCTAssertFalse(
+      BuzzApprovalReactionSender.isStored(
+        try json(["accepted": false, "event_id": eventID, "message": "invalid: duplicate: x"]), eventID: eventID))
+    XCTAssertFalse(BuzzApprovalReactionSender.isStored(try json(["accepted": true, "event_id": "b"]), eventID: eventID))
+    XCTAssertFalse(BuzzApprovalReactionSender.isStored(Data("not json".utf8), eventID: eventID))
+  }
+
+  private static func body(of request: URLRequest) -> Data {
+    if let body = request.httpBody { return body }
+    var data = Data()
+    guard let stream = request.httpBodyStream else { return data }
+    stream.open()
+    defer { stream.close() }
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while stream.hasBytesAvailable {
+      let count = stream.read(&buffer, maxLength: buffer.count)
+      if count <= 0 { break }
+      data.append(contentsOf: buffer.prefix(count))
+    }
+    return data
+  }
+
   func testFailedApprovalPostsLocalFailureNotice() async {
     var notices: [String] = []
     await BuzzApprovalActionHandler.handle(target: target, decision: .approve, storedRelayURL: { _ in self.target.relayURL }, loadKey: { _ in nil }, send: { _, _, _ in XCTFail("no key, no send") }, notifyFailure: { notices.append($0) })
