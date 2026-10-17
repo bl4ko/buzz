@@ -145,9 +145,7 @@ final class WatchRelay: NSObject, URLSessionTaskDelegate {
       else { throw WatchRelayError.invalidSetup }
       let event = try NostrHTTPAuth.signedEvent(kind: 7, tags: [["e", id]], content: emoji, privateKeyHex: credentials.privateKeyHex)
       let response = try await post("events", body: JSONEncoder().encode(event), timeout: 15)
-      guard let result = try JSONSerialization.jsonObject(with: response) as? [String: Any],
-        result["accepted"] as? Bool == true, result["event_id"] as? String == event.id
-      else { throw WatchRelayError.unconfirmed }
+      guard BuzzApprovalReactionSender.isStored(response, eventID: event.id) else { throw WatchRelayError.unconfirmed }
       return ["sent": true, "scope": credentials.scope]
     default: throw WatchRelayError.invalidResponse
     }
