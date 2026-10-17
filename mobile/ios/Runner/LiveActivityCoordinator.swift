@@ -1,19 +1,18 @@
 import ActivityKit
 import BuzzPushKit
-import CryptoKit
 import Foundation
 import os.log
 
 @available(iOS 18.0, *)
 final class LiveActivityCoordinator: @unchecked Sendable {
   private typealias Attributes = BuzzApprovalsActivityAttributes
-  private static let registrationKey = "buzz.liveactivity.registration.v1"
-  private static let offRegistration = "off"
+  private static let registrationKey = "buzz.liveactivity.registration.v2"
 
   private let appGroupIdentifier: String?
   private let endpointGrantStore: BuzzPushEndpointGrantKeychainStore
   private let keychainAccessGroup: String?
-  private let log = Logger(subsystem: "com.bl4ko.buzz", category: "live-activity")
+  private let updateTokens: BuzzLiveActivityUpdateTokenSync
+  private static let log = Logger(subsystem: "com.bl4ko.buzz", category: "live-activity")
   private let lock = NSLock()
   private var startToken: Data?
   private var observed: Set<String> = []
@@ -28,6 +27,15 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     self.appGroupIdentifier = appGroupIdentifier
     self.endpointGrantStore = endpointGrantStore
     self.keychainAccessGroup = keychainAccessGroup
+    updateTokens = BuzzLiveActivityUpdateTokenSync { origin, token in
+      do {
+        try await Self.registrar(store: endpointGrantStore, accessGroup: keychainAccessGroup, gatewayOrigin: nil)
+          .setUpdateToken(origin: origin, token: token)
+      } catch {
+        Self.log.error("Live Activity update token failed: \(String(describing: error), privacy: .public)")
+        throw error
+      }
+    }
   }
 
   private var defaults: UserDefaults? { appGroupIdentifier.flatMap(UserDefaults.init(suiteName:)) }
@@ -59,8 +67,12 @@ final class LiveActivityCoordinator: @unchecked Sendable {
 
   func refresh() {
     locked {
-      refreshTask?.cancel()
-      refreshTask = Task { [weak self] in await self?.reconcile() }
+      let previous = refreshTask
+      previous?.cancel()
+      refreshTask = Task { [weak self] in
+        await previous?.value
+        await self?.reconcile()
+      }
     }
   }
 
@@ -77,33 +89,31 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     let snapshot = BuzzPushStoredRelay.snapshotURL(appGroupIdentifier: appGroupIdentifier)
       .flatMap(BuzzPushStoredRelay.snapshot(at:))
     let enabled = ActivityAuthorizationInfo().areActivitiesEnabled
-    let origins = enabled ? (snapshot.map(BuzzLiveActivityOrigin.origins(in:)) ?? []) : []
+    let origins = snapshot.map(BuzzLiveActivityOrigin.origins(in:))
     if snapshot != nil || !enabled {
-      await endActivities(BuzzLiveActivityInstance.activitiesToEnd(instances(), allowedOrigins: Set(origins)))
+      let allowed = Set(enabled ? origins ?? [] : [])
+      let registered = await updateTokens.registeredActivities()
+      await endActivities(
+        BuzzLiveActivityInstance.activitiesToEnd(instances(), allowedOrigins: allowed, registered: registered))
     }
-    guard !Task.isCancelled else { return }
-    let token = locked { startToken }
-    let registration: String
-    let registeredToken: Data?
-    let registeredOrigins: [String]
-    if origins.isEmpty {
-      guard snapshot != nil || !enabled else { return }
-      registration = Self.offRegistration
-      registeredToken = nil
-      registeredOrigins = []
-    } else {
-      guard let token else { return }
-      registration = Self.fingerprint(token: token, origins: origins)
-      registeredToken = token
-      registeredOrigins = origins
-    }
-    guard defaults?.string(forKey: Self.registrationKey) != registration else { return }
-    if registration == Self.offRegistration && defaults?.string(forKey: Self.registrationKey) == nil { return }
+    guard !Task.isCancelled, let records = try? endpointGrantStore.records() else { return }
+    guard
+      let request = BuzzLiveActivityStartPlanner.request(
+        records: records,
+        origins: origins,
+        activitiesEnabled: enabled,
+        startToken: locked { startToken },
+        now: Int64(Date().timeIntervalSince1970),
+        registeredFingerprint: defaults?.string(forKey: Self.registrationKey)
+      )
+    else { return }
     do {
-      try await registrar()?.registerStart(token: registeredToken, origins: registeredOrigins)
-      defaults?.set(registration, forKey: Self.registrationKey)
+      try await Self.registrar(
+        store: endpointGrantStore, accessGroup: keychainAccessGroup, gatewayOrigin: request.installation.gatewayOrigin
+      ).register(request)
+      defaults?.set(request.fingerprint, forKey: Self.registrationKey)
     } catch {
-      log.error("Live Activity registration failed: \(String(describing: error), privacy: .public)")
+      Self.log.error("Live Activity registration failed: \(String(describing: error), privacy: .public)")
     }
   }
 
@@ -111,30 +121,28 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     let isNew = locked { observed.insert(activity.id).inserted }
     guard isNew else { return }
     let origin = activity.attributes.origin
-    Task { [weak self] in
+    let id = activity.id
+    let updateTokens = updateTokens
+    Task {
       for await token in activity.pushTokenUpdates {
-        await self?.setUpdateToken(origin: origin, token: token)
+        await updateTokens.tokenChanged(origin: origin, activityID: id, token: token)
       }
     }
-    Task { [weak self] in
+    Task {
+      if activity.activityState == .ended || activity.activityState == .dismissed {
+        await updateTokens.activityEnded(origin: origin, activityID: id)
+        return
+      }
       for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
-        await self?.setUpdateToken(origin: origin, token: nil)
+        await updateTokens.activityEnded(origin: origin, activityID: id)
         break
       }
     }
   }
 
-  private func setUpdateToken(origin: String, token: Data?) async {
-    do {
-      try await registrar()?.setUpdateToken(origin: origin, token: token)
-    } catch {
-      log.error("Live Activity update token failed: \(String(describing: error), privacy: .public)")
-    }
-  }
-
   private func instances() -> [BuzzLiveActivityInstance] {
-    Activity<Attributes>.activities.map {
-      BuzzLiveActivityInstance(id: $0.id, origin: $0.attributes.origin, askedAt: $0.content.state.askedAt)
+    Activity<Attributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }.map {
+      BuzzLiveActivityInstance(id: $0.id, origin: $0.attributes.origin, staleDate: $0.content.staleDate)
     }
   }
 
@@ -146,24 +154,17 @@ final class LiveActivityCoordinator: @unchecked Sendable {
     }
   }
 
-  private func registrar() throws -> BuzzLiveActivityRegistrar? {
-    let gateway = try endpointGrantStore.records()
-      .filter { $0.appProfile == BuzzDevPushEnrollmentDriver.appProfile && $0.gatewayInstallationHandle != nil }
-      .max { $0.expiresAt < $1.expiresAt }?
+  private static func registrar(
+    store: BuzzPushEndpointGrantKeychainStore,
+    accessGroup: String?,
+    gatewayOrigin: String?
+  ) throws -> BuzzLiveActivityRegistrar {
+    let gateway =
+      try gatewayOrigin
+      ?? BuzzLiveActivityInstallation.current(records: store.records(), now: Int64(Date().timeIntervalSince1970))?
       .gatewayOrigin
-    guard let gateway, let url = URL(string: gateway) else { return nil }
-    return try BuzzLiveActivityRegistrar(
-      gatewayBaseURL: url,
-      store: endpointGrantStore,
-      appAttestKeychainAccessGroup: keychainAccessGroup
-    )
-  }
-
-  private static func fingerprint(token: Data, origins: [String]) -> String {
-    var hash = SHA256()
-    hash.update(data: token)
-    for origin in origins { hash.update(data: Data(("\n" + origin).utf8)) }
-    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    guard let gateway, let url = URL(string: gateway) else { throw BuzzLiveActivityRegistrationError.notEnrolled }
+    return try BuzzLiveActivityRegistrar(gatewayBaseURL: url, store: store, appAttestKeychainAccessGroup: accessGroup)
   }
 
   private func locked<T>(_ body: () -> T) -> T {

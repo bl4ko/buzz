@@ -79,9 +79,16 @@ public enum BuzzLiveActivityOrigin {
     return result.string
   }
 
-  public static func hashHex(_ origin: String) -> String? {
-    guard canonical(origin) == origin else { return nil }
-    return SHA256.hash(data: Data(origin.utf8)).map { String(format: "%02x", $0) }.joined()
+  public static let boundHashDomain = "buzz.push.la-origin.v1"
+
+  public static func boundHashHex(origin: String, relayPubkey: String) -> String? {
+    guard canonical(origin) == origin, isLowercaseHex64(relayPubkey) else { return nil }
+    var bytes = Data(boundHashDomain.utf8)
+    bytes.append(0)
+    bytes.append(Data(origin.utf8))
+    bytes.append(0)
+    bytes.append(Data(relayPubkey.utf8))
+    return SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
   }
 
   public static func origins(in snapshot: PushLeaseSnapshot) -> [String] {
@@ -89,6 +96,10 @@ public enum BuzzLiveActivityOrigin {
   }
 
   public static func isEventID(_ value: String) -> Bool {
+    isLowercaseHex64(value)
+  }
+
+  static func isLowercaseHex64(_ value: String) -> Bool {
     value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
   }
 }
@@ -109,24 +120,30 @@ public enum BuzzLiveActivityLink {
 public struct BuzzLiveActivityInstance: Equatable, Sendable {
   public let id: String
   public let origin: String
-  public let askedAt: Int
+  public let staleDate: Date?
 
-  public init(id: String, origin: String, askedAt: Int) {
+  public init(id: String, origin: String, staleDate: Date?) {
     self.id = id
     self.origin = origin
-    self.askedAt = askedAt
+    self.staleDate = staleDate
   }
 
   public static func activitiesToEnd(
     _ items: [BuzzLiveActivityInstance],
-    allowedOrigins: Set<String>? = nil
+    allowedOrigins: Set<String>? = nil,
+    registered: [String: String] = [:]
   ) -> [String] {
-    var keep: [String: (index: Int, askedAt: Int)] = [:]
-    for (index, item) in items.enumerated() where allowedOrigins?.contains(item.origin) ?? true {
-      if let current = keep[item.origin], current.askedAt > item.askedAt { continue }
-      keep[item.origin] = (index, item.askedAt)
+    var keep: [String: BuzzLiveActivityInstance] = [:]
+    for item in items where allowedOrigins?.contains(item.origin) ?? true {
+      let registeredID = registered[item.origin]
+      if let current = keep[item.origin], item.rank(registeredID) <= current.rank(registeredID) { continue }
+      keep[item.origin] = item
     }
-    let kept = Set(keep.values.map(\.index))
-    return items.enumerated().filter { !kept.contains($0.offset) }.map(\.element.id)
+    let kept = Set(keep.values.map(\.id))
+    return items.filter { !kept.contains($0.id) }.map(\.id)
+  }
+
+  private func rank(_ registeredID: String?) -> (Double, Int, String) {
+    (staleDate?.timeIntervalSince1970 ?? -.infinity, id == registeredID ? 1 : 0, id)
   }
 }
