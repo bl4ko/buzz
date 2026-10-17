@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:buzz/shared/deeplink/deep_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -466,6 +469,38 @@ void _tasksTests() {
         'https://relay.example:8443',
       );
       expect(relayHttpsOrigin('ws://localhost:3000'), isNull);
+    });
+
+    test('matches the gateway origin vectors', () {
+      final vectors =
+          jsonDecode(
+                File(
+                  '../crates/buzz-push-gateway/tests/vectors/live_activity_payloads.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      final invalid = (vectors['invalid_origins'] as List).cast<String>();
+      expect(invalid, isNotEmpty);
+      for (final origin in invalid) {
+        expect(relayHttpsOrigin(origin), isNot(origin), reason: origin);
+        final url =
+            'buzz://tasks?origin=${Uri.encodeComponent(origin)}&event=$event';
+        expect(parseTasksDeepLink(Uri.parse(url)), isNull, reason: origin);
+      }
+      final valid = (vectors['bound_origin_hashes'] as List)
+          .map((vector) => (vector as Map<String, dynamic>)['origin'] as String)
+          .toSet();
+      expect(valid, isNotEmpty);
+      for (final origin in valid) {
+        expect(relayHttpsOrigin(origin), origin);
+        final url =
+            'buzz://tasks?origin=${Uri.encodeComponent(origin)}&event=$event';
+        expect(
+          parseTasksDeepLink(Uri.parse(url)),
+          TasksDeepLink(origin: origin, eventId: event),
+        );
+      }
+      expect(relayHttpsOrigin('wss://buzz.bl4ko.com:0'), isNull);
     });
   });
 }
