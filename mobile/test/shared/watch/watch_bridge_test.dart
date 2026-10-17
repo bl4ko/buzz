@@ -106,7 +106,7 @@ class _Messages extends ChannelMessagesNotifier {
     for (var index = 0; index < 25; index++)
       NostrEvent(
         id: index.toString(),
-        pubkey: 'b' * 64,
+        pubkey: index == 22 ? 'a' * 64 : 'b' * 64,
         createdAt: index,
         kind: EventKind.streamMessage,
         content: '🐝' * 1000,
@@ -291,6 +291,10 @@ void main() {
       expect((messages.first as Map)['text'], '🐝' * 300);
       expect((messages.first as Map)['notified'], ['cccccccc']);
       expect((messages.last as Map)['text'], 'Edited');
+      expect((messages.first as Map)['createdAt'], 4);
+      expect((messages.first as Map)['mine'], false);
+      expect((messages[messages.length - 2] as Map)['createdAt'], 22);
+      expect((messages[messages.length - 2] as Map)['mine'], true);
       expect(history.keys, unorderedEquals(['scope', 'messages']));
       messageSource.clearHistory(loaded: false);
       final unloaded = await request({

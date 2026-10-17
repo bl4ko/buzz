@@ -200,6 +200,8 @@ final watchBridgeProvider = Provider<void>((ref) {
                 (profiles[message.pubkey]?.label ?? 'Member').runes.take(32),
               ),
               'text': String.fromCharCodes(message.content.runes.take(300)),
+              'createdAt': message.createdAt,
+              'mine': message.pubkey == ref.read(myPubkeyProvider),
               'notified': channel.isDm
                   ? const <String>[]
                   : [
