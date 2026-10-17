@@ -45,6 +45,22 @@ final class WatchPresentationTests: XCTestCase {
     XCTAssertEqual(at(7 * 86_400), "Oct 10")
   }
 
+  func testSpokenTimesUseFullWords() {
+    let locale = Locale(identifier: "en_US_POSIX")
+    let now = Date(timeIntervalSince1970: 1_792_231_800)
+    let at = { (ago: Int) in WatchTime.spokenLabel(createdAt: Int(now.timeIntervalSince1970) - ago, now: now, locale: locale) }
+    XCTAssertEqual(at(0), "now")
+    XCTAssertEqual(at(59), "now")
+    XCTAssertEqual(at(-120), "now")
+    XCTAssertEqual(at(60), "1 minute ago")
+    XCTAssertEqual(at(150), "2 minutes ago")
+    XCTAssertEqual(at(3599), "59 minutes ago")
+    XCTAssertEqual(at(3600), "1 hour ago")
+    XCTAssertEqual(at(86_399), "23 hours ago")
+    XCTAssertEqual(at(86_400), "yesterday")
+    XCTAssertEqual(at(6 * 86_400), "6 days ago")
+  }
+
   func testNewMessagesFollowTheLastSeenMessage() {
     let ids = ["a", "b", "c", "d"]
     XCTAssertEqual(WatchUnread.newMessageIDs(ids, lastSeen: "b"), ["c", "d"])
