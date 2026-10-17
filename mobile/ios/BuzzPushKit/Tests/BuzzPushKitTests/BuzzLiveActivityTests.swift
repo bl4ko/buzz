@@ -180,6 +180,9 @@ final class BuzzLiveActivityTests: XCTestCase {
     relay: String? = "https://buzz.bl4ko.com",
     key: String?? = .none,
     sendError: Error? = nil,
+    bundleURL: URL = URL(fileURLWithPath: "/Applications/Runner.app"),
+    gate: BuzzApprovalSendGate = BuzzApprovalSendGate(),
+    whileSending: @escaping () async -> Void = {},
     recorder: Recorder
   ) async -> Bool {
     let loadedKey: String? = key ?? self.key
@@ -187,9 +190,14 @@ final class BuzzLiveActivityTests: XCTestCase {
       origin: origin ?? self.origin,
       askEventID: askEventID ?? eventID,
       decision: decision,
+      bundleURL: bundleURL,
+      gate: gate,
       communityID: { _ in community },
       storedRelayURL: { _ in relay },
-      loadKey: { _ in loadedKey },
+      loadKey: { _ in
+        recorder.events.append("key")
+        return loadedKey
+      },
       mark: { decision in
         recorder.marks.append(decision)
         recorder.events.append("mark")
@@ -197,10 +205,99 @@ final class BuzzLiveActivityTests: XCTestCase {
       send: { target, decision, key in
         recorder.events.append("send")
         recorder.sends.append((target, decision, key))
+        await whileSending()
         if let sendError { throw sendError }
       },
       notifyFailure: { recorder.notices.append($0) }
     )
+  }
+
+  private actor Signal {
+    private var raised = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func raise() {
+      raised = true
+      waiters.forEach { $0.resume() }
+      waiters = []
+    }
+
+    func wait() async {
+      if raised { return }
+      await withCheckedContinuation { waiters.append($0) }
+    }
+  }
+
+  private final class Clock: @unchecked Sendable {
+    var now = Date(timeIntervalSince1970: 1_000)
+  }
+
+  func testSecondRunWhileTheFirstIsSendingDoesNotSendAgain() async {
+    let gate = BuzzApprovalSendGate()
+    let recorder = Recorder()
+    let sending = Signal()
+    let release = Signal()
+    let first = Task {
+      await self.run(decision: .deny, gate: gate, whileSending: {
+        await sending.raise()
+        await release.wait()
+      }, recorder: recorder)
+    }
+    await sending.wait()
+    let second = await run(decision: .deny, gate: gate, recorder: recorder)
+    await release.raise()
+    let firstSent = await first.value
+    XCTAssertTrue(firstSent)
+    XCTAssertTrue(second)
+    XCTAssertEqual(recorder.sends.count, 1)
+    XCTAssertEqual(recorder.marks, [.deny])
+    XCTAssertTrue(recorder.notices.isEmpty)
+  }
+
+  func testRunAfterASentDecisionDoesNotSendAgainUntilTheRetentionEnds() async {
+    let clock = Clock()
+    let gate = BuzzApprovalSendGate(now: { clock.now })
+    let recorder = Recorder()
+    let first = await run(decision: .deny, gate: gate, recorder: recorder)
+    clock.now += BuzzApprovalSendGate.retention - 1
+    let repeated = await run(decision: .deny, gate: gate, recorder: recorder)
+    XCTAssertTrue(first && repeated)
+    XCTAssertEqual(recorder.sends.count, 1)
+    XCTAssertEqual(recorder.marks, [.deny])
+    let otherDecision = await run(decision: .approve, gate: gate, recorder: recorder)
+    let otherAsk = await run(askEventID: String(repeating: "cd", count: 32), decision: .deny, gate: gate, recorder: recorder)
+    XCTAssertTrue(otherDecision && otherAsk)
+    XCTAssertEqual(recorder.sends.count, 3)
+    clock.now += 1
+    let later = await run(decision: .deny, gate: gate, recorder: recorder)
+    XCTAssertTrue(later)
+    XCTAssertEqual(recorder.sends.count, 4)
+  }
+
+  func testFailedSendLetsTheNextRunSend() async {
+    struct Refused: Error {}
+    let gate = BuzzApprovalSendGate()
+    let recorder = Recorder()
+    let failed = await run(sendError: Refused(), gate: gate, recorder: recorder)
+    let retried = await run(gate: gate, recorder: recorder)
+    XCTAssertFalse(failed)
+    XCTAssertTrue(retried)
+    XCTAssertEqual(recorder.sends.count, 2)
+    XCTAssertEqual(recorder.marks, [.approve, nil, .approve])
+    XCTAssertEqual(recorder.notices, [BuzzApprovalActionHandler.failureBody])
+  }
+
+  func testWidgetExtensionProcessNeverDecides() async {
+    let recorder = Recorder()
+    let sent = await run(
+      bundleURL: URL(fileURLWithPath: "/Applications/Runner.app/PlugIns/Bl4uzzLiveActivity.appex"), recorder: recorder)
+    XCTAssertFalse(sent)
+    XCTAssertTrue(recorder.events.isEmpty)
+    XCTAssertTrue(recorder.notices.isEmpty)
+    XCTAssertTrue(BuzzLiveActivityDecisionRunner.decidesInProcess(bundleURL: URL(fileURLWithPath: "/Applications/Runner.app")))
+    XCTAssertFalse(
+      BuzzLiveActivityDecisionRunner.decidesInProcess(
+        bundleURL: URL(fileURLWithPath: "/Applications/Runner.app/PlugIns/Bl4uzzLiveActivity.appex/")))
   }
 
   func testDecisionRunnerLockedKeyNotifiesUnlockAndDoesNotSend() async {
@@ -228,7 +325,7 @@ final class BuzzLiveActivityTests: XCTestCase {
     let recorder = Recorder()
     let sent = await run(decision: .deny, relay: "https://buzz.bl4ko.com", recorder: recorder)
     XCTAssertTrue(sent)
-    XCTAssertEqual(recorder.events, ["mark", "send"])
+    XCTAssertEqual(recorder.events, ["key", "mark", "send"])
     XCTAssertEqual(recorder.marks, [.deny])
     XCTAssertEqual(recorder.sends.count, 1)
     XCTAssertEqual(
@@ -243,7 +340,7 @@ final class BuzzLiveActivityTests: XCTestCase {
     let recorder = Recorder()
     let sent = await run(sendError: Refused(), recorder: recorder)
     XCTAssertFalse(sent)
-    XCTAssertEqual(recorder.events, ["mark", "send", "mark"])
+    XCTAssertEqual(recorder.events, ["key", "mark", "send", "mark"])
     XCTAssertEqual(recorder.marks, [.approve, nil])
     XCTAssertEqual(recorder.notices, [BuzzApprovalActionHandler.failureBody])
   }
