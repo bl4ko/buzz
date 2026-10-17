@@ -185,6 +185,11 @@ Tokens are sealed with `BUZZ_PUSH_TOKEN_KEYS` and fingerprinted with the domains
 
 Chart: set `profiles.dogfood.apnsAuthKey` (`secretName`, `secretKey`, `keyId`, `teamId`) to mount the key at `/run/buzz/apns-auth/auth-key.p8` (mode `0400`) and render the three variables.
 
+### Live Activity rollback
+
+- Soft rollback: set `BUZZ_PUSH_LIVE_ACTIVITY_ENABLED=false` on the relay and roll it out. The worker stops and sends nothing. The migration `9001` objects stay; its triggers still mark at most one queue row per community. Without the APNs auth key variables the gateway answers every Live Activity delivery with `not_registered`.
+- Image rollback to a build without migration `9001`: SQLx (`ignore_missing=false`) stops an older binary with `VersionMissing(9001)`. Take a database backup, stop the new pods, then run the down script as the migration owner: `psql -v ON_ERROR_STOP=1 -f migrations/rollback/9001_live_activity.down.sql` on the relay database and `psql -v ON_ERROR_STOP=1 -f crates/buzz-push-gateway/rollback/9001_live_activities.down.sql` on the gateway database. Then deploy the older digest. Each script runs in one transaction, drops the Live Activity tables, functions, and triggers, and deletes the `9001` row from `_sqlx_migrations`; a later rollout applies `9001` again. SQLx reads only the top-level files of a migration directory, so no binary runs these scripts.
+
 ## Relay configuration
 
 Relay push is an explicit deployment opt-in through `BUZZ_PUSH_ENABLED=true`;

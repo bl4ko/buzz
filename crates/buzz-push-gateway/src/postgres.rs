@@ -889,6 +889,13 @@ mod postgres_tests {
             .expect("drop isolated test schema");
     }
 
+    pub(super) async fn rerun_migrations(pool: &PgPool) {
+        GATEWAY_MIGRATOR
+            .run(pool)
+            .await
+            .expect("re-apply gateway migrations");
+    }
+
     // Full authority schema in a private search_path so a multi-connection pool
     // exercises the real PK/UNIQUE replay fences that the memory store's single
     // mutex cannot. Returns (pool, schema) for teardown.

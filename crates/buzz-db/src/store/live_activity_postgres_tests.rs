@@ -886,3 +886,73 @@ async fn leases_are_limited_to_active_owner_leases() {
     assert_eq!(leases[0].installation_id, "phone");
     assert_eq!(leases[0].endpoint_grant, "grant");
 }
+
+async fn la_objects(pool: &PgPool) -> (bool, bool, i64, i64, i64) {
+    sqlx::query_as(
+        "SELECT to_regclass('push_live_activity_queue') IS NOT NULL, \
+             to_regclass('push_live_activity_state') IS NOT NULL, \
+             (SELECT count(*) FROM pg_proc WHERE proname = 'enqueue_live_activity_job'), \
+             (SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'events_enqueue_live_activity%'), \
+             (SELECT count(*) FROM _sqlx_migrations WHERE version = 9001)",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("read live activity objects")
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn rollback_script_removes_9001_and_allows_reapply() {
+    let admin_url = crate::test_support::database_url();
+    let admin = PgPool::connect(&admin_url).await.expect("connect admin");
+    let name = format!("buzz_la_rollback_{}", Uuid::new_v4().simple());
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
+        .execute(&admin)
+        .await
+        .expect("create scratch database");
+    let path_start = admin_url.rfind('/').expect("database URL path");
+    let pool = PgPool::connect(&format!("{}/{}", &admin_url[..path_start], name))
+        .await
+        .expect("connect scratch database");
+    crate::migration::run_migrations(&pool)
+        .await
+        .expect("migrate");
+    Db::from_pool(pool.clone())
+        .ensure_future_partitions(1, true)
+        .await
+        .expect("partitions");
+    let (queue, state, functions, triggers, applied) = la_objects(&pool).await;
+    assert!(queue && state);
+    assert_eq!((functions, applied), (1, 1));
+    assert!(triggers > 2, "partition trigger clones: {triggers}");
+
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations/rollback/9001_live_activity.down.sql"
+    ))
+    .execute(&pool)
+    .await
+    .expect("rollback script");
+    assert_eq!(la_objects(&pool).await, (false, false, 0, 0, 0));
+    let newest: i64 = sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .expect("newest migration");
+    assert!(newest < 9001, "{newest}");
+
+    crate::migration::run_migrations(&pool)
+        .await
+        .expect("re-apply 9001");
+    let (queue, state, functions, triggers, applied) = la_objects(&pool).await;
+    assert!(queue && state);
+    assert_eq!((functions, applied), (1, 1));
+    assert!(triggers > 2);
+
+    pool.close().await;
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP DATABASE IF EXISTS {name} WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .expect("drop scratch database");
+    admin.close().await;
+}

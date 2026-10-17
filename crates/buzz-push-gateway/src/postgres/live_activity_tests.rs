@@ -1,4 +1,4 @@
-use super::postgres_tests::{drop_schema, full_schema, TEST_DB_URL};
+use super::postgres_tests::{drop_schema, full_schema, rerun_migrations, TEST_DB_URL};
 use super::*;
 use crate::authority::live_activity_conformance as conformance;
 use sqlx::{postgres::PgPoolOptions, AssertSqlSafe};
@@ -216,4 +216,36 @@ async fn readiness_fails_without_live_activity_dml() {
         assert!(store.ready().await.is_ok(), "{table}");
     }
     db.drop().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn rollback_script_removes_9001_and_allows_reapply() {
+    let (pool, schema) = full_schema(2).await;
+    let objects = || async {
+        sqlx::query_as::<_, (bool, bool, bool, i64)>(
+            "SELECT to_regclass('push_gateway_live_activity_starts') IS NOT NULL, \
+                 to_regclass('push_gateway_live_activities') IS NOT NULL, \
+                 to_regprocedure('push_gateway_origin_hashes_valid(bytea[])') IS NOT NULL, \
+                 (SELECT count(*) FROM _sqlx_migrations WHERE version = 9001)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+    };
+    assert_eq!(objects().await, (true, true, true, 1));
+    sqlx::raw_sql(include_str!("../../rollback/9001_live_activities.down.sql"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(objects().await, (false, false, false, 0));
+    let newest: i64 = sqlx::query_scalar("SELECT max(version) FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(newest < 9001, "{newest}");
+    rerun_migrations(&pool).await;
+    assert_eq!(objects().await, (true, true, true, 1));
+    pool.close().await;
+    drop_schema(&schema).await;
 }
