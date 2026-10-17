@@ -27,14 +27,18 @@ struct ChannelListView: View {
           }
         }
         if home.showsLoading { LoadingRow(title: "Loading channels") }
-        ForEach(store.channels) { channel in
-          NavigationLink {
-            ConversationView(channel: channel, store: store)
-          } label: {
-            ChannelRow(channel: channel, draft: draft(for: channel))
+        WatchGlassGroup {
+          VStack(spacing: 6) {
+            ForEach(store.channels) { channel in
+              NavigationLink {
+                ConversationView(channel: channel, store: store)
+              } label: {
+                ChannelRow(channel: channel, draft: draft(for: channel))
+              }
+              .buttonStyle(.plain)
+              .disabled(store.busy)
+            }
           }
-          .buttonStyle(.plain)
-          .disabled(store.busy)
         }
         if home.showsEmpty {
           EmptyStateView(
