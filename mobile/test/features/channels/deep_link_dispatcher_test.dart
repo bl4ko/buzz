@@ -784,59 +784,59 @@ void main() {
       expect(container.read(pendingDeepLinkProvider), isNull);
     });
 
-    testWidgets(
-      'cold-start link is dropped silently if the relay never loads',
-      (tester) async {
-        final link = TasksDeepLink(
-          origin: 'https://first.example',
-          eventId: askId,
-        );
-        var lookups = 0;
-        final container = await pumpTasks(
-          tester,
-          link: link,
-          channels: Completer<List<Channel>>().future,
-          settle: false,
-          lookup: (_) async {
-            lookups++;
-            return 'channel-1';
-          },
-        );
-        await tester.pump(const Duration(seconds: 14));
-        expect(container.read(pendingDeepLinkProvider), link);
-
-        await tester.pump(const Duration(seconds: 2));
-        await tester.pumpAndSettle();
-        expect(find.byType(_CapturedDestination), findsNothing);
-        expect(find.byType(SnackBar), findsNothing);
-        expect(lookups, 0);
-        expect(container.read(pendingDeepLinkProvider), isNull);
-      },
-    );
-
-    testWidgets('cold-start lookup failure after the relay loads is silent', (
+    testWidgets('cold-start link shows a notice if the relay never loads', (
       tester,
     ) async {
       final link = TasksDeepLink(
         origin: 'https://first.example',
         eventId: askId,
       );
-      final channels = Completer<List<Channel>>();
+      var lookups = 0;
       final container = await pumpTasks(
         tester,
         link: link,
-        channels: channels.future,
+        channels: Completer<List<Channel>>().future,
         settle: false,
-        lookup: (_) async => throw StateError('offline'),
+        lookup: (_) async {
+          lookups++;
+          return 'channel-1';
+        },
       );
-      await tester.pump(const Duration(seconds: 1));
-      channels.complete([_channel]);
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 14));
+      expect(container.read(pendingDeepLinkProvider), link);
 
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
       expect(find.byType(_CapturedDestination), findsNothing);
-      expect(find.byType(SnackBar), findsNothing);
+      expect(find.text(tasksLinkFailedMessage), findsOneWidget);
+      expect(lookups, 0);
       expect(container.read(pendingDeepLinkProvider), isNull);
     });
+
+    testWidgets(
+      'cold-start lookup failure after the relay loads shows a notice',
+      (tester) async {
+        final link = TasksDeepLink(
+          origin: 'https://first.example',
+          eventId: askId,
+        );
+        final channels = Completer<List<Channel>>();
+        final container = await pumpTasks(
+          tester,
+          link: link,
+          channels: channels.future,
+          settle: false,
+          lookup: (_) async => throw StateError('offline'),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        channels.complete([_channel]);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(_CapturedDestination), findsNothing);
+        expect(find.text(tasksLinkFailedMessage), findsOneWidget);
+        expect(container.read(pendingDeepLinkProvider), isNull);
+      },
+    );
 
     testWidgets('dispatcher opens Tasks tab of the ask channel', (
       tester,
@@ -914,9 +914,7 @@ void main() {
       expect(container.read(pendingDeepLinkProvider), isNull);
     });
 
-    testWidgets('unknown ask event or channel stays on the community', (
-      tester,
-    ) async {
+    testWidgets('unknown ask event or channel shows a notice', (tester) async {
       for (final lookup in <Future<String?> Function(String)>[
         (_) async => null,
         (_) async => 'missing-channel',
@@ -929,7 +927,11 @@ void main() {
           key: UniqueKey(),
         );
         expect(find.byType(_CapturedDestination), findsNothing);
-        expect(find.byType(SnackBar), findsNothing);
+        expect(find.text(tasksLinkFailedMessage), findsOneWidget);
+        ScaffoldMessenger.of(
+          tester.element(find.byType(DeepLinkDispatcher)),
+        ).removeCurrentSnackBar();
+        await tester.pumpAndSettle();
         expect(container.read(pendingDeepLinkProvider), isNull);
       }
     });

@@ -26,6 +26,8 @@ typedef TaskAskChannelLookup = Future<String?> Function(String eventId);
 
 const tasksLinkReadyTimeout = Duration(seconds: 15);
 
+const tasksLinkFailedMessage = 'Could not open Tasks';
+
 final taskAskChannelLookupProvider = Provider<TaskAskChannelLookup>(
   (ref) => (eventId) async {
     final events = await ref.read(relaySessionProvider.notifier).queryRelay([
@@ -170,7 +172,13 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
         debugPrint('deep-link: tasks link lookup failed: $error');
       }
       if (!mounted || ref.read(pendingDeepLinkProvider) != link) return;
-      if (channel != null && context.mounted) _pushChannel(channel, link);
+      if (channel != null) {
+        _pushChannel(channel, link);
+      } else {
+        ScaffoldMessenger.maybeOf(
+          context,
+        )?.showSnackBar(const SnackBar(content: Text(tasksLinkFailedMessage)));
+      }
       notifier.consume();
     } finally {
       if (_resolvingTasks == link) _resolvingTasks = null;
