@@ -458,6 +458,18 @@ final class BuzzLiveActivityGatewaySyncTests: XCTestCase {
     gateway.releaseRetries()
   }
 
+  func testNewTokenDuringAFailingSendSkipsTheBackoff() async {
+    let gateway = Gateway(script: [URLError(.timedOut)], holdRetries: true, callNanoseconds: 100_000_000)
+    let subject = sync(gateway)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([1]))
+    await waitForSends(gateway, 1, settle: 0)
+    await subject.tokenChanged(origin: origin, activityID: "a", token: Data([2]))
+    await waitForSends(gateway, 2, settle: 150_000_000)
+    XCTAssertEqual(gateway.sent.map(\.1), [Data([1]), Data([2])])
+    XCTAssertTrue(gateway.slept.isEmpty)
+    gateway.releaseRetries()
+  }
+
   func testWithdrawnRegistrationIsNotRetried() async {
     let gateway = Gateway(registrationScript: [conflict], holdRetries: true)
     let subject = sync(gateway)

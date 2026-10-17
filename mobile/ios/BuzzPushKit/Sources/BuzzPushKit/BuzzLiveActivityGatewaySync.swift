@@ -42,6 +42,7 @@ public actor BuzzLiveActivityGatewaySync {
   private var queue: [Work] = []
   private var draining = false
   private var wakeup: BuzzLiveActivityWakeup?
+  private var changes = 0
   private var sequence = 0
 
   public init(
@@ -95,7 +96,10 @@ public actor BuzzLiveActivityGatewaySync {
     if !queue.contains(work) {
       if work == .registration { queue.insert(work, at: 0) } else { queue.append(work) }
     }
-    if wake { wakeup?.fire() }
+    if wake {
+      changes += 1
+      wakeup?.fire()
+    }
     guard !draining else { return }
     draining = true
     Task { await drain() }
@@ -104,6 +108,7 @@ public actor BuzzLiveActivityGatewaySync {
   private func drain() async {
     var delay = Self.initialRetrySeconds
     while let work = queue.first {
+      let before = changes
       switch await perform(work) {
       case .idle:
         queue.removeFirst()
@@ -112,8 +117,10 @@ public actor BuzzLiveActivityGatewaySync {
       case .retry:
         queue.removeAll { $0 == work }
         queue.append(work)
-        let nanoseconds = delay * 1_000_000_000
-        await pause(random((nanoseconds / 2)...nanoseconds))
+        if changes == before {
+          let nanoseconds = delay * 1_000_000_000
+          await pause(random((nanoseconds / 2)...nanoseconds))
+        }
         delay = min(delay * 2, Self.maximumRetrySeconds)
       }
     }
