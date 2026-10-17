@@ -28,6 +28,7 @@ struct ConversationView: View {
             canSend: WatchComposer.canSend(
               draft: draft, busy: store.busy, independent: store.independent, reachable: store.reachable
             ),
+            sending: store.sending,
             send: send
           )
         } else {
@@ -99,6 +100,7 @@ struct ConversationView: View {
 struct ComposerCard: View {
   @Binding var draft: String
   let canSend: Bool
+  var sending = false
   let send: () -> Void
 
   var body: some View {
@@ -107,10 +109,14 @@ struct ComposerCard: View {
         TextField("Message", text: $draft, axis: .vertical)
           .lineLimit(1...4)
         Button(action: send) {
-          Image(systemName: "arrow.up")
+          if sending {
+            ProgressView().tint(.black).frame(width: 22, height: 22)
+          } else {
+            Image(systemName: "arrow.up")
+          }
         }
-        .buttonStyle(SendButtonStyle())
-        .accessibilityLabel("Send")
+        .buttonStyle(SendButtonStyle(sending: sending))
+        .accessibilityLabel(WatchComposer.sendLabel(sending: sending))
         .disabled(!canSend)
       }
       FlowLayout {

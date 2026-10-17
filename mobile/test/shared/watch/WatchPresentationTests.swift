@@ -73,6 +73,11 @@ final class WatchPresentationTests: XCTestCase {
     XCTAssertEqual(WatchComposer.quickReplies, ["Yes", "No", "Thanks", "I will check."])
   }
 
+  func testSendButtonAnnouncesAPendingSend() {
+    XCTAssertEqual(WatchComposer.sendLabel(sending: false), "Send")
+    XCTAssertEqual(WatchComposer.sendLabel(sending: true), "Sending")
+  }
+
   func testHomeHidesSetupControlsAfterSync() {
     let setup = WatchHome(independent: false, synced: false, reachable: true, busy: false, hasError: false, channelsEmpty: true)
     XCTAssertTrue(setup.showsWelcome)
