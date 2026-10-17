@@ -9,7 +9,7 @@ public enum BuzzLiveActivityRegistrationError: Error, Equatable {
   case notEnrolled
   case invalidOrigin
   case unboundOrigin
-  case rejected(status: Int)
+  case rejected(status: Int, code: String?)
   case invalidResponse
 }
 
@@ -212,18 +212,23 @@ public final class BuzzLiveActivityRegistrar {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try JSONEncoder().encode(body)
-    let (_, response) = try await session.data(for: request)
+    let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else {
       throw BuzzLiveActivityRegistrationError.invalidResponse
     }
     guard (200...299).contains(http.statusCode) else {
-      throw BuzzLiveActivityRegistrationError.rejected(status: http.statusCode)
+      let code = (try? JSONDecoder().decode(GatewayError.self, from: data))?.error
+      throw BuzzLiveActivityRegistrationError.rejected(status: http.statusCode, code: code)
     }
   }
 
   private static func hex(_ data: Data) -> String {
     data.map { String(format: "%02x", $0) }.joined()
   }
+}
+
+private struct GatewayError: Decodable {
+  let error: String
 }
 
 private struct StartRequest: Encodable {
