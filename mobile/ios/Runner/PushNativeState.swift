@@ -112,35 +112,31 @@ enum BuzzPushKeychain {
 final class BuzzLiveActivityKeyWriter {
   static let shared = BuzzLiveActivityKeyWriter()
 
-  private let lock = NSLock()
+  private let queue = DispatchQueue(label: "com.bl4ko.buzz.live-activity-keys")
   private var pending: (() -> OSStatus)?
-  private var observer: NSObjectProtocol?
+  private var observers: [NSObjectProtocol] = []
+
+  private init() {
+    observers = [UIApplication.protectedDataDidBecomeAvailableNotification, UIApplication.didBecomeActiveNotification]
+      .map { name in
+        NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+          self?.retry()
+        }
+      }
+  }
 
   func write(_ attempt: @escaping () -> OSStatus) {
-    let previous = locked { () -> NSObjectProtocol? in
-      pending = nil
-      defer { observer = nil }
-      return observer
-    }
-    if let previous { NotificationCenter.default.removeObserver(previous) }
-    guard attempt() == errSecInteractionNotAllowed else { return }
-    let token = NotificationCenter.default.addObserver(
-      forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil, queue: nil
-    ) { [weak self] _ in self?.retry() }
-    locked {
-      pending = attempt
-      observer = token
-    }
+    queue.sync { run(attempt) }
   }
 
   private func retry() {
-    guard let attempt = locked({ pending }) else { return }
-    write(attempt)
+    queue.sync {
+      guard let attempt = pending else { return }
+      run(attempt)
+    }
   }
 
-  private func locked<T>(_ body: () -> T) -> T {
-    lock.lock()
-    defer { lock.unlock() }
-    return body()
+  private func run(_ attempt: @escaping () -> OSStatus) {
+    pending = attempt() == errSecInteractionNotAllowed ? attempt : nil
   }
 }
