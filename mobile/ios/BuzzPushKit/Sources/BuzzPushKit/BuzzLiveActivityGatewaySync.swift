@@ -58,10 +58,11 @@ public actor BuzzLiveActivityGatewaySync {
     self.random = random
   }
 
-  public func register(_ request: BuzzLiveActivityStartRequest) {
-    let changed = registration?.fingerprint != request.fingerprint
+  public func register(_ request: BuzzLiveActivityStartRequest?) {
+    let changed = registration?.fingerprint != request?.fingerprint
     if changed { registrationAttempts = 0 }
     registration = request
+    guard request != nil else { return }
     enqueue(.registration, wake: changed)
   }
 
