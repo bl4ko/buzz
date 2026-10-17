@@ -1,6 +1,16 @@
 import Flutter
 import UIKit
+import app_links
 
 class SceneDelegate: FlutterSceneDelegate {
-
+  override func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    super.scene(scene, willConnectTo: session, options: connectionOptions)
+    for context in connectionOptions.urlContexts {
+      AppLinks.shared.handleLink(url: context.url)
+    }
+  }
 }
