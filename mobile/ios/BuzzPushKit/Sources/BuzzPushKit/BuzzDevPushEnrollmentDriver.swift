@@ -271,7 +271,7 @@ struct BuzzDCAppAttestProvider: BuzzDevAppAttesting {
   private let keyIdStore: BuzzAppAttestKeyIdStoring
 
   init(
-    service: BuzzDCAppAttestServicing = DCAppAttestService.shared,
+    service: BuzzDCAppAttestServicing = BuzzDCAppAttestProvider.platformService,
     keyIdStore: BuzzAppAttestKeyIdStoring
   ) {
     self.service = service
