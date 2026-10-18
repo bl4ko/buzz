@@ -628,3 +628,98 @@ async fn relay_drives_gateway_card_through_asks_and_decisions() {
         .iter()
         .all(|(token, _, _)| token != &hex::encode(MEMBER_START)));
 }
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn new_ask_after_the_start_bound_replaces_a_card_that_may_be_cleared() {
+    let gateway = Gateway::start().await;
+    let relay = Relay::start().await;
+    let owner = Keys::generate();
+    let agent = Keys::generate();
+    relay.join(&owner, Some("owner"), None).await;
+    relay.join(&agent, None, Some("Zeus")).await;
+    let relay_keys = relay.state.relay_keypair.clone();
+    let (installation, grant) = gateway
+        .installation(&relay_keys, &OWNER_START, &relay.origin)
+        .await;
+    relay.lease(&owner, "owner-phone", &grant).await;
+    let client = HttpLiveActivityGateway::new(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap(),
+        gateway.url.clone(),
+        relay_keys.clone(),
+    );
+    let hash = bound_origin_hash(&relay.origin, &relay_keys.public_key().to_hex()).unwrap();
+    let now = real_now();
+    let ask = |name: &'static str, at: i64| {
+        let relay = &relay;
+        let agent = &agent;
+        async move {
+            let root = relay.message(agent, name, at - 20).await;
+            let ask = relay.message(agent, name, at - 10).await;
+            relay.awaiting_owner(agent, &root, name, &ask, at).await;
+            ask
+        }
+    };
+
+    ask("First?", now - 100).await;
+    relay.run_job(&client).await;
+    gateway
+        .register_update_token(&relay_keys, installation, &relay.origin, &OWNER_UPDATE)
+        .await;
+    let aged = now - NEW_ASK_RESTART_AFTER_SECS - 60;
+    gateway
+        .state
+        .authority
+        .record_live_activity_start(installation, hash, aged)
+        .await
+        .unwrap();
+    gateway
+        .register_update_token(&relay_keys, installation, &relay.origin, &OWNER_UPDATE)
+        .await;
+    sqlx::query("UPDATE push_live_activity_state SET started_at = $2 WHERE community_id = $1")
+        .bind(relay.community.as_uuid())
+        .bind(aged)
+        .execute(&relay.pool)
+        .await
+        .unwrap();
+
+    let second = ask("Second?", now - 50).await;
+    relay.run_job(&client).await;
+    let sends = gateway.transport.sends();
+    let events: Vec<(String, String)> = sends
+        .iter()
+        .map(|(token, body, _)| {
+            (
+                token.clone(),
+                body["aps"]["event"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        events[1..],
+        [
+            (hex::encode(OWNER_UPDATE), "end".to_owned()),
+            (hex::encode(OWNER_START), "start".to_owned()),
+        ]
+    );
+    let start = &sends[2].1["aps"];
+    assert_eq!(start["content-state"]["askEventID"], second.id.to_hex());
+    assert_eq!(start["content-state"]["openCount"], 2);
+    let restarted = relay.state_row(&owner).await;
+    assert_eq!(restarted.result, "started");
+    assert!(restarted.started_at.is_some_and(|started| started >= now));
+
+    gateway
+        .register_update_token(&relay_keys, installation, &relay.origin, &OWNER_UPDATE)
+        .await;
+    ask("Third?", now - 20).await;
+    relay.run_job(&client).await;
+    let sends = gateway.transport.sends();
+    assert_eq!(sends.len(), 4);
+    assert_eq!(sends[3].0, hex::encode(OWNER_UPDATE));
+    assert_eq!(sends[3].1["aps"]["event"], "update");
+    assert_eq!(sends[3].1["aps"]["content-state"]["openCount"], 3);
+}

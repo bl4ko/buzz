@@ -35,6 +35,7 @@ pub(crate) enum Action {
 
 const HASH_DOMAIN: &[u8] = b"buzz.relay.la-state.v1\0";
 const RESTART_AFTER_SECS: i64 = 7 * 60 * 60;
+const NEW_ASK_RESTART_AFTER_SECS: i64 = 30 * 60;
 const NOT_REGISTERED_RETRY_SECS: i64 = 6 * 60 * 60;
 const MAX_CASE_ID_CHARS: usize = 96;
 
@@ -127,12 +128,17 @@ pub(crate) fn decide(
     }
     if previous.content_hash.as_slice() != content_hash(view).as_slice() {
         let shown = hex::decode(&view.ask_event_id).ok();
-        let priority = if previous.ask_event_id == shown {
-            5
-        } else {
-            10
-        };
-        return Action::Upsert { priority };
+        if previous.ask_event_id == shown {
+            return Action::Upsert { priority: 5 };
+        }
+        let new_ask = i32::from(view.open_count) > previous.open_count;
+        let card_age = previous
+            .started_at
+            .map(|started| now.saturating_sub(started));
+        if open && new_ask && card_age.is_some_and(|age| age >= NEW_ASK_RESTART_AFTER_SECS) {
+            return Action::Restart;
+        }
+        return Action::Upsert { priority: 10 };
     }
     if refresh && open {
         Action::Upsert { priority: 5 }
@@ -1199,6 +1205,60 @@ mod tests {
                 Action::Upsert { priority: 5 }
             );
         }
+    }
+
+    #[test]
+    fn decide_new_ask_after_start_bound_restarts() {
+        let before = view('a', 1);
+        for result in ["started", "updated", "pending"] {
+            let previous = row(
+                Some(&before),
+                result,
+                Some(NOW - NEW_ASK_RESTART_AFTER_SECS),
+            );
+            assert_eq!(
+                decide(Some(&previous), Some(&view('b', 2)), false, NOW),
+                Action::Restart,
+                "{result}"
+            );
+        }
+    }
+
+    #[test]
+    fn decide_new_ask_inside_start_bound_updates() {
+        let before = view('a', 1);
+        let previous = row(
+            Some(&before),
+            "updated",
+            Some(NOW - NEW_ASK_RESTART_AFTER_SECS + 1),
+        );
+        assert_eq!(
+            decide(Some(&previous), Some(&view('b', 2)), false, NOW),
+            Action::Upsert { priority: 10 }
+        );
+    }
+
+    #[test]
+    fn decide_old_card_without_a_new_ask_is_updated() {
+        let before = view('b', 2);
+        let previous = row(Some(&before), "updated", Some(NOW - 3600));
+        assert_eq!(
+            decide(Some(&previous), Some(&view('a', 1)), false, NOW),
+            Action::Upsert { priority: 10 }
+        );
+        assert_eq!(
+            decide(Some(&previous), Some(&view('b', 3)), false, NOW),
+            Action::Upsert { priority: 5 }
+        );
+        assert_eq!(
+            decide(Some(&previous), Some(&view('c', 2)), false, NOW),
+            Action::Upsert { priority: 10 }
+        );
+        let ended = row(Some(&before), "ended", Some(NOW - 3600));
+        assert_eq!(
+            decide(Some(&ended), Some(&view('c', 3)), false, NOW),
+            Action::Upsert { priority: 10 }
+        );
     }
 
     #[test]

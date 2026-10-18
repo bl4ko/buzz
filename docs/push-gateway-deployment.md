@@ -217,7 +217,11 @@ worker. It uses the same strict boolean parser, defaults to false, and requires
 configured delivery URL with the path `/v1/deliveries/live-activity` and only
 for leases of community owners. Its queue and card state live in relay
 migration `9001` (`push_live_activity_queue`, `push_live_activity_state`); ask
-text is not stored.
+text is not stored. A terminated app cannot report a card that the owner
+cleared, and APNs accepts updates for it. When a new ask arrives and the card
+started at least 30 minutes ago, the worker therefore sends `restart` (end, then
+push-to-start) instead of an update. Inside that bound a new ask only updates
+the card, which keeps push-to-start use within the start bound.
 
 An enabled relay exports the following bounded-cardinality series on its
 existing Prometheus endpoint. None carries a community, account, relay key,
