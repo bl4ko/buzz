@@ -105,7 +105,7 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
     return InkWell(
       key: Key('task-row-${task.rootId}'),
       onTap: () {
-        if (!_settling) widget.onOpenThread(task.rootId);
+        if (!_settling && !pending) widget.onOpenThread(task.rootId);
       },
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(

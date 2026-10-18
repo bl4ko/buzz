@@ -528,4 +528,34 @@ void main() {
     await tester.pump();
     expect(log, ['done:1', 'done:2']);
   });
+
+  testWidgets('a tap on the row does not open it while its decision sends', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    final log = <String>[];
+    await tester.pumpWidget(
+      app(
+        ChannelTasksView(
+          state: withAsk('b' * 64),
+          canSetStatus: true,
+          onReact: (_, _) => pending.future,
+          onDone: (_) async {},
+          onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+        ),
+      ),
+    );
+    final approve = tester.getCenter(find.text('Approve'));
+    await tester.tapAt(approve);
+    await tester.pump();
+    await tester.tapAt(approve);
+    await tester.tap(find.text('Task 1'));
+    await tester.pump();
+    expect(log, isEmpty);
+    pending.complete();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Task 1'));
+    expect(log, ['open:1']);
+  });
 }
