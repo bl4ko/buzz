@@ -696,7 +696,7 @@ class ChannelDetailPage extends HookConsumerWidget {
       resizeToAvoidBottomInset:
           !usesFixedAndroidImeViewport || resolvedChannel.isForum,
       appBar: FrostedAppBar(
-        alwaysFrosted: true,
+        opaque: true,
         nativeViewSuppressed: messageActionBackdropActive,
         nativeTitle:
             dmHeader?.label ??

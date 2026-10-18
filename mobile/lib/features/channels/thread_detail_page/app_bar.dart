@@ -24,7 +24,7 @@ FrostedAppBar _threadAppBar(
       Theme.of(context).platform == TargetPlatform.iOS;
 
   return FrostedAppBar(
-    alwaysFrosted: true,
+    opaque: true,
     nativeViewSuppressed: messageActionBackdropActive,
     nativeTitle: 'Thread',
     nativeSubtitle: channelDisplayName,

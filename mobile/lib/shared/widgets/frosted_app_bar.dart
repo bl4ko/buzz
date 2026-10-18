@@ -144,9 +144,9 @@ class FrostedAppBar extends StatelessWidget {
   /// surrounding scroll scope reports content beneath the controls.
   final bool frosted;
 
-  /// Keeps the backdrop stable regardless of scroll state on both platforms.
-  /// Conversation headers use this while their timeline and composer resize.
-  final bool alwaysFrosted;
+  /// Paints an opaque page-colour backdrop with its bottom divider on both
+  /// platforms, so scrolled content never shows through the header.
+  final bool opaque;
 
   /// Opacity of the frosted surface above the blurred backdrop.
   final double frostedSurfaceOpacity;
@@ -220,7 +220,7 @@ class FrostedAppBar extends StatelessWidget {
     this.iconColor,
     this.gradient,
     this.frosted = true,
-    this.alwaysFrosted = false,
+    this.opaque = false,
     this.frostedSurfaceOpacity = 0.5,
     this.frostedBlurSigma = 20,
     this.showBottomDivider = true,
@@ -269,6 +269,25 @@ class FrostedAppBar extends StatelessWidget {
           height: barHeight + bottomHeight,
           child: Stack(
             children: [
+              if (opaque)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: context.colors.surface,
+                      border: showBottomDivider
+                          ? Border(
+                              bottom: BorderSide(
+                                color: navigationDivider(
+                                  context,
+                                  bottomDividerOpacity,
+                                ),
+                                width: _kBottomBorderWidth,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
               Positioned(
                 top: 0,
                 left: 0,
@@ -285,7 +304,7 @@ class FrostedAppBar extends StatelessWidget {
                   titlePresenceColor: nativeTitlePresenceColor,
                   onTitlePressed: onNativeTitlePressed,
                   largeTitle: nativeLargeTitle,
-                  alwaysFrosted: alwaysFrosted,
+                  opaque: opaque,
                   foregroundColor: iconColor,
                   leading: nativeLeading ?? _nativeAction(leading),
                   onBack:
@@ -310,7 +329,7 @@ class FrostedAppBar extends StatelessWidget {
                   left: 0,
                   right: 0,
                   height: bottomHeight + bottomOverlap,
-                  child: bottomOverlap > 0 || bottom is SizedBox
+                  child: opaque || bottomOverlap > 0 || bottom is SizedBox
                       ? bottom!
                       : ColoredBox(
                           color: context.colors.surface,
@@ -331,9 +350,8 @@ class FrostedAppBar extends StatelessWidget {
     }
     final topPadding = MediaQuery.paddingOf(context).top;
     final scrollUnder = FrostedScrollUnderScope.maybeOf(context);
-    final isScrolledUnder =
-        alwaysFrosted || (scrollUnder?.isScrolledUnder ?? false);
-    final paintsFrost = frosted && isScrolledUnder;
+    final isScrolledUnder = opaque || (scrollUnder?.isScrolledUnder ?? false);
+    final paintsFrost = frosted && isScrolledUnder && !opaque;
     final paintsBottomDivider = showBottomDivider && isScrolledUnder;
     final canPop = Navigator.canPop(context);
     final effectiveTitleStyle = _effectiveTitleStyle(context, titleStyle);
@@ -455,6 +473,8 @@ class FrostedAppBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: gradient != null
             ? null
+            : opaque
+            ? context.colors.surface
             : paintsFrost
             ? context.colors.surface.withValues(alpha: frostedSurfaceOpacity)
             : Colors.transparent,

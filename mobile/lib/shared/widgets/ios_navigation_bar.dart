@@ -116,7 +116,7 @@ class IosNavigationBar extends HookConsumerWidget {
     this.titlePresenceColor,
     this.onTitlePressed,
     this.largeTitle = false,
-    this.alwaysFrosted = false,
+    this.opaque = false,
     this.leading,
     this.actions = const [],
     this.onBack,
@@ -134,8 +134,8 @@ class IosNavigationBar extends HookConsumerWidget {
   final VoidCallback? onTitlePressed;
   final bool largeTitle;
 
-  /// Keeps the navigation backdrop visible before the first scroll update.
-  final bool alwaysFrosted;
+  /// Hides native scroll-edge treatments above an opaque Flutter backdrop.
+  final bool opaque;
   final IosNavigationAction? leading;
   final List<IosNavigationAction> actions;
   final VoidCallback? onBack;
@@ -233,7 +233,7 @@ class IosNavigationBar extends HookConsumerWidget {
       'titlePresenceColor': titlePresenceColor?.toARGB32(),
       'titleEnabled': onTitlePressed != null,
       'largeTitle': largeTitle,
-      'alwaysFrosted': alwaysFrosted,
+      'opaque': opaque,
       'back': onBack != null,
       'leading': leading == null ? null : encodeAction(leading!, 'leading'),
       'actions': [

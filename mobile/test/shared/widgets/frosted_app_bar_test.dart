@@ -6,13 +6,12 @@ import 'package:buzz/shared/widgets/ios_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
-  testWidgets('iOS conversations request a backdrop before scrolling', (
-    tester,
-  ) async {
+  testWidgets('iOS conversations request an opaque native bar', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     await tester.pumpWidget(
@@ -24,7 +23,7 @@ void main() {
               FrostedAppBar(
                 title: Text('Alice'),
                 nativeSubtitle: 'Online',
-                alwaysFrosted: true,
+                opaque: true,
               ),
             ],
           ),
@@ -32,14 +31,111 @@ void main() {
       ),
     );
     final view = tester.widget<UiKitView>(find.byType(UiKitView));
-    expect(view.creationParams, containsPair('alwaysFrosted', true));
+    expect(view.creationParams, containsPair('opaque', true));
     expect(view.creationParams, containsPair('subtitle', 'Online'));
     await tester.pumpWidget(const SizedBox());
     debugDefaultTargetPlatformOverride = null;
   });
 
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets(
+      'opaque header covers content through its bottom row on ${platform.name}',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = platform;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        tester.view.padding = const FakeViewPadding(top: 141);
+        addTearDown(tester.view.reset);
+        final messenger = tester.binding.defaultBinaryMessenger;
+        final views = <MethodChannel>[];
+        messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+          call,
+        ) async {
+          if (call.method == 'create') {
+            final id = (call.arguments as Map)['id'];
+            final view = MethodChannel('${IosNavigationBar.viewType}/$id');
+            views.add(view);
+            messenger.setMockMethodCallHandler(view, (call) async => null);
+          }
+          return null;
+        });
+        addTearDown(() {
+          messenger.setMockMethodCallHandler(
+            SystemChannels.platform_views,
+            null,
+          );
+          for (final view in views) {
+            messenger.setMockMethodCallHandler(view, null);
+          }
+        });
+        const content = Color(0xFFFF0000);
+        final shot = GlobalKey();
+        late double headerHeight;
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              theme: AppTheme.dark(),
+              home: RepaintBoundary(
+                key: shot,
+                child: Builder(
+                  builder: (context) {
+                    headerHeight = frostedAppBarHeight(
+                      context,
+                      bottomHeight: 40,
+                    );
+                    return const Stack(
+                      children: [
+                        Positioned.fill(child: ColoredBox(color: content)),
+                        FrostedAppBar(
+                          title: Text('Conversation'),
+                          opaque: true,
+                          bottom: Center(child: Text('Tabs')),
+                          bottomHeight: 40,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+        final surface = Theme.of(
+          tester.element(find.byType(Stack).first),
+        ).colorScheme.surface;
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(shot),
+        );
+        final pixels = (await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          final data = await image.toByteData();
+          image.dispose();
+          return data!;
+        }))!;
+        final width = boundary.size.width.toInt();
+        Color pixel(int x, int y) {
+          final i = (y * width + x) * 4;
+          return Color.fromARGB(
+            pixels.getUint8(i + 3),
+            pixels.getUint8(i),
+            pixels.getUint8(i + 1),
+            pixels.getUint8(i + 2),
+          );
+        }
+
+        final bottom = headerHeight.round();
+        for (var y = 0; y < bottom - 1; y++) {
+          expect(pixel(8, y), surface, reason: 'row $y');
+        }
+        expect(pixel(8, bottom - 1), isNot(content));
+        expect(pixel(8, bottom + 1), content);
+        await tester.pumpWidget(const SizedBox());
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+
   testWidgets(
-    'conversation backdrop stays mounted across scroll and keyboard changes',
+    'opaque conversation backdrop stays mounted across scroll and keyboard changes',
     (tester) async {
       final scrolled = ValueNotifier(false);
       addTearDown(scrolled.dispose);
@@ -52,36 +148,30 @@ void main() {
               isScrolledUnder: value,
               child: const Stack(
                 children: [
-                  FrostedAppBar(
-                    title: Text('Conversation'),
-                    alwaysFrosted: true,
-                  ),
+                  FrostedAppBar(title: Text('Conversation'), opaque: true),
                 ],
               ),
             ),
           ),
         ),
       );
-      final backdrop = tester.element(find.byType(BackdropFilter));
-      final initial = tester
-          .widget<Container>(
-            find.byKey(const ValueKey('frosted-app-bar-background')),
-          )
-          .decoration;
+      final background = find.byKey(
+        const ValueKey('frosted-app-bar-background'),
+      );
+      final backdrop = tester.element(background);
+      final initial = tester.widget<Container>(background).decoration;
+      expect(
+        (initial! as BoxDecoration).color,
+        Theme.of(backdrop).colorScheme.surface,
+      );
       addTearDown(tester.view.reset);
       for (final under in [true, false, true, false]) {
         scrolled.value = under;
         tester.view.viewInsets = FakeViewPadding(bottom: under ? 300 : 0);
         await tester.pump();
-        expect(tester.element(find.byType(BackdropFilter)), same(backdrop));
-        expect(
-          tester
-              .widget<Container>(
-                find.byKey(const ValueKey('frosted-app-bar-background')),
-              )
-              .decoration,
-          initial,
-        );
+        expect(find.byType(BackdropFilter), findsNothing);
+        expect(tester.element(background), same(backdrop));
+        expect(tester.widget<Container>(background).decoration, initial);
       }
     },
   );
