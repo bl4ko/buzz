@@ -18,6 +18,18 @@ pub struct ApplicationConfig {
     pub apns_topic: String,
     pub apns_environment: ApnsEnvironment,
     pub live_activity: Option<LiveActivityCredentials>,
+    pub qa_apns_base_url: Option<String>,
+}
+
+impl ApplicationConfig {
+    pub fn apns_base_url(&self) -> &str {
+        self.qa_apns_base_url
+            .as_deref()
+            .unwrap_or(match self.apns_environment {
+                ApnsEnvironment::Production => "https://api.push.apple.com",
+                ApnsEnvironment::Sandbox => "https://api.sandbox.push.apple.com",
+            })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +77,8 @@ pub enum AppAttestEnvironment {
     /// Development-signed applications in an explicitly opted-in gateway build.
     #[cfg(feature = "personal-dev-app-attest")]
     Development,
+    #[cfg(feature = "qa-simulator")]
+    Simulator,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +164,8 @@ fn parse_keyring(
     Ok(keys)
 }
 
+const QA_APNS_BASE_URL: &str = "BUZZ_PUSH_QA_APNS_BASE_URL";
+
 fn parse_application(e: &HashMap<String, String>) -> Result<ApplicationConfig, ConfigError> {
     let app_id_key = "BUZZ_PUSH_APP_ATTEST_APP_ID";
     let cert_key = "BUZZ_PUSH_APNS_CERT_PATH";
@@ -169,8 +185,17 @@ fn parse_application(e: &HashMap<String, String>) -> Result<ApplicationConfig, C
         None | Some("production") => AppAttestEnvironment::Production,
         #[cfg(feature = "personal-dev-app-attest")]
         Some("development") => AppAttestEnvironment::Development,
+        #[cfg(feature = "qa-simulator")]
+        Some("simulator") => AppAttestEnvironment::Simulator,
         Some(_) => return Err(ConfigError::Invalid("BUZZ_PUSH_APP_ATTEST_ENVIRONMENT")),
     };
+    let qa_apns_base_url = e
+        .get(QA_APNS_BASE_URL)
+        .filter(|value| !value.is_empty())
+        .cloned();
+    if qa_apns_base_url.is_some() && !cfg!(feature = "qa-simulator") {
+        return Err(ConfigError::Invalid(QA_APNS_BASE_URL));
+    }
     let apns_topic = required(topic_key)?.to_owned();
     let apns_cert_path = PathBuf::from(required(cert_key)?);
     let apns_environment = match e.get(environment_key).map(String::as_str) {
@@ -185,6 +210,7 @@ fn parse_application(e: &HashMap<String, String>) -> Result<ApplicationConfig, C
         apns_topic,
         apns_environment,
         live_activity: parse_live_activity(e)?,
+        qa_apns_base_url,
     })
 }
 
@@ -317,6 +343,41 @@ mod tests {
         );
         #[cfg(not(feature = "personal-dev-app-attest"))]
         assert!(Config::from_map(&env).is_err());
+        env.insert(
+            "BUZZ_PUSH_APP_ATTEST_ENVIRONMENT".into(),
+            "simulator".into(),
+        );
+        #[cfg(feature = "qa-simulator")]
+        assert_eq!(
+            Config::from_map(&env)
+                .unwrap()
+                .application
+                .app_attest_environment,
+            AppAttestEnvironment::Simulator
+        );
+        #[cfg(not(feature = "qa-simulator"))]
+        assert!(Config::from_map(&env).is_err());
+    }
+
+    #[test]
+    fn qa_apns_base_url_needs_the_qa_build() {
+        let mut env = base();
+        let default = Config::from_map(&env).unwrap().application;
+        assert!(default.apns_base_url().starts_with("https://api."));
+        env.insert(
+            "BUZZ_PUSH_QA_APNS_BASE_URL".into(),
+            "http://127.0.0.1:3463".into(),
+        );
+        #[cfg(feature = "qa-simulator")]
+        assert_eq!(
+            Config::from_map(&env).unwrap().application.apns_base_url(),
+            "http://127.0.0.1:3463"
+        );
+        #[cfg(not(feature = "qa-simulator"))]
+        assert!(matches!(
+            Config::from_map(&env),
+            Err(ConfigError::Invalid("BUZZ_PUSH_QA_APNS_BASE_URL"))
+        ));
     }
 
     fn base() -> HashMap<String, String> {
@@ -419,7 +480,7 @@ mod tests {
         let mut env = base();
         env.extend(keys.map(|(k, v)| (k.to_owned(), v.to_owned())));
         assert_eq!(
-            Config::from_map(&env).unwrap().profile.live_activity,
+            Config::from_map(&env).unwrap().application.live_activity,
             Some(LiveActivityCredentials {
                 auth_key_path: PathBuf::from("/run/buzz/apns/auth-key.p8"),
                 key_id: "ABC123DEFG".into(),
@@ -464,12 +525,12 @@ mod tests {
             env.insert(key.into(), String::new());
         }
         let config = Config::from_map(&env).unwrap();
-        assert_eq!(config.profile.live_activity, None);
+        assert_eq!(config.application.live_activity, None);
         assert_eq!(
-            config.profile.apns_cert_path,
+            config.application.apns_cert_path,
             PathBuf::from("/dogfood-identity.pem")
         );
-        assert!(crate::live_activity::transport_from_config(&config.profile)
+        assert!(crate::live_activity::transport_from_config(&config.application)
             .unwrap()
             .is_none());
     }

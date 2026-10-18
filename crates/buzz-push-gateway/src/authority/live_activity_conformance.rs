@@ -21,7 +21,6 @@ pub(crate) async fn seed(store: &dyn AuthorityStore) -> Uuid {
                 app_attest_key_id: unique.to_vec(),
                 app_attest_public_key: vec![2; 65],
                 assertion_counter: 0,
-                profile: AppProfile::BuzzIosDogfood,
                 token_ciphertext: vec![3],
                 token_fingerprint: [unique, unique].concat().try_into().unwrap(),
                 endpoint_epoch: 1,

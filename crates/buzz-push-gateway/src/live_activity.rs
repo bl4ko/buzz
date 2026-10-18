@@ -306,18 +306,19 @@ fn apple_identifier(value: &str) -> bool {
 }
 
 pub fn transport_from_config(
-    profile: &crate::config::AppProfileConfig,
+    profile: &crate::config::ApplicationConfig,
 ) -> Result<Option<std::sync::Arc<dyn LiveActivityTransport>>, LiveActivitySetupError> {
     let Some(credentials) = profile.live_activity.as_ref() else {
         return Ok(None);
     };
     let key = std::fs::read(&credentials.auth_key_path).map_err(|_| LiveActivitySetupError)?;
-    let transport = ApnsTokenTransport::new(
+    let transport = ApnsTokenTransport::with_parts(
         &key,
         credentials.key_id.clone(),
         credentials.team_id.clone(),
         profile.apns_topic.clone(),
-        profile.apns_environment,
+        profile.apns_base_url().to_owned(),
+        system_now,
     )
     .map_err(|_| LiveActivitySetupError)?;
     Ok(Some(std::sync::Arc::new(transport)))
@@ -731,12 +732,13 @@ mod tests {
 
     #[test]
     fn transport_from_config_reads_the_auth_key() {
-        let profile = |path: &str| crate::config::AppProfileConfig {
+        let profile = |path: &str| crate::config::ApplicationConfig {
             app_attest_app_id: "TEAM.app".into(),
             app_attest_environment: crate::config::AppAttestEnvironment::Production,
             apns_cert_path: "/unused".into(),
             apns_topic: "com.bl4ko.buzz".into(),
             apns_environment: ApnsEnvironment::Production,
+            qa_apns_base_url: None,
             live_activity: Some(crate::config::LiveActivityCredentials {
                 auth_key_path: path.into(),
                 key_id: "ABC123DEFG".into(),

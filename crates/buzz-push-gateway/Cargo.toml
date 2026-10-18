@@ -18,10 +18,12 @@ path = "src/main.rs"
 [features]
 # Personal device development only. Production builds remain production-only.
 personal-dev-app-attest = []
+# iOS Simulator QA stack only (qa/live-activity). Never enable in a deployed image.
+qa-simulator = []
 
 [dependencies]
 aes-gcm = "0.10"
-aws-lc-rs = { version = "1", default-features = false }
+aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys"] }
 minicbor = { version = "0.25", features = ["std", "half"] }
 p256 = { version = "0.14", features = ["ecdsa"] }
 rustls-pki-types = { version = "1", features = ["std"] }
@@ -55,6 +57,5 @@ uuid = { workspace = true }
 [dev-dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
 ciborium = "0.2"
-aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys"] }
 proptest = { workspace = true }
 reqwest = { workspace = true }

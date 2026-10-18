@@ -6,7 +6,7 @@ use crate::{
         AuthorityStore, Challenge, Delegation, MemoryAuthorityStore, NewInstallation, QuotaBucket,
     },
     grant::{GrantKey, GrantKeyring},
-    http::ProfileRuntime,
+    http::ApplicationRuntime,
     http_delivery_tests::signed_header,
     live_activity::LiveActivityTransport,
     router,
@@ -129,7 +129,6 @@ async fn harness(credentials: bool) -> Harness {
                 app_attest_key_id: vec![3; 32],
                 app_attest_public_key: device.public_key().as_ref().to_vec(),
                 assertion_counter: 0,
-                profile: AppProfile::BuzzIosDogfood,
                 token_ciphertext: token_keyring.seal(&[1, 2, 3, 4]).unwrap(),
                 token_fingerprint: [5; 32],
                 endpoint_epoch: 1,
@@ -158,7 +157,6 @@ async fn harness(credentials: bool) -> Harness {
             v: 1,
             delegation_id,
             relay_pubkey: relay.public_key().to_hex(),
-            app_profile: AppProfile::BuzzIosDogfood,
             endpoint_epoch: 1,
             generation: 1,
             expires_at: now() + 600,
@@ -171,7 +169,7 @@ async fn harness(credentials: bool) -> Harness {
         grant_keyring,
         authority,
         token_keyring,
-        profile: Arc::new(ProfileRuntime {
+        application: Arc::new(ApplicationRuntime {
             app_attest: Arc::new(
                 AppAttestVerifier::new(
                     APP_ID.into(),
@@ -263,7 +261,6 @@ impl Harness {
                 v: 1,
                 delegation_id,
                 relay_pubkey: relay.public_key().to_hex(),
-                app_profile: AppProfile::BuzzIosDogfood,
                 endpoint_epoch: 1,
                 generation: 1,
                 expires_at: now() + 600,

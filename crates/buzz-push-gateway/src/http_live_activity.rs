@@ -515,18 +515,9 @@ pub(super) async fn deliver(
         }
         Err(_) => return error(StatusCode::NOT_FOUND, "invalid_grant"),
     };
-    if permit.authority.profile != grant.app_profile
-        || permit.authority.profile != AppProfile::BuzzIosDogfood
-    {
-        let _ = s
-            .authority
-            .finish_delivery(permit, DeliveryDisposition::Terminal)
-            .await;
-        return error(StatusCode::NOT_FOUND, "invalid_grant");
-    }
     let installation = permit.authority.installation_id;
     let op = r.op;
-    let Some(transport) = s.profile.live_activity.clone() else {
+    let Some(transport) = s.application.live_activity.clone() else {
         let _ = s
             .authority
             .finish_delivery(permit, DeliveryDisposition::Terminal)

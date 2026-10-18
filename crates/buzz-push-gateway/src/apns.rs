@@ -100,7 +100,7 @@ impl ApnsTransport {
         Self::certificate_with_base_url(identity_pem, topic, base_url.to_owned())
     }
 
-    fn certificate_with_base_url(
+    pub fn certificate_with_base_url(
         identity_pem: &[u8],
         topic: String,
         base_url: String,

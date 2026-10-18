@@ -105,6 +105,10 @@ impl AppAttestVerifier {
                 error::AppAttestError::ResourceLimit,
             ));
         }
+        #[cfg(feature = "qa-simulator")]
+        if self.environment == AppAttestEnvironment::Simulator {
+            return verify_simulator_attestation(&cbor, key_id_b64, client_data);
+        }
         let verified = proof::enroll(
             &cbor,
             client_data,
@@ -190,6 +194,42 @@ fn verification_error(operation: &'static str, error: error::AppAttestError) -> 
     AppAttestError::Invalid
 }
 
+#[cfg(feature = "qa-simulator")]
+fn verify_simulator_attestation(
+    object: &[u8],
+    key_id_b64: &str,
+    client_data: &[u8],
+) -> Result<VerifiedAttestation, AppAttestError> {
+    use aws_lc_rs::signature::{UnparsedPublicKey, ECDSA_P256_SHA256_ASN1};
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Simulated {
+        fmt: String,
+        #[serde(rename = "publicKey")]
+        public_key: String,
+        signature: String,
+    }
+    let simulated: Simulated =
+        serde_json::from_slice(object).map_err(|_| AppAttestError::Invalid)?;
+    let decode = |value: &str| STANDARD.decode(value).map_err(|_| AppAttestError::Invalid);
+    let public_key = decode(&simulated.public_key)?;
+    let key_id = decode(key_id_b64)?;
+    if simulated.fmt != "buzz-ios-simulator"
+        || public_key.len() != 65
+        || public_key[0] != 4
+        || key_id != Sha256::digest(&public_key).as_slice()
+    {
+        return Err(AppAttestError::Invalid);
+    }
+    UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, &public_key)
+        .verify(
+            Sha256::digest(client_data).as_slice(),
+            &decode(&simulated.signature)?,
+        )
+        .map_err(|_| AppAttestError::Invalid)?;
+    Ok(VerifiedAttestation { key_id, public_key })
+}
+
 fn observe_properties(
     operation: &'static str,
     flags: u8,
@@ -205,6 +245,8 @@ fn matches_development(environment: AppAttestEnvironment) -> bool {
         AppAttestEnvironment::Production => false,
         #[cfg(feature = "personal-dev-app-attest")]
         AppAttestEnvironment::Development => true,
+        #[cfg(feature = "qa-simulator")]
+        AppAttestEnvironment::Simulator => false,
     }
 }
 
@@ -590,6 +632,62 @@ mod tests {
     #[allow(clippy::assertions_on_constants, unexpected_cfgs)]
     fn gateway_test_build_does_not_define_testing_feature() {
         assert!(!cfg!(feature = "testing"));
+    }
+
+    fn simulated_attestation(client_data: &[u8]) -> (String, String) {
+        use aws_lc_rs::{
+            rand::SystemRandom,
+            signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING},
+        };
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &rng).unwrap();
+        let key =
+            EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref()).unwrap();
+        let public_key = key.public_key().as_ref().to_vec();
+        let signature = key
+            .sign(&rng, Sha256::digest(client_data).as_slice())
+            .unwrap();
+        let object = serde_json::json!({
+            "fmt": "buzz-ios-simulator",
+            "publicKey": STANDARD.encode(&public_key),
+            "signature": STANDARD.encode(signature.as_ref()),
+        });
+        (
+            STANDARD.encode(object.to_string()),
+            STANDARD.encode(Sha256::digest(&public_key)),
+        )
+    }
+
+    #[test]
+    fn production_verifier_rejects_simulated_attestation() {
+        let (attestation, key_id) = simulated_attestation(b"transcript");
+        assert!(verifier("TEAM.app", APPLE_ROOT_CERT_PEM)
+            .verify_attestation(&attestation, &key_id, b"transcript")
+            .is_err());
+    }
+
+    #[cfg(feature = "qa-simulator")]
+    #[test]
+    fn simulator_verifier_binds_key_id_and_client_data() {
+        let simulator = AppAttestVerifier::with_environment(
+            "simulator.app".into(),
+            APPLE_ROOT_CERT_PEM.to_vec(),
+            AppAttestEnvironment::Simulator,
+        )
+        .unwrap();
+        let (attestation, key_id) = simulated_attestation(b"transcript");
+        let verified = simulator
+            .verify_attestation(&attestation, &key_id, b"transcript")
+            .unwrap();
+        assert_eq!(STANDARD.encode(&verified.key_id), key_id);
+        assert_eq!(verified.public_key.len(), 65);
+        assert!(simulator
+            .verify_attestation(&attestation, &key_id, b"other transcript")
+            .is_err());
+        let (_, other_key_id) = simulated_attestation(b"transcript");
+        assert!(simulator
+            .verify_attestation(&attestation, &other_key_id, b"transcript")
+            .is_err());
     }
 
     #[test]
