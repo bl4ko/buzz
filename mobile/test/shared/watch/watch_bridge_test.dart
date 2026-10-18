@@ -14,6 +14,7 @@ import 'package:buzz/shared/auth/auth.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/relay/relay.dart';
+import 'package:buzz/shared/utils/string_utils.dart';
 import 'package:buzz/shared/watch/watch_bridge.dart';
 
 final _community = Community(
@@ -81,6 +82,52 @@ class _Channels extends ChannelsNotifier {
 class _Profiles extends UserCacheNotifier {
   @override
   Map<String, UserProfile> build() => {};
+}
+
+class _LoadingProfiles extends UserCacheNotifier {
+  static final loaded = {
+    'b' * 64: UserProfile(pubkey: 'b' * 64, displayName: 'Zed Agent'),
+    'c' * 64: UserProfile(pubkey: 'c' * 64, nip05Handle: 'ops@relay.example'),
+  };
+  final requested = <String>{};
+
+  @override
+  Map<String, UserProfile> build() => {};
+
+  @override
+  Future<bool> preload(List<String> pubkeys) async {
+    requested.addAll(pubkeys);
+    state = {...state, for (final pubkey in pubkeys) pubkey: ?loaded[pubkey]};
+    return true;
+  }
+}
+
+class _OnlineSession extends RelaySessionNotifier {
+  @override
+  SessionState build() => const SessionState(status: SessionStatus.connected);
+}
+
+class _AuthoredMessages extends ChannelMessagesNotifier {
+  _AuthoredMessages(super.channelId);
+
+  @override
+  bool get hasLoadedMessages => true;
+
+  @override
+  AsyncValue<List<NostrEvent>> build() => AsyncData([
+    for (final (index, author) in ['b', 'c', 'd'].indexed)
+      NostrEvent(
+        id: 'm$index',
+        pubkey: author * 64,
+        createdAt: index,
+        kind: EventKind.streamMessage,
+        content: 'Message $index',
+        tags: [
+          ['h', channelId],
+        ],
+        sig: '',
+      ),
+  ]);
 }
 
 class _OfflineSession extends RelaySessionNotifier {
@@ -289,7 +336,8 @@ void main() {
       expect(messages, hasLength(20));
       expect(messages.any((message) => (message as Map)['id'] == '24'), false);
       expect((messages.first as Map)['text'], '🐝' * 300);
-      expect((messages.first as Map)['notified'], ['cccccccc']);
+      expect((messages.first as Map)['notified'], [shortPubkey('c' * 64)]);
+      expect((messages.first as Map)['author'], shortPubkey('b' * 64));
       expect((messages.last as Map)['text'], 'Edited');
       expect((messages.first as Map)['createdAt'], 4);
       expect((messages.first as Map)['mine'], false);
@@ -322,6 +370,57 @@ void main() {
       expect(send.sent, ['hello']);
     },
   );
+
+  test('watch authors use the best known name, never Member', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(watchChannel, (call) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(watchChannel, null));
+    final profiles = _LoadingProfiles();
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_Auth.new),
+        ageSignalProvider.overrideWith(_Age.new),
+        relayConfigProvider.overrideWith(_Config.new),
+        relaySessionProvider.overrideWith(_OnlineSession.new),
+        myPubkeyProvider.overrideWithValue('a' * 64),
+        channelsProvider.overrideWith(_Channels.new),
+        channelMessagesProvider(
+          'channel-0',
+        ).overrideWith(() => _AuthoredMessages('channel-0')),
+        userCacheProvider.overrideWith(() => profiles),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(authProvider.future);
+    container.read(watchBridgeProvider);
+    await Future<void>.delayed(Duration.zero);
+    Future<Map> request(Map<String, Object?> args) async {
+      final result = Completer<Map>();
+      await messenger.handlePlatformMessage(
+        watchChannel.name,
+        watchChannel.codec.encodeMethodCall(MethodCall('request', args)),
+        (reply) =>
+            result.complete(watchChannel.codec.decodeEnvelope(reply!) as Map),
+      );
+      return result.future;
+    }
+
+    final scope = (await request({'action': 'channels'}))['scope'];
+    final history = await request({
+      'action': 'messages',
+      'scope': scope,
+      'channelId': 'channel-0',
+    });
+    final authors = [
+      for (final message in history['messages'] as List)
+        (message as Map)['author'],
+    ];
+    expect(authors, ['Zed Agent', 'ops@relay.example', shortPubkey('d' * 64)]);
+    expect(profiles.requested, containsAll(['b' * 64, 'c' * 64, 'd' * 64]));
+  });
 
   test(
     'standalone setup requires confirmation and keeps keys out of state',

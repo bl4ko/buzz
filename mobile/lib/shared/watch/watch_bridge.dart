@@ -7,6 +7,7 @@ import 'package:nostr/nostr.dart' as nostr;
 
 import '../../../features/age_gate/age_signal_provider.dart';
 import '../../../features/channels/channel.dart';
+import '../../../features/channels/channel_identity_names_provider.dart';
 import '../../../features/channels/channel_messages_provider.dart';
 import '../../../features/channels/channels_provider.dart';
 import '../../../features/channels/send_message_provider.dart';
@@ -15,6 +16,7 @@ import '../auth/auth.dart';
 import '../mentions/hidden_mentions.dart';
 import '../profile/user_cache_provider.dart';
 import '../relay/relay.dart';
+import '../utils/string_utils.dart';
 
 const watchChannel = MethodChannel('buzz/watch');
 
@@ -186,18 +188,44 @@ final watchBridgeProvider = Provider<void>((ref) {
       if (!ref.mounted || requestGeneration != generation || !available()) {
         return {'error': 'The active account changed. Refresh the watch.'};
       }
-      final profiles = ref.read(userCacheProvider);
-      final messages = formatTimeline(
+      final timeline = formatTimeline(
         events,
       ).where((message) => !message.isSystem).toList();
+      final messages = timeline.reversed.take(20).toList().reversed;
+      if (ref.read(relaySessionProvider).status == SessionStatus.connected) {
+        await ref
+            .read(userCacheProvider.notifier)
+            .preload([
+              for (final message in messages) ...[
+                message.pubkey,
+                for (final tag in message.tags)
+                  if (tag.length >= 2 && tag[0] == 'p') tag[1],
+              ],
+            ])
+            .timeout(const Duration(seconds: 3), onTimeout: () => false);
+        if (!ref.mounted || requestGeneration != generation || !available()) {
+          return {'error': 'The active account changed. Refresh the watch.'};
+        }
+      }
+      final profiles = ref.read(userCacheProvider);
+      final names = ref.read(channelIdentityNamesProvider(channel.id));
+      String label(String pubkey) {
+        final key = pubkey.toLowerCase();
+        final name = names.labelFor(key);
+        final handle = profiles[key]?.nip05Handle?.trim();
+        return name == shortPubkey(key) && handle != null && handle.isNotEmpty
+            ? handle
+            : name;
+      }
+
       return {
         'scope': requestScope,
         'messages': [
-          for (final message in messages.reversed.take(20).toList().reversed)
+          for (final message in messages)
             {
               'id': message.id,
               'author': String.fromCharCodes(
-                (profiles[message.pubkey]?.label ?? 'Member').runes.take(32),
+                label(message.pubkey).runes.take(32),
               ),
               'text': String.fromCharCodes(message.content.runes.take(300)),
               'createdAt': message.createdAt,
@@ -217,11 +245,7 @@ final watchBridgeProvider = Provider<void>((ref) {
                         },
                         [message.pubkey],
                       ))
-                        String.fromCharCodes(
-                          (profiles[pubkey]?.label ?? pubkey.substring(0, 8))
-                              .runes
-                              .take(32),
-                        ),
+                        String.fromCharCodes(label(pubkey).runes.take(32)),
                     ],
             },
         ],
