@@ -7,6 +7,7 @@ import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
 import 'package:buzz/shared/theme/buzz_icons.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 ThreadTask task(String id, TaskStatus status, {ThreadTaskAsk? ask}) =>
@@ -166,8 +167,56 @@ void main() {
     expect(find.text('Merge PR 7?'), findsOneWidget);
   });
 
-  testWidgets('titles keep one line and asks keep two lines', (tester) async {
-    final long = task(
+  testWidgets('titles wrap at the largest text size and asks keep two lines', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1206, 2622);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    const title = 'Rotate the staging relay key';
+    const long = ThreadTask(
+      rootId: 'a',
+      channelId: 'c',
+      status: TaskStatus.awaitingOwner,
+      title: title,
+      ask: ThreadTaskAsk(text: 'Rotate it now?', eventId: 'b'),
+      author: 'e',
+      createdAt: 10,
+      eventId: 'a',
+    );
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(402, 874),
+          textScaler: TextScaler.linear(3.12),
+        ),
+        child: app(
+          ChannelTasksView(
+            state: const ChannelTasksState(
+              {'a': long},
+              {'b': OwnerDecision.approve},
+            ),
+            canSetStatus: true,
+            onReact: (_, _) async {},
+            onDone: (_) async {},
+            onOpenThread: (_) {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    final paragraph = tester.renderObject<RenderParagraph>(find.text(title));
+    expect(paragraph.didExceedMaxLines, isFalse);
+    final titleRect = tester.getRect(find.text(title));
+    final chipRect = tester.getRect(find.byType(TaskDecisionChip));
+    expect(titleRect.overlaps(chipRect), isFalse);
+    expect(chipRect.right, lessThanOrEqualTo(402));
+    expect(
+      tester.getRect(find.byTooltip('Mark $title done')).overlaps(titleRect),
+      isFalse,
+    );
+
+    final askRow = task(
       '1',
       TaskStatus.awaitingOwner,
       ask: ThreadTaskAsk(text: 'Ask ' * 80, eventId: 'b' * 64),
@@ -175,11 +224,8 @@ void main() {
     await pump(
       tester,
       canSetStatus: true,
-      tasks: ChannelTasksState({long.rootId: long}),
+      tasks: ChannelTasksState({askRow.rootId: askRow}),
     );
-    final title = tester.widget<Text>(find.text('Task 1'));
-    expect(title.maxLines, 1);
-    expect(title.overflow, TextOverflow.ellipsis);
     final askText = tester.widget<Text>(find.text('Ask ' * 80));
     expect(askText.maxLines, 2);
     expect(askText.overflow, TextOverflow.ellipsis);

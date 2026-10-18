@@ -96,22 +96,19 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: Grid.xxs,
+                      runSpacing: Grid.quarter,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Flexible(
-                          child: Text(
-                            task.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        Text(
+                          task.title,
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (decision != null) ...[
-                          const SizedBox(width: Grid.xxs),
+                        if (decision != null)
                           TaskDecisionChip(decision: decision),
-                        ],
                       ],
                     ),
                     if (ask != null)
