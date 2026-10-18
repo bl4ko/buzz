@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../storage/secure_storage.dart';
@@ -19,6 +21,7 @@ class CommunityStorage {
   static const _legacyToken = 'buzz_token';
   static const _legacyPubkey = 'buzz_pubkey';
   static const _legacyNsec = 'buzz_nsec';
+  static const _interactionNotAllowed = -25308;
 
   final FlutterSecureStorage _secure;
 
@@ -28,26 +31,26 @@ class CommunityStorage {
   /// Load all communities. On first call, migrates legacy single-community
   /// credentials if present.
   Future<List<Community>> loadAll() async {
-    final raw = await _secure.read(key: _keyCommunities);
+    final raw = await _read(_keyCommunities);
     if (raw != null) return _decodeList(raw);
 
-    final legacyCommunities = await _secure.read(key: _legacyCommunities);
+    final legacyCommunities = await _read(_legacyCommunities);
     if (legacyCommunities != null) {
       final communities = _decodeList(legacyCommunities);
       await _saveList(communities);
-      final legacyActiveId = await _secure.read(key: _legacyActiveId);
+      final legacyActiveId = await _read(_legacyActiveId);
       if (legacyActiveId != null) await saveActiveId(legacyActiveId);
-      await _secure.delete(key: _legacyCommunities);
-      await _secure.delete(key: _legacyActiveId);
+      await _delete(_legacyCommunities);
+      await _delete(_legacyActiveId);
       return communities;
     }
 
     // Migration: check for legacy single-community keys.
-    final legacyUrl = await _secure.read(key: _legacyRelayUrl);
-    final legacyToken = await _secure.read(key: _legacyToken);
+    final legacyUrl = await _read(_legacyRelayUrl);
+    final legacyToken = await _read(_legacyToken);
     if (legacyUrl != null && legacyToken != null) {
-      final legacyPubkey = await _secure.read(key: _legacyPubkey);
-      final legacyNsec = await _secure.read(key: _legacyNsec);
+      final legacyPubkey = await _read(_legacyPubkey);
+      final legacyNsec = await _read(_legacyNsec);
 
       final name = Community.nameFromUrl(legacyUrl);
       final community = Community.create(
@@ -62,10 +65,10 @@ class CommunityStorage {
       await saveActiveId(community.id);
 
       // Delete legacy keys.
-      await _secure.delete(key: _legacyRelayUrl);
-      await _secure.delete(key: _legacyToken);
-      await _secure.delete(key: _legacyPubkey);
-      await _secure.delete(key: _legacyNsec);
+      await _delete(_legacyRelayUrl);
+      await _delete(_legacyToken);
+      await _delete(_legacyPubkey);
+      await _delete(_legacyNsec);
 
       return [community];
     }
@@ -94,11 +97,11 @@ class CommunityStorage {
     String Function() generate,
   ) => _pendingInvites.run(() async {
     final key = _pendingInviteKey(relayUrl, code);
-    final saved = await _secure.read(key: key);
+    final saved = await _read(key);
     if (saved != null) return saved;
     final nsec = generate();
-    await _secure.write(key: key, value: nsec);
-    if (await _secure.read(key: key) != nsec) {
+    await _write(key, nsec);
+    if (await _read(key) != nsec) {
       throw StateError('Could not retain the pending invite identity');
     }
     return nsec;
@@ -117,8 +120,8 @@ class CommunityStorage {
       return;
     }
     final key = _pendingInviteKey(relayUrl, code);
-    if (await _secure.read(key: key) == community.nsec) {
-      await _secure.delete(key: key);
+    if (await _read(key) == community.nsec) {
+      await _delete(key);
     }
   });
 
@@ -146,12 +149,12 @@ class CommunityStorage {
     if (removedKeys.isNotEmpty) {
       // Retire every journal copy before removing the saved community. If a
       // deletion fails, keep that community so sign-out can safely retry.
-      final records = await _secure.readAll();
+      final records = await _unlocked(_secure.readAll);
       for (final entry in records.entries) {
         if (entry.key.startsWith(_pendingInvitePrefix) &&
             removedKeys.contains(entry.value)) {
-          await _secure.delete(key: entry.key);
-          if (await _secure.read(key: entry.key) != null) {
+          await _delete(entry.key);
+          if (await _read(entry.key) != null) {
             throw StateError('Could not remove the pending invite identity');
           }
         }
@@ -162,15 +165,15 @@ class CommunityStorage {
   });
 
   Future<String?> loadActiveId() async {
-    return _secure.read(key: _keyActiveId);
+    return _read(_keyActiveId);
   }
 
   Future<void> saveActiveId(String id) async {
-    await _secure.write(key: _keyActiveId, value: id);
+    await _write(_keyActiveId, id);
   }
 
   Future<void> clearActiveId() async {
-    await _secure.delete(key: _keyActiveId);
+    await _delete(_keyActiveId);
   }
 
   List<Community> _decodeList(String raw) {
@@ -182,6 +185,45 @@ class CommunityStorage {
 
   Future<void> _saveList(List<Community> communities) async {
     final json = jsonEncode(communities.map((item) => item.toJson()).toList());
-    await _secure.write(key: _keyCommunities, value: json);
+    await _write(_keyCommunities, json);
+  }
+
+  Future<String?> _read(String key) => _unlocked(() => _secure.read(key: key));
+
+  Future<void> _write(String key, String value) =>
+      _unlocked(() => _secure.write(key: key, value: value));
+
+  Future<void> _delete(String key) => _unlocked(() => _secure.delete(key: key));
+
+  Future<T> _unlocked<T>(Future<T> Function() operation) async {
+    while (true) {
+      if (await _secure.isCupertinoProtectedDataAvailable() != false) {
+        try {
+          return await operation();
+        } on PlatformException catch (error) {
+          if (error.details != _interactionNotAllowed) rethrow;
+        }
+      }
+      await _protectedDataAvailable();
+    }
+  }
+
+  Future<void> _protectedDataAvailable() async {
+    final changes = _secure.onCupertinoProtectedDataAvailabilityChanged;
+    if (changes == null) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      return;
+    }
+    final available = Completer<void>();
+    final subscription = changes.listen((value) {
+      if (value && !available.isCompleted) available.complete();
+    });
+    try {
+      if (await _secure.isCupertinoProtectedDataAvailable() == false) {
+        await available.future;
+      }
+    } finally {
+      await subscription.cancel();
+    }
   }
 }

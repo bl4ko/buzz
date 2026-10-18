@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:nostr/nostr.dart' as nostr;
@@ -12,7 +13,128 @@ import 'package:buzz/shared/push/push_bridge.dart';
 
 import '../community/community_storage_test.dart';
 
+class _LockedKeychain extends FakeSecureStorage {
+  final _availability = StreamController<bool>.broadcast();
+  bool locked = false;
+  final mutationsWhileLocked = <String>[];
+
+  void unlock() {
+    locked = false;
+    _availability.add(true);
+  }
+
+  Never _interactionNotAllowed() => throw PlatformException(
+    code: 'Unexpected security result code',
+    message: 'Code: -25308, Message: User interaction is not allowed.',
+    details: -25308,
+  );
+
+  @override
+  Future<bool?> isCupertinoProtectedDataAvailable() async => !locked;
+
+  @override
+  Stream<bool>? get onCupertinoProtectedDataAvailabilityChanged =>
+      _availability.stream;
+
+  @override
+  Future<String?> read({
+    required String key,
+    AppleOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    AppleOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) {
+    if (locked) _interactionNotAllowed();
+    return super.read(key: key);
+  }
+
+  @override
+  Future<void> write({
+    required String key,
+    required String? value,
+    AppleOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    AppleOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) {
+    if (locked) {
+      mutationsWhileLocked.add('write $key');
+      _interactionNotAllowed();
+    }
+    return super.write(key: key, value: value);
+  }
+
+  @override
+  Future<void> delete({
+    required String key,
+    AppleOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    AppleOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) {
+    if (locked) {
+      mutationsWhileLocked.add('delete $key');
+      _interactionNotAllowed();
+    }
+    return super.delete(key: key);
+  }
+}
+
 void main() {
+  test(
+    'a launch while protected data is unavailable waits for unlock instead of signing out',
+    () async {
+      final secure = _LockedKeychain();
+      final storage = CommunityStorage(secure: secure);
+      final community = Community.create(
+        name: 'Active',
+        relayUrl: 'https://active.example',
+        nsec: nostr.Keys.generate().nsec,
+      );
+      await storage.save(community);
+      await storage.saveActiveId(community.id);
+      secure.locked = true;
+      final snapshots = <List<Community>>[];
+      final container = ProviderContainer(
+        overrides: [
+          communityStorageProvider.overrideWithValue(storage),
+          communitySnapshotWriterProvider.overrideWithValue((
+            communities,
+          ) async {
+            snapshots.add(List.of(communities));
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+      final auth = container.listen(authProvider, (_, _) {});
+      final communities = container.listen(communityListProvider, (_, _) {});
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(auth.read().hasError, isFalse);
+      expect(auth.read().hasValue, isFalse);
+      expect(communities.read().hasError, isFalse);
+      expect(snapshots, isEmpty);
+      expect(secure.mutationsWhileLocked, isEmpty);
+
+      secure.unlock();
+      final state = await container.read(authProvider.future);
+
+      expect(state.status, AuthStatus.authenticated);
+      expect(state.community?.id, community.id);
+      expect((await storage.loadAll()).map((saved) => saved.id), [
+        community.id,
+      ]);
+      expect(await storage.loadActiveId(), community.id);
+    },
+  );
+
   test('waits for transition teardown before replacing credentials', () async {
     final storage = CommunityStorage(secure: FakeSecureStorage());
     final active = Community.create(
