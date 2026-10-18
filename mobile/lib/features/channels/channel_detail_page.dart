@@ -738,12 +738,17 @@ class ChannelDetailPage extends HookConsumerWidget {
                 selected: currentTab,
                 canEdit: permissions.canEditTabs,
                 onSelect: (key) => selectedTab.value = key,
-                onAdd: () => showChannelTabEditor(
-                  context,
-                  ref,
-                  channelId: resolvedChannel.id,
-                  initial: null,
-                ),
+                onAdd: () async {
+                  final added = await showChannelTabEditor(
+                    context,
+                    ref,
+                    channelId: resolvedChannel.id,
+                    initial: null,
+                  );
+                  if (added != null && context.mounted) {
+                    selectedTab.value = 'custom:$added';
+                  }
+                },
                 onCustomLongPress: (tab) => showChannelTabActions(
                   context,
                   ref,
