@@ -1,6 +1,8 @@
 import ActivityKit
 import BuzzPushKit
+import CryptoKit
 import Foundation
+import UIKit
 import os.log
 
 @available(iOS 18.0, *)
@@ -221,6 +223,9 @@ enum BuzzLiveActivities {
     #if DEBUG
       if LiveActivityCoordinator.startDemoActivityIfRequested() { return }
     #endif
+    #if DEBUG && targetEnvironment(simulator)
+      QaLiveActivityBridge.start()
+    #endif
     created.start()
   }
 
@@ -229,3 +234,96 @@ enum BuzzLiveActivities {
     (coordinator as? LiveActivityCoordinator)?.refresh()
   }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+  @available(iOS 18.0, *)
+  actor QaLiveActivityBridge {
+    private typealias Attributes = BuzzApprovalsActivityAttributes
+    static let shared = QaLiveActivityBridge()
+    private static let notification = "com.bl4ko.buzz.qa.live-activity" as CFString
+
+    nonisolated static func start() {
+      CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(), nil, { _, _, _, _, _ in QaLiveActivityBridge.poke() },
+        notification, nil, .deliverImmediately)
+      NotificationCenter.default.addObserver(
+        forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
+      ) { _ in poke() }
+      poke()
+    }
+
+    nonisolated static func poke() {
+      Task { @MainActor in
+        guard UIApplication.shared.applicationState == .active else { return }
+        await shared.drain()
+      }
+    }
+
+    private let folder = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent("QaLiveActivity")
+
+    private func drain() async {
+      let inbox = folder.appendingPathComponent("inbox")
+      let names = ((try? FileManager.default.contentsOfDirectory(atPath: inbox.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
+      for name in names {
+        let file = inbox.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: file) else { continue }
+        try? FileManager.default.removeItem(at: file)
+        let result = await apply(data)
+        var line = (try? JSONSerialization.data(withJSONObject: ["file": name, "result": result])) ?? Data()
+        line.append(0x0A)
+        let log = folder.appendingPathComponent("applied.jsonl")
+        if let handle = try? FileHandle(forWritingTo: log) {
+          handle.seekToEndOfFile()
+          handle.write(line)
+          try? handle.close()
+        } else {
+          try? line.write(to: log)
+        }
+      }
+    }
+
+    private func apply(_ data: Data) async -> String {
+      guard let message = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let token = message["token"] as? String, let aps = message["aps"] as? [String: Any],
+        let event = aps["event"] as? String
+      else { return "invalid" }
+      let decode = { (value: Any?) -> BuzzApprovalsContentState? in
+        value.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+          .flatMap { try? JSONDecoder().decode(BuzzApprovalsContentState.self, from: $0) }
+      }
+      let date = { (key: String) in (aps[key] as? Double).map(Date.init(timeIntervalSince1970:)) }
+      let fingerprint = { (token: Data?) in token.map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() } }
+      if event == "start" {
+        guard fingerprint(Activity<Attributes>.pushToStartToken) == token else { return "dropped:start-token" }
+        guard aps["attributes-type"] as? String == "BuzzApprovalsActivityAttributes",
+          let origin = (aps["attributes"] as? [String: Any])?["origin"] as? String,
+          let state = decode(aps["content-state"])
+        else { return "dropped:decode" }
+        do {
+          _ = try Activity.request(
+            attributes: Attributes(origin: origin),
+            content: ActivityContent(state: state, staleDate: date("stale-date"), relevanceScore: aps["relevance-score"] as? Double ?? 0),
+            pushType: .token)
+          return "started"
+        } catch {
+          return "failed:\(error)"
+        }
+      }
+      guard
+        let activity = Activity<Attributes>.activities.first(where: {
+          fingerprint($0.pushToken) == token && ($0.activityState == .active || $0.activityState == .stale)
+        })
+      else { return "dropped:no-live-activity" }
+      guard let state = decode(aps["content-state"]) else { return "dropped:decode" }
+      let content = ActivityContent(state: state, staleDate: date("stale-date"), relevanceScore: aps["relevance-score"] as? Double ?? 0)
+      if event == "update" {
+        await activity.update(content)
+        return "updated"
+      }
+      let dismissal = date("dismissal-date") ?? .distantFuture
+      await activity.end(content, dismissalPolicy: dismissal <= Date() ? .immediate : .after(dismissal))
+      return "ended"
+    }
+  }
+#endif
