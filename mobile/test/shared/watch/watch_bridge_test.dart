@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,6 +91,7 @@ class _LoadingProfiles extends UserCacheNotifier {
     'c' * 64: UserProfile(pubkey: 'c' * 64, nip05Handle: 'ops@relay.example'),
   };
   final requested = <String>{};
+  final calls = <List<String>>[];
 
   @override
   Map<String, UserProfile> build() => {};
@@ -97,8 +99,22 @@ class _LoadingProfiles extends UserCacheNotifier {
   @override
   Future<bool> preload(List<String> pubkeys) async {
     requested.addAll(pubkeys);
+    calls.add(pubkeys);
     state = {...state, for (final pubkey in pubkeys) pubkey: ?loaded[pubkey]};
     return true;
+  }
+}
+
+class _StalledProfiles extends UserCacheNotifier {
+  var calls = 0;
+
+  @override
+  Map<String, UserProfile> build() => {};
+
+  @override
+  Future<bool> preload(List<String> pubkeys) {
+    calls++;
+    return Completer<bool>().future;
   }
 }
 
@@ -420,6 +436,83 @@ void main() {
     ];
     expect(authors, ['Zed Agent', 'ops@relay.example', shortPubkey('d' * 64)]);
     expect(profiles.requested, containsAll(['b' * 64, 'c' * 64, 'd' * 64]));
+
+    final again = await request({
+      'action': 'messages',
+      'scope': scope,
+      'channelId': 'channel-0',
+    });
+    expect((again['messages'] as List).last['author'], shortPubkey('d' * 64));
+    expect(
+      profiles.calls.skip(1).expand((call) => call),
+      isNot(contains('d' * 64)),
+    );
+  });
+
+  test('a profile load that never finishes ends after three seconds', () {
+    fakeAsync((async) {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(watchChannel, (call) async => null);
+      final profiles = _StalledProfiles();
+      final container = ProviderContainer(
+        overrides: [
+          authProvider.overrideWith(_Auth.new),
+          ageSignalProvider.overrideWith(_Age.new),
+          relayConfigProvider.overrideWith(_Config.new),
+          relaySessionProvider.overrideWith(_OnlineSession.new),
+          myPubkeyProvider.overrideWithValue('a' * 64),
+          channelsProvider.overrideWith(_Channels.new),
+          channelMessagesProvider(
+            'channel-0',
+          ).overrideWith(() => _AuthoredMessages('channel-0')),
+          userCacheProvider.overrideWith(() => profiles),
+        ],
+      );
+      Map? listing;
+      container.read(authProvider.future);
+      container.read(watchBridgeProvider);
+      async.flushMicrotasks();
+      messenger.handlePlatformMessage(
+        watchChannel.name,
+        watchChannel.codec.encodeMethodCall(
+          const MethodCall('request', {'action': 'channels'}),
+        ),
+        (data) => listing = watchChannel.codec.decodeEnvelope(data!) as Map,
+      );
+      async.flushMicrotasks();
+      expect(listing?['scope'], isNotNull);
+      Map? history;
+      messenger.handlePlatformMessage(
+        watchChannel.name,
+        watchChannel.codec.encodeMethodCall(
+          MethodCall('request', {
+            'action': 'messages',
+            'scope': listing!['scope'],
+            'channelId': 'channel-0',
+          }),
+        ),
+        (data) => history = watchChannel.codec.decodeEnvelope(data!) as Map,
+      );
+      async.elapse(const Duration(milliseconds: 2900));
+      expect(profiles.calls, 1);
+      expect(history, isNull);
+      async.elapse(const Duration(milliseconds: 200));
+      expect(history, isNotNull);
+      expect(
+        [
+          for (final message in history!['messages'] as List)
+            (message as Map)['author'],
+        ],
+        [
+          for (final author in ['b', 'c', 'd']) shortPubkey(author * 64),
+        ],
+      );
+      container.dispose();
+      messenger.setMockMethodCallHandler(watchChannel, null);
+      debugDefaultTargetPlatformOverride = null;
+    });
   });
 
   test(

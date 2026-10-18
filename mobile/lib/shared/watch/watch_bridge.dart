@@ -24,6 +24,7 @@ final watchBridgeProvider = Provider<void>((ref) {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
   var generation = 0;
   var requests = 0;
+  var withoutProfile = (scope: '', pubkeys: <String>{});
 
   bool available() =>
       ref.read(authProvider).asData?.value.status == AuthStatus.authenticated &&
@@ -192,19 +193,29 @@ final watchBridgeProvider = Provider<void>((ref) {
         events,
       ).where((message) => !message.isSystem).toList();
       final messages = timeline.reversed.take(20).toList().reversed;
-      if (ref.read(relaySessionProvider).status == SessionStatus.connected) {
-        await ref
+      if (withoutProfile.scope != requestScope) {
+        withoutProfile = (scope: requestScope, pubkeys: <String>{});
+      }
+      final unknown = withoutProfile.pubkeys;
+      final wanted = {
+        for (final message in messages) ...[
+          message.pubkey.toLowerCase(),
+          for (final tag in message.tags)
+            if (tag.length >= 2 && tag[0] == 'p') tag[1].toLowerCase(),
+        ],
+      }.where((pubkey) => !unknown.contains(pubkey)).toList();
+      if (wanted.isNotEmpty &&
+          ref.read(relaySessionProvider).status == SessionStatus.connected) {
+        final loaded = await ref
             .read(userCacheProvider.notifier)
-            .preload([
-              for (final message in messages) ...[
-                message.pubkey,
-                for (final tag in message.tags)
-                  if (tag.length >= 2 && tag[0] == 'p') tag[1],
-              ],
-            ])
+            .preload(wanted)
             .timeout(const Duration(seconds: 3), onTimeout: () => false);
         if (!ref.mounted || requestGeneration != generation || !available()) {
           return {'error': 'The active account changed. Refresh the watch.'};
+        }
+        if (loaded) {
+          final cached = ref.read(userCacheProvider);
+          unknown.addAll(wanted.where((pubkey) => !cached.containsKey(pubkey)));
         }
       }
       final profiles = ref.read(userCacheProvider);
