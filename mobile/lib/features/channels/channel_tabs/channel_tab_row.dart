@@ -46,7 +46,7 @@ class ChannelTabRow extends StatefulWidget {
 
 class _ChannelTabRowState extends State<ChannelTabRow> {
   final _scroll = ScrollController();
-  final _selectedTab = GlobalKey();
+  final _tabKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
@@ -74,7 +74,7 @@ class _ChannelTabRowState extends State<ChannelTabRow> {
 
   void _revealSelected() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final tab = _selectedTab.currentContext?.findRenderObject();
+      final tab = _tabKeys[widget.selected]?.currentContext?.findRenderObject();
       if (!mounted || tab == null || !_scroll.hasClients) return;
       final viewport = RenderAbstractViewport.of(tab);
       final position = _scroll.position;
@@ -109,7 +109,7 @@ class _ChannelTabRowState extends State<ChannelTabRow> {
           children: [
             for (final item in widget.items)
               _ChannelTab(
-                key: item.key == widget.selected ? _selectedTab : null,
+                key: _tabKeys.putIfAbsent(item.key, GlobalKey.new),
                 item: item,
                 selected: item.key == widget.selected,
                 onTap: () => widget.onSelect(item.key),

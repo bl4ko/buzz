@@ -131,6 +131,41 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('selecting a tab keeps its accessibility node', (tester) async {
+    final semantics = tester.ensureSemantics();
+    var selected = 'tasks';
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) => ChannelTabRow(
+              items: items,
+              selected: selected,
+              canEdit: false,
+              onSelect: (key) => setState(() => selected = key),
+              onAdd: () {},
+              onCustomLongPress: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    int idOf(String key) =>
+        tester.getSemantics(find.byKey(Key('channel-tab-$key'))).id;
+    final grafana = idOf('custom:g');
+    final messages = idOf('messages');
+    await tester.tap(find.byKey(const Key('channel-tab-custom:g')));
+    await tester.pumpAndSettle();
+    expect(selected, 'custom:g');
+    expect(idOf('custom:g'), grafana);
+    await tester.tap(find.byKey(const Key('channel-tab-messages')));
+    await tester.pumpAndSettle();
+    expect(selected, 'messages');
+    expect(idOf('messages'), messages);
+    semantics.dispose();
+  });
+
   testWidgets('long labels ellipsize and large text grows the row', (
     tester,
   ) async {
