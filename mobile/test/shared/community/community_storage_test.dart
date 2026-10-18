@@ -85,6 +85,13 @@ class FakeSecureStorage extends Fake implements FlutterSecureStorage {
     WindowsOptions? wOptions,
   }) async => _data.containsKey(key);
 
+  @override
+  Future<bool?> isCupertinoProtectedDataAvailable() async => true;
+
+  @override
+  Stream<bool>? get onCupertinoProtectedDataAvailabilityChanged =>
+      const Stream.empty();
+
   // Convenience for setting up test data.
   String? operator [](String key) => _data[key];
   void operator []=(String key, String value) => _data[key] = value;
