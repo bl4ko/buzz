@@ -136,7 +136,8 @@ test("owner decisions come from the owner's own reactions on the asks", async ()
     await act(async () => live.onEvent(reaction("r1", "❌", 12)));
     await owner.waitFor(() => owner.latest.decisions.get(ASK) === "deny");
     assert.equal(owner.latest.awaitingCount, 0);
-    assert.equal(owner.latest.groups.needsYou.length, 1);
+    assert.equal(owner.latest.groups.needsYou.length, 0);
+    assert.equal(owner.latest.groups.inProgress.length, 1);
     transport.reactions = [reaction("r0", "✅", 11), reaction("r1", "❌", 12)];
     await act(async () => owner.latest.refreshDecisions());
     await owner.waitFor(() => owner.latest.decisions.get(ASK) === "approve");

@@ -39,11 +39,12 @@ async function render(
   decisions = new Map(),
 ) {
   calls = { opened: [], reacted: [], status: [], refreshed: 0 };
+  const groups = groupThreadTasks(tasks, decisions);
   const state = {
     channelId: "c",
     tasks,
-    groups: groupThreadTasks(tasks),
-    awaitingCount: 1,
+    groups,
+    awaitingCount: groups.needsYou.length,
     isLoading: false,
     decisions,
     refreshDecisions: () => {
@@ -170,6 +171,9 @@ test("a new ask on the same case shows the buttons again", async () => {
 
 test("a stored owner reaction shows the decision after a remount", async () => {
   await render(true, null, new Map([[ASK, "deny"]]));
+  assert.equal(q("tasks-group-needs-you"), null);
+  assert.match(q("tasks-group-in-progress").textContent, /Merge PR 7\?/);
+  assert.doesNotMatch(q("tasks-group-in-progress").textContent, /Needs you/);
   assert.equal(q("task-decision").textContent, "Denied");
   assert.equal(q("task-approve"), null);
   assert.equal(q("task-deny"), null);

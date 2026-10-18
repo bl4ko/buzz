@@ -96,19 +96,18 @@ void main() {
     expect(find.text('Approve'), findsNothing);
   });
 
-  testWidgets('a decided row stays in Needs you with a chip and no buttons', (
+  testWidgets('a decided row moves to In progress with a chip and no buttons', (
     tester,
   ) async {
     final t = task('1', TaskStatus.awaitingOwner, ask: ask);
-    await pump(
-      tester,
-      canSetStatus: true,
-      tasks: ChannelTasksState(
-        {t.rootId: t},
-        {ask.eventId: OwnerDecision.deny},
-      ),
+    final decided = ChannelTasksState(
+      {t.rootId: t},
+      {ask.eventId: OwnerDecision.deny},
     );
-    expect(find.text('Needs you · 1'), findsOneWidget);
+    await pump(tester, canSetStatus: true, tasks: decided);
+    expect(decided.awaitingCount, 0);
+    expect(find.textContaining('Needs you'), findsNothing);
+    expect(find.text('In progress · 1'), findsOneWidget);
     expect(inRow('Task 1', find.byType(TaskDecisionChip)), findsOneWidget);
     expect(inRow('Task 1', find.text('Denied')), findsOneWidget);
     expect(find.text('Approve'), findsNothing);

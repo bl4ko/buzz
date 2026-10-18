@@ -136,14 +136,12 @@ export function useChannelTasks(
   return React.useMemo(() => {
     if (!channelId) return null;
     const tasks = [...taskMap.values()];
-    const groups = groupThreadTasks(tasks);
+    const groups = groupThreadTasks(tasks, decisions);
     return {
       channelId,
       tasks,
       groups,
-      awaitingCount: groups.needsYou.filter(
-        (task) => !task.ask || !decisions.has(task.ask.eventId),
-      ).length,
+      awaitingCount: groups.needsYou.length,
       isLoading: query.isLoading,
       decisions,
       refreshDecisions,

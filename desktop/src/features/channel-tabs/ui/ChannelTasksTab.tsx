@@ -78,7 +78,7 @@ function TaskRow({
           {task.title}
         </span>
         <span className="block text-xs text-muted-foreground">
-          {STATUS_LABEL[task.status]}
+          {STATUS_LABEL[stored ? "in_progress" : task.status]}
         </span>
         {ask ? <span className="mt-1 block text-sm">{ask.text}</span> : null}
       </button>
