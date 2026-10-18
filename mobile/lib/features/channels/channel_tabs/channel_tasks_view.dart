@@ -73,17 +73,25 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
           : "Couldn't send denial",
       onSuccess: () {
         _decided[eventId] = decision;
-        _rowsMoved?.cancel();
-        _rowsMoved = Timer(const Duration(milliseconds: 500), () {});
+        _holdTaps();
       },
     );
     if (mounted) setState(() => _pending.remove(eventId));
   }
 
+  void _holdTaps() {
+    _rowsMoved?.cancel();
+    _rowsMoved = Timer(const Duration(milliseconds: 500), () {});
+  }
+
   Future<void> _close(ThreadTask task) async {
     if (_settling) return;
     setState(() => _closing.add(task.rootId));
-    await _run(() => widget.onDone(task), "Couldn't close the task");
+    await _run(
+      () => widget.onDone(task),
+      "Couldn't close the task",
+      onSuccess: _holdTaps,
+    );
     if (mounted) setState(() => _closing.remove(task.rootId));
   }
 

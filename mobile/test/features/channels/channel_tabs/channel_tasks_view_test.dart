@@ -122,6 +122,7 @@ void main() {
     final log = await pump(tester, canSetStatus: true);
     await tester.tap(inRow('Task 1', find.byTooltip('Mark Task 1 done')));
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.text('Task 2'));
     expect(find.text('Task 4'), findsNothing);
     expect(find.byIcon(BuzzIcons.chevronRight), findsOneWidget);
@@ -404,6 +405,7 @@ void main() {
     );
     pending.complete();
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     await tester.tap(button);
     await tester.pump();
     expect(calls, 2);
@@ -471,5 +473,59 @@ void main() {
     await tester.tapAt(approve);
     await tester.pump();
     expect(log, ['react:✅:b', 'react:✅:c']);
+  });
+
+  testWidgets('a fast second tap on Done cannot close the row that moves up', (
+    tester,
+  ) async {
+    ThreadTask open(String id, int createdAt, [TaskStatus? status]) =>
+        ThreadTask(
+          rootId: id * 64,
+          channelId: 'c',
+          status: status ?? TaskStatus.inProgress,
+          title: 'Task $id',
+          ask: null,
+          author: 'e' * 64,
+          createdAt: createdAt,
+          eventId: id * 64,
+        );
+    var tasks = {
+      for (final t in [open('1', 10), open('2', 9)]) t.rootId: t,
+    };
+    final log = <String>[];
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => app(
+          ChannelTasksView(
+            state: ChannelTasksState(tasks),
+            canSetStatus: true,
+            onReact: (_, _) async {},
+            onDone: (t) async {
+              log.add('done:${t.rootId[0]}');
+              setState(
+                () => tasks = {
+                  ...tasks,
+                  t.rootId: open(t.rootId[0], t.createdAt, TaskStatus.done),
+                },
+              );
+            },
+            onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+          ),
+        ),
+      ),
+    );
+    final done = tester.getCenter(find.byTooltip('Mark Task 1 done'));
+    await tester.tapAt(done);
+    await tester.pump();
+    expect(tester.getCenter(find.byTooltip('Mark Task 2 done')), done);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tapAt(done);
+    await tester.pump();
+    expect(log, ['done:1']);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tapAt(done);
+    await tester.pump();
+    expect(log, ['done:1', 'done:2']);
   });
 }

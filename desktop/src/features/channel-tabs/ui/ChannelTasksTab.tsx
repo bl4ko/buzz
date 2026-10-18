@@ -25,6 +25,7 @@ function TaskRow({
   canSetStatus,
   stored,
   settling,
+  onMoved,
   onDecided,
   onOpenThread,
   onReact,
@@ -34,6 +35,7 @@ function TaskRow({
   canSetStatus: boolean;
   stored: OwnerDecision | undefined;
   settling: () => boolean;
+  onMoved: () => void;
   onDecided: () => void;
   onOpenThread: (rootId: string) => void;
   onReact: (eventId: string, emoji: string) => Promise<void>;
@@ -149,7 +151,7 @@ function TaskRow({
           data-testid="task-done"
           disabled={pending}
           onClick={() =>
-            void run(() => onDone(task), "Couldn't close the task")
+            void run(() => onDone(task), "Couldn't close the task", onMoved)
           }
           size="sm"
           type="button"
@@ -176,8 +178,11 @@ export function ChannelTasksTab({
   const [showDone, setShowDone] = React.useState(false);
   const movedAt = React.useRef(0);
   const settling = () => Date.now() - movedAt.current < ROW_SETTLE_MS;
-  const onDecided = () => {
+  const onMoved = () => {
     movedAt.current = Date.now();
+  };
+  const onDecided = () => {
+    onMoved();
     tasks.refreshDecisions();
   };
   const onDone = (task: ThreadTask) => tasks.setStatus(task, "done");
@@ -194,6 +199,7 @@ export function ChannelTasksTab({
               key={task.rootId}
               onDecided={onDecided}
               onDone={onDone}
+              onMoved={onMoved}
               onOpenThread={onOpenThread}
               onReact={onReact}
               settling={settling}
