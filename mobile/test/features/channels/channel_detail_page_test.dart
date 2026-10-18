@@ -283,6 +283,7 @@ Widget _buildTestable({
   ChannelMessagePins? messagePins,
   ChannelTasksState? tasks,
   Widget? home,
+  ThemeData? theme,
 }) {
   final resolvedChannel = channel ?? _testChannel;
   final navigatorKey = GlobalKey<NavigatorState>();
@@ -427,7 +428,7 @@ Widget _buildTestable({
     ],
     child: MaterialApp(
       navigatorKey: navigatorKey,
-      theme: AppTheme.light(),
+      theme: theme ?? AppTheme.light(),
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: textScaler,
@@ -14539,7 +14540,7 @@ void main() {
         // tail-detaching drag rather than a long-press hold with small motion.
         // The compact composer now rests lower, so use enough drag distance to
         // keep the final reply beneath its top edge for this covered-tail case.
-        await tester.drag(list, const Offset(0, 56));
+        await tester.drag(list, const Offset(0, 64));
         await tester.pumpAndSettle();
         expect(
           tester.getBottomLeft(latest).dy,

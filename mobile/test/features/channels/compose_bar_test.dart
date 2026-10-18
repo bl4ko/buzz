@@ -708,16 +708,7 @@ void main() {
       expect(find.byType(TextField), findsNothing);
       expect(find.byTooltip('Add attachment').hitTestable(), findsOneWidget);
       expect(find.byIcon(BuzzIcons.arrowUp).hitTestable(), findsOneWidget);
-      expect(find.byKey(const ValueKey('composer-footer-gradient')), findsOne);
-      final composerBackdrop = find.descendant(
-        of: find.byKey(const ValueKey('composer-footer-gradient')),
-        matching: find.byType(MobileTabFooterBackdrop),
-      );
-      expect(composerBackdrop, findsOneWidget);
-      expect(
-        tester.getSize(composerBackdrop).height,
-        mobileTabFooterBackdropHeight(tester.element(composerBackdrop)),
-      );
+      expect(find.byType(MobileTabFooterBackdrop), findsNothing);
       final compactDecoration =
           tester
                   .widget<Container>(

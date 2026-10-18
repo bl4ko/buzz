@@ -110,4 +110,113 @@ void headerOpacityTests() {
     await tester.pumpWidget(const SizedBox());
     debugDefaultTargetPlatformOverride = null;
   });
+
+  for (final brightness in Brightness.values) {
+    testWidgets('iOS composer band hides timeline text in ${brightness.name} '
+        'mode', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final messenger = tester.binding.defaultBinaryMessenger;
+      final mocked = <MethodChannel>[const MethodChannel('buzz/media_upload')];
+      messenger.setMockMethodCallHandler(mocked.first, (call) async => false);
+      messenger.setMockMethodCallHandler(SystemChannels.platform_views, (
+        call,
+      ) async {
+        if (call.method == 'create') {
+          final args = call.arguments as Map;
+          final view = MethodChannel('${args['viewType']}/${args['id']}');
+          mocked.add(view);
+          messenger.setMockMethodCallHandler(view, (call) async => null);
+        }
+        return null;
+      });
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
+        for (final channel in mocked) {
+          messenger.setMockMethodCallHandler(channel, null);
+        }
+      });
+      final shot = GlobalKey();
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: [
+            for (var i = 0; i < 40; i++)
+              _textMsg(
+                id: 'm$i',
+                pubkey: 'bob',
+                content: 'Timeline message $i with enough words to wrap',
+                createdAt: 1000 + i,
+              ),
+          ],
+          theme: brightness == Brightness.dark
+              ? AppTheme.dark()
+              : AppTheme.light(),
+          home: RepaintBoundary(
+            key: shot,
+            child: ChannelDetailPage(channel: _testChannel),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.textContaining('Timeline message 36'),
+        const Offset(0, 160),
+      );
+      await tester.pumpAndSettle();
+
+      final dock = tester.getRect(find.byType(ComposerDockSizeReporter));
+      final pill = tester
+          .getRect(
+            find.byKey(const ValueKey('composer-ios-concentric-surface')),
+          )
+          .inflate(2);
+      final textUnderDock = find
+          .textContaining('Timeline message')
+          .evaluate()
+          .map((element) => element.renderObject! as RenderBox)
+          .any(
+            (box) => (box.localToGlobal(Offset.zero) & box.size).overlaps(dock),
+          );
+      expect(textUnderDock, isTrue);
+
+      final theme = Theme.of(tester.element(find.byType(ChannelDetailPage)));
+      expect(theme.brightness, brightness);
+      final surface = theme.colorScheme.surface;
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(shot),
+      );
+      final pixels = (await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final data = await image.toByteData();
+        image.dispose();
+        return data!;
+      }))!;
+      final width = boundary.size.width.toInt();
+      final height = boundary.size.height.toInt();
+      Color pixel(int x, int y) {
+        final i = (y * width + x) * 4;
+        return Color.fromARGB(
+          pixels.getUint8(i + 3),
+          pixels.getUint8(i),
+          pixels.getUint8(i + 1),
+          pixels.getUint8(i + 2),
+        );
+      }
+
+      final leaks = <String>[
+        for (var y = dock.top.ceil() + 2; y < height; y++)
+          for (var x = 0; x < width; x++)
+            if (!pill.contains(Offset(x + 0.5, y + 0.5)) &&
+                pixel(x, y) != surface)
+              '($x, $y)',
+      ];
+      expect(
+        leaks,
+        isEmpty,
+        reason: 'Timeline pixels show around the composer',
+      );
+      await tester.pumpWidget(const SizedBox());
+      debugDefaultTargetPlatformOverride = null;
+    });
+  }
 }
