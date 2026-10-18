@@ -442,16 +442,16 @@ class RunnerTests: XCTestCase {
   }
 
   @MainActor
-  func testConversationGlassAndBackdropAreReadyBeforeScrolling() throws {
+  func testOpaqueConversationKeepsGlassWithoutNativeBackdrop() throws {
     for subtitle in ["36 members", "Online", ""] {
       let messenger = NavigationTestMessenger()
       let parent = UIViewController()
       let factory = IosNavigationBarFactory(messenger: messenger, parent: parent)
       var args: [String: Any] = ["title": "Conversation", "subtitle": subtitle,
-                                "titleEnabled": true, "alwaysFrosted": true]
+                                "titleEnabled": true, "opaque": true]
       let bar = factory.create(withFrame: .zero, viewIdentifier: 999994, arguments: args)
       let material = try XCTUnwrap(bar.view().subviews.first as? UIVisualEffectView)
-      XCTAssertEqual(material.alpha, 1, "The initial configuration must not wait for a scroll")
+      XCTAssertTrue(material.isHidden, "Flutter paints the opaque backdrop")
       let navigation = try XCTUnwrap(parent.children.first as? UINavigationController)
       let title = try XCTUnwrap(navigation.topViewController?.navigationItem.titleView as? NavigationTitleView)
       if #available(iOS 26.0, *) {
@@ -467,84 +467,58 @@ class RunnerTests: XCTestCase {
       XCTAssertEqual(messenger.actions.last, "title")
       for offset in [0.0, 6.0, 52.0, 0.0, -20.0] {
         messenger.scroll(to: offset)
-        XCTAssertEqual(material.alpha, 1)
+        XCTAssertTrue(material.isHidden)
         args["dark"] = true
         args["subtitle"] = "Updated status"
         messenger.configure(args)
-        XCTAssertEqual(material.alpha, 1, "Live status/theme changes must preserve the backdrop")
+        XCTAssertTrue(material.isHidden, "Live status/theme changes must keep the native backdrop hidden")
       }
       messenger.configure(["title": "Home", "largeTitle": true])
       XCTAssertEqual(material.alpha, 0, "Large-title pages keep their existing scroll treatment")
-    }
-  }
-
-  @MainActor
-  func testConversationUsesNativeSoftEdgeWithoutExpandingHitArea() throws {
-    let parent = UIViewController()
-    let window = UIWindow(frame: UIScreen.main.bounds)
-    window.rootViewController = parent
-    window.makeKeyAndVisible()
-    defer { window.isHidden = true }
-    let messenger = NavigationTestMessenger()
-    let factory = IosNavigationBarFactory(messenger: messenger, parent: parent)
-    let bar = factory.create(
-      withFrame: CGRect(x: 0, y: 0, width: window.bounds.width, height: 120),
-      viewIdentifier: 999993,
-      arguments: ["title": "general", "subtitle": "36 members", "alwaysFrosted": true])
-    parent.view.addSubview(bar.view())
-    let navigation = try XCTUnwrap(parent.children.first as? UINavigationController)
-    let material = try XCTUnwrap(bar.view().subviews.first as? UIVisualEffectView)
-    for offset in [0.0, 52.0, 0.0] {
-      messenger.scroll(to: offset)
-      bar.view().setNeedsLayout()
-      bar.view().layoutIfNeeded()
-      if #available(iOS 27.0, *) {
-        let scroll = try XCTUnwrap(navigation.topViewController?.view as? UIScrollView)
-        XCTAssertEqual(scroll.topEdgeEffect.style, .soft)
-        XCTAssertFalse(scroll.topEdgeEffect.isHidden)
-        XCTAssertTrue(scroll.bottomEdgeEffect.isHidden)
-        XCTAssertTrue(material.isHidden, "Do not stack a uniform blur over the native fade")
-        XCTAssertFalse(bar.view().clipsToBounds)
-        XCTAssertEqual(scroll.contentOffset.y, offset, accuracy: 0.5)
-        XCTAssertFalse(bar.view().point(inside: CGPoint(x: 20, y: 121), with: nil))
-      } else if #available(iOS 26.0, *) {
-        let safeTop = navigation.view.safeAreaInsets.top
-        XCTAssertEqual(material.frame.height, safeTop > 0 ? safeTop + 6 : 0, accuracy: 0.5)
-        XCTAssertFalse(material.isHidden)
-      } else {
-        XCTAssertEqual(material.frame.height, bar.view().bounds.height, accuracy: 0.5)
-        XCTAssertFalse(material.isHidden)
-      }
-      XCTAssertEqual(material.alpha, 1)
-      XCTAssertNotNil(navigation.topViewController?.navigationItem.titleView as? NavigationTitleView)
-    }
-  }
-
-  @MainActor
-  func testSubtitlelessThreadKeepsFullFallbackBehindControls() throws {
-    let parent = UIViewController()
-    let window = UIWindow(frame: UIScreen.main.bounds)
-    window.rootViewController = parent
-    window.makeKeyAndVisible()
-    defer { window.isHidden = true }
-    let messenger = NavigationTestMessenger()
-    let bar = IosNavigationBarFactory(messenger: messenger, parent: parent).create(
-      withFrame: CGRect(x: 0, y: 0, width: window.bounds.width, height: 120),
-      viewIdentifier: 999991, arguments: ["title": "Thread", "back": true, "alwaysFrosted": true])
-    parent.view.addSubview(bar.view())
-    let navigation = try XCTUnwrap(parent.children.first as? UINavigationController)
-    let material = try XCTUnwrap(bar.view().subviews.first as? UIVisualEffectView)
-    for offset in [0.0, 52.0, 0.0] {
-      messenger.scroll(to: offset)
-      bar.view().setNeedsLayout()
-      bar.view().layoutIfNeeded()
-      XCTAssertNil(navigation.topViewController?.navigationItem.titleView)
-      XCTAssertEqual(material.frame.height, bar.view().bounds.height, accuracy: 0.5)
-      XCTAssertEqual(material.alpha, 1)
       if #available(iOS 27.0, *) {
         XCTAssertTrue(material.isHidden)
       } else {
-        XCTAssertFalse(material.isHidden, "Plain thread titles and legacy buttons need a control-area backdrop")
+        XCTAssertFalse(material.isHidden)
+      }
+    }
+  }
+
+  @MainActor
+  func testOpaqueHeadersHideNativeEdgesWithoutExpandingHitArea() throws {
+    for args: [String: Any] in [["title": "general", "subtitle": "36 members", "opaque": true],
+                                ["title": "Thread", "back": true, "opaque": true]] {
+      let parent = UIViewController()
+      let window = UIWindow(frame: UIScreen.main.bounds)
+      window.rootViewController = parent
+      window.makeKeyAndVisible()
+      defer { window.isHidden = true }
+      let messenger = NavigationTestMessenger()
+      let bar = IosNavigationBarFactory(messenger: messenger, parent: parent).create(
+        withFrame: CGRect(x: 0, y: 0, width: window.bounds.width, height: 120),
+        viewIdentifier: 999993, arguments: args)
+      parent.view.addSubview(bar.view())
+      let navigation = try XCTUnwrap(parent.children.first as? UINavigationController)
+      let material = try XCTUnwrap(bar.view().subviews.first as? UIVisualEffectView)
+      for offset in [0.0, 52.0, 0.0] {
+        messenger.scroll(to: offset)
+        bar.view().setNeedsLayout()
+        bar.view().layoutIfNeeded()
+        XCTAssertTrue(material.isHidden, "Do not tint the opaque Flutter backdrop")
+        XCTAssertNil(navigation.navigationBar.standardAppearance.backgroundEffect)
+        XCTAssertEqual(navigation.topViewController?.navigationItem.titleView is NavigationTitleView,
+                       args["subtitle"] != nil)
+        if #available(iOS 26.0, *) {
+          let scroll = try XCTUnwrap(navigation.topViewController?.view as? UIScrollView)
+          XCTAssertTrue(scroll.topEdgeEffect.isHidden)
+          XCTAssertTrue(scroll.bottomEdgeEffect.isHidden)
+        }
+        if #available(iOS 27.0, *) {
+          let edge = try XCTUnwrap(bar.view().subviews.first {
+            $0.accessibilityIdentifier == "navigation-status-edge"
+          })
+          XCTAssertTrue(edge.isHidden)
+          XCTAssertFalse(bar.view().point(inside: CGPoint(x: 20, y: 121), with: nil))
+        }
       }
     }
   }

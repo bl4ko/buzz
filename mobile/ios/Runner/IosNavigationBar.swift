@@ -214,9 +214,7 @@ private final class NavigationContentController: UIViewController {
     scrollView.isUserInteractionEnabled = false
     scrollView.backgroundColor = .clear
     if #available(iOS 26.0, *) {
-      // Configure the native effect before UIKit lays out the bar; the
-      // platform-view configuration selects it or the material fallback.
-      scrollView.topEdgeEffect.style = .soft
+      scrollView.topEdgeEffect.isHidden = true
       scrollView.bottomEdgeEffect.isHidden = true
     }
   }
@@ -233,7 +231,7 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
   private let navigation: UINavigationController
   private let channel: FlutterMethodChannel
   private var offset: CGFloat = 0
-  private var alwaysFrosted = false
+  private var opaque = false
   private var usesSystemScrollEdge = false
   private var expandedBarHeight: CGFloat = 0
   private var titleIsCollapsed: Bool?
@@ -312,29 +310,11 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
     navigation.view.layoutIfNeeded()
     measureIfNeeded()
     applyScroll()
-    // Glass-backed conversations need only a short status-area fade.
-    // Recompute the material bounds after rotation and inset changes.
-    let statusHeight = navigation.view.safeAreaInsets.top
-    // Before iOS 26 the actions have no glass, and subtitle-less thread
-    // titles remain plain UIKit labels even on iOS 26. They need material
-    // beneath the entire control area, not just the status indicators.
-    let glassBackedControls: Bool
-    if #available(iOS 26.0, *) {
-      glassBackedControls = content.navigationItem.titleView is NavigationTitleView
-    } else {
-      glassBackedControls = false
-    }
-    let statusOnly = alwaysFrosted && !navigation.navigationBar.prefersLargeTitles && glassBackedControls
-    let height = statusOnly
-      ? min(container.bounds.height, statusHeight > 0 ? statusHeight + 6 : 0)
-      : container.bounds.height
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    material.frame = CGRect(x: 0, y: 0, width: container.bounds.width, height: height)
+    material.frame = CGRect(origin: .zero, size: container.bounds.size)
     materialFade.frame = material.bounds
-    materialFade.locations = statusOnly
-      ? [0, NSNumber(value: Double(max(0, height - 12) / max(1, height))), 1]
-      : (navigation.navigationBar.prefersLargeTitles ? [0, 0.55, 1] : [0, 0.85, 1])
+    materialFade.locations = navigation.navigationBar.prefersLargeTitles ? [0, 0.55, 1] : [0, 0.85, 1]
     CATransaction.commit()
     reportAvatarBounds()
   }
@@ -366,24 +346,22 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
     titleColor = color
     largeTitleOpacity = -1
     let largeTitle = args["largeTitle"] as? Bool == true
-    alwaysFrosted = args["alwaysFrosted"] as? Bool == true
+    opaque = args["opaque"] as? Bool == true
     if #available(iOS 26.0, *) {
       if #available(iOS 27.0, *) { usesSystemScrollEdge = true }
-      content.scrollView.topEdgeEffect.style = .soft
-      content.scrollView.topEdgeEffect.isHidden = !usesSystemScrollEdge || !alwaysFrosted || largeTitle
-      edgeScrollView.isHidden = alwaysFrosted && !largeTitle
+      edgeScrollView.isHidden = opaque
     }
     // iOS 26 does not composite this native edge over sibling Flutter content
     // in our embedding, so retain the ultra-thin material fallback there.
-    // Conversations use the navigation controller's native edge. Other pages
-    // use a stationary native edge so UIKit's large-title inset adjustments
-    // cannot hide the status-area fade when the title expands or collapses.
-    material.isHidden = usesSystemScrollEdge
+    // Pages use a stationary native edge so UIKit's large-title inset
+    // adjustments cannot hide the status-area fade when the title expands or
+    // collapses.
+    material.isHidden = usesSystemScrollEdge || opaque
     // Let the native fade extend past the bar without enlarging its hit area.
     // The mirrored content is transparent and the bottom edge is hidden.
     container.clipsToBounds = !usesSystemScrollEdge
     let appearance = UINavigationBarAppearance()
-    if usesSystemScrollEdge {
+    if usesSystemScrollEdge && !opaque {
       appearance.configureWithDefaultBackground()
     } else {
       appearance.configureWithTransparentBackground()
@@ -398,9 +376,7 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
       titleIsCollapsed = nil
     }
     bar.prefersLargeTitles = largeTitle
-    // Conversations request a stable backdrop from the first frame, including
-    // loading/empty timelines. Other pages retain their scroll-edge treatment.
-    material.alpha = alwaysFrosted ? 1 : min(1, offset / 12)
+    material.alpha = min(1, offset / 12)
     let item = content.navigationItem
     item.title = args["title"] as? String
     if let subtitle = args["subtitle"] as? String {
@@ -496,7 +472,7 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
 
   private func setScrollOffset(_ value: CGFloat) {
     offset = max(0, value)
-    material.alpha = alwaysFrosted ? 1 : min(1, offset / 12)
+    material.alpha = min(1, offset / 12)
     applyScroll()
     reportAvatarBounds()
   }
@@ -510,11 +486,7 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
     // safe area, throughout the scroll cycle.
     expandedBarHeight = max(expandedBarHeight, navigation.navigationBar.frame.height)
     let topInset = navigation.view.safeAreaInsets.top + expandedBarHeight
-    // Compact conversations always have their content behind the overlay.
-    // Zero represents the viewport's top, not an empty native inset; this
-    // makes the system edge ready before Flutter's first scroll notification.
-    let contentBehindBar = usesSystemScrollEdge && alwaysFrosted && !navigation.navigationBar.prefersLargeTitles
-    let desired = CGPoint(x: 0, y: contentBehindBar ? offset : -topInset + offset)
+    let desired = CGPoint(x: 0, y: -topInset + offset)
     let compactHeight = (metrics?["compactHeight"] as? CGFloat) ?? navigation.navigationBar.frame.height
     let collapseRange = max(1, expandedBarHeight - compactHeight)
     let collapsed = offset >= collapseRange
