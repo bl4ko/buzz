@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../../shared/theme/buzz_icons.dart';
 import '../../../shared/theme/theme.dart';
@@ -18,7 +22,7 @@ IconData channelTabIcon(ChannelTabItem item) =>
       _ => BuzzIcons.circleDot,
     };
 
-class ChannelTabRow extends StatelessWidget {
+class ChannelTabRow extends StatefulWidget {
   const ChannelTabRow({
     super.key,
     required this.items,
@@ -37,35 +41,96 @@ class ChannelTabRow extends StatelessWidget {
   final ValueChanged<ChannelTab> onCustomLongPress;
 
   @override
+  State<ChannelTabRow> createState() => _ChannelTabRowState();
+}
+
+class _ChannelTabRowState extends State<ChannelTabRow> {
+  final _scroll = ScrollController();
+  final _selectedTab = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _revealSelected();
+  }
+
+  @override
+  void didUpdateWidget(ChannelTabRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selected != widget.selected ||
+        !listEquals(
+          [for (final item in oldWidget.items) item.key],
+          [for (final item in widget.items) item.key],
+        )) {
+      _revealSelected();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _revealSelected() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final tab = _selectedTab.currentContext?.findRenderObject();
+      if (!mounted || tab == null || !_scroll.hasClients) return;
+      final viewport = RenderAbstractViewport.of(tab);
+      final position = _scroll.position;
+      final start = viewport.getOffsetToReveal(tab, 0).offset;
+      final end = math.min(viewport.getOffsetToReveal(tab, 1).offset, start);
+      final target = position.pixels
+          .clamp(end, start)
+          .clamp(position.minScrollExtent, position.maxScrollExtent);
+      if ((target - position.pixels).abs() < 0.5) return;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _scroll.jumpTo(target);
+      } else {
+        _scroll.animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: channelTabRowHeightOf(context),
-      child: ListView(
+      child: SingleChildScrollView(
+        controller: _scroll,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: Grid.half),
-        children: [
-          for (final item in items)
-            _ChannelTab(
-              item: item,
-              selected: item.key == selected,
-              onTap: () => onSelect(item.key),
-              onLongPress: item.custom != null && canEdit
-                  ? () => onCustomLongPress(item.custom!)
-                  : null,
-            ),
-          if (canEdit)
-            IconButton(
-              key: const Key('channel-tab-add'),
-              tooltip: 'Add tab',
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                BuzzIcons.plus,
-                size: 18,
-                color: context.colors.onSurfaceVariant,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final item in widget.items)
+              _ChannelTab(
+                key: item.key == widget.selected ? _selectedTab : null,
+                item: item,
+                selected: item.key == widget.selected,
+                onTap: () => widget.onSelect(item.key),
+                onLongPress: item.custom != null && widget.canEdit
+                    ? () => widget.onCustomLongPress(item.custom!)
+                    : null,
               ),
-              onPressed: onAdd,
-            ),
-        ],
+            if (widget.canEdit)
+              IconButton(
+                key: const Key('channel-tab-add'),
+                tooltip: 'Add tab',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  BuzzIcons.plus,
+                  size: 18,
+                  color: context.colors.onSurfaceVariant,
+                ),
+                onPressed: widget.onAdd,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -73,6 +138,7 @@ class ChannelTabRow extends StatelessWidget {
 
 class _ChannelTab extends StatelessWidget {
   const _ChannelTab({
+    super.key,
     required this.item,
     required this.selected,
     required this.onTap,

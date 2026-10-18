@@ -162,4 +162,88 @@ void main() {
       greaterThan(normal),
     );
   });
+
+  testWidgets('a selected or added tab at the end scrolls fully into view', (
+    tester,
+  ) async {
+    const checklists = ChannelTab(
+      id: 'c',
+      type: 'search',
+      title: 'Checklists',
+      value: 'checklist',
+    );
+    const added = ChannelTab(
+      id: 'n',
+      type: 'link',
+      title: 'Runbooks',
+      value: 'https://r.example',
+    );
+    const tabs = [
+      ChannelTabItem(key: 'messages', label: 'Messages'),
+      ChannelTabItem(key: 'tasks', label: 'Tasks', badge: 3),
+      ChannelTabItem(key: 'files', label: 'Files and links'),
+      ChannelTabItem(key: 'custom:c', label: 'Checklists', custom: checklists),
+    ];
+    var selected = 'messages';
+    var shown = tabs;
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 320,
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  return ChannelTabRow(
+                    items: shown,
+                    selected: selected,
+                    canEdit: true,
+                    onSelect: (key) => setState(() => selected = key),
+                    onAdd: () {},
+                    onCustomLongPress: (_) {},
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final row = tester.getRect(find.byType(ChannelTabRow));
+    void expectFullyVisible(String key) {
+      final tab = tester.getRect(find.byKey(Key('channel-tab-$key')));
+      expect(tab.left, greaterThanOrEqualTo(row.left - 0.01), reason: key);
+      expect(tab.right, lessThanOrEqualTo(row.right + 0.01), reason: key);
+    }
+
+    final files = tester.getRect(find.byKey(const Key('channel-tab-files')));
+    expect(files.left, lessThan(row.right - 4));
+    expect(files.right, greaterThan(row.right));
+    await tester.tapAt(Offset(row.right - 2, files.center.dy));
+    await tester.pumpAndSettle();
+    expect(selected, 'files');
+    expectFullyVisible('files');
+
+    update(() => selected = 'custom:c');
+    await tester.pumpAndSettle();
+    expectFullyVisible('custom:c');
+
+    update(() => selected = 'messages');
+    await tester.pumpAndSettle();
+    expectFullyVisible('messages');
+
+    update(() {
+      shown = [
+        ...tabs,
+        const ChannelTabItem(key: 'custom:n', label: 'Runbooks', custom: added),
+      ];
+      selected = 'custom:n';
+    });
+    await tester.pumpAndSettle();
+    expectFullyVisible('custom:n');
+  });
 }
