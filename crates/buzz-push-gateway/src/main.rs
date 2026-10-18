@@ -44,10 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             configured.app_attest_environment,
         )?;
         tracing::info!(environment = ?apple.environment(), "App Attest verifier configured");
-        let transport = Arc::new(ApnsTransport::certificate(
+        let transport = Arc::new(ApnsTransport::certificate_with_base_url(
             &fs::read(&configured.apns_cert_path)?,
             configured.apns_topic.clone(),
-            configured.apns_environment,
+            configured.apns_base_url().to_owned(),
         )?);
         let live_activity = buzz_push_gateway::live_activity::transport_from_config(configured)?;
         tracing::info!(

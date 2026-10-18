@@ -312,12 +312,13 @@ pub fn transport_from_config(
         return Ok(None);
     };
     let key = std::fs::read(&credentials.auth_key_path).map_err(|_| LiveActivitySetupError)?;
-    let transport = ApnsTokenTransport::new(
+    let transport = ApnsTokenTransport::with_parts(
         &key,
         credentials.key_id.clone(),
         credentials.team_id.clone(),
         profile.apns_topic.clone(),
-        profile.apns_environment,
+        profile.apns_base_url().to_owned(),
+        system_now,
     )
     .map_err(|_| LiveActivitySetupError)?;
     Ok(Some(std::sync::Arc::new(transport)))
@@ -737,6 +738,7 @@ mod tests {
             apns_cert_path: "/unused".into(),
             apns_topic: "com.bl4ko.buzz".into(),
             apns_environment: ApnsEnvironment::Production,
+            qa_apns_base_url: None,
             live_activity: Some(crate::config::LiveActivityCredentials {
                 auth_key_path: path.into(),
                 key_id: "ABC123DEFG".into(),

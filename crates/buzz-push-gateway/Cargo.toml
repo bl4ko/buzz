@@ -18,9 +18,12 @@ path = "src/main.rs"
 [features]
 # Personal device development only. Production builds remain production-only.
 personal-dev-app-attest = ["appattest/testing"]
+# iOS Simulator QA stack only (qa/live-activity). Never enable in a deployed image.
+qa-simulator = ["dep:aws-lc-rs"]
 
 [dependencies]
 aes-gcm = "0.10"
+aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys"], optional = true }
 appattest = { version = "0.1.1", default-features = false }
 axum = { workspace = true }
 async-trait = "0.1"
