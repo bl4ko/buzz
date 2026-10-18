@@ -288,6 +288,7 @@ void main() {
     await tester.pumpWidget(host(withAsk('c' * 64), (_, _) async {}));
     expect(find.text('Approve'), findsOneWidget);
     expect(find.text('Approved'), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.text('Deny'));
     await tester.pump();
     expect(find.text('Denied'), findsOneWidget);
@@ -406,5 +407,69 @@ void main() {
     await tester.tap(button);
     await tester.pump();
     expect(calls, 2);
+  });
+
+  testWidgets('a fast second tap cannot decide or open the row that moves up', (
+    tester,
+  ) async {
+    final first = task(
+      '1',
+      TaskStatus.awaitingOwner,
+      ask: ThreadTaskAsk(text: 'First?', eventId: 'b' * 64),
+    );
+    final second = ThreadTask(
+      rootId: '2' * 64,
+      channelId: 'c',
+      status: TaskStatus.awaitingOwner,
+      title: 'Task 2',
+      ask: ThreadTaskAsk(text: 'Second?', eventId: 'c' * 64),
+      author: 'e' * 64,
+      createdAt: 9,
+      eventId: '2' * 64,
+    );
+    var decisions = <String, OwnerDecision>{};
+    final log = <String>[];
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => app(
+          ChannelTasksView(
+            state: ChannelTasksState({
+              first.rootId: first,
+              second.rootId: second,
+            }, decisions),
+            canSetStatus: true,
+            onReact: (eventId, emoji) async {
+              log.add('react:$emoji:${eventId[0]}');
+              setState(
+                () => decisions = {
+                  ...decisions,
+                  eventId: emoji == approveEmoji
+                      ? OwnerDecision.approve
+                      : OwnerDecision.deny,
+                },
+              );
+            },
+            onDone: (_) async {},
+            onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+          ),
+        ),
+      ),
+    );
+    final approve = tester.getCenter(find.text('Approve').first);
+    final title = tester.getCenter(find.text('Task 1'));
+    await tester.tapAt(approve);
+    await tester.pump();
+    expect(find.text('Needs you · 1'), findsOneWidget);
+    expect(tester.getCenter(find.text('Approve')), approve);
+    await tester.tapAt(approve);
+    await tester.tapAt(title);
+    await tester.pump();
+    expect(log, ['react:✅:b']);
+    expect(decisions.keys, ['b' * 64]);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tapAt(approve);
+    await tester.pump();
+    expect(log, ['react:✅:b', 'react:✅:c']);
   });
 }

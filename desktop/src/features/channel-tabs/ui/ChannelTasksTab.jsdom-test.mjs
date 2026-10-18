@@ -90,6 +90,7 @@ test("groups, ask, approve, deny, done, and open", async () => {
   assert.deepEqual(calls.reacted, [[ASK, "✅"]]);
   assert.equal(q("task-decision").textContent, "Approved");
   assert.equal(calls.refreshed, 1);
+  await new Promise((resolve) => setTimeout(resolve, 600));
   await act(async () =>
     container.querySelector('[data-testid="task-done"]').click(),
   );
@@ -197,4 +198,55 @@ test("both buttons stay disabled while a send is pending", async () => {
   assert.equal(q("task-deny").disabled, true);
   await act(async () => release());
   assert.equal(q("task-decision").textContent, "Approved");
+});
+
+test("a fast second click cannot decide or open the row that moves up", async () => {
+  const second = task("5".repeat(64), "awaiting_owner", {
+    createdAt: 9,
+    ask: { text: "Second?", eventId: "c".repeat(64) },
+  });
+  const list = [tasks[0], second];
+  const reacted = [];
+  const opened = [];
+  function Harness() {
+    const [decisions, setDecisions] = React.useState(new Map());
+    const groups = groupThreadTasks(list, decisions);
+    return React.createElement(ChannelTasksTab, {
+      tasks: {
+        channelId: "c",
+        tasks: list,
+        groups,
+        awaitingCount: groups.needsYou.length,
+        isLoading: false,
+        decisions,
+        refreshDecisions: () => {},
+        setStatus: async () => {},
+      },
+      canSetStatus: true,
+      onOpenThread: (rootId) => opened.push(rootId),
+      onReact: async (eventId, emoji) => {
+        reacted.push([eventId, emoji]);
+        setDecisions((current) =>
+          new Map(current).set(eventId, emoji === "✅" ? "approve" : "deny"),
+        );
+      },
+    });
+  }
+  calls = { opened: [], reacted: [], status: [], refreshed: 0 };
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => root.render(React.createElement(Harness)));
+  await act(async () => q("task-approve").click());
+  assert.deepEqual(reacted, [[ASK, "✅"]]);
+  await act(async () => q("task-approve").click());
+  await act(async () => q("task-open").click());
+  assert.deepEqual(reacted, [[ASK, "✅"]]);
+  assert.deepEqual(opened, []);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await act(async () => q("task-approve").click());
+  assert.deepEqual(reacted, [
+    [ASK, "✅"],
+    ["c".repeat(64), "✅"],
+  ]);
 });

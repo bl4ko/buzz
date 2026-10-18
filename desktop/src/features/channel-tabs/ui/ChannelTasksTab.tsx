@@ -10,6 +10,8 @@ import {
 } from "../lib/threadStatus";
 import type { ChannelTasksState } from "../useChannelTasks";
 
+const ROW_SETTLE_MS = 500;
+
 const STATUS_LABEL: Record<ThreadTask["status"], string> = {
   open: "Open",
   in_progress: "In progress",
@@ -22,6 +24,7 @@ function TaskRow({
   task,
   canSetStatus,
   stored,
+  settling,
   onDecided,
   onOpenThread,
   onReact,
@@ -30,6 +33,7 @@ function TaskRow({
   task: ThreadTask;
   canSetStatus: boolean;
   stored: OwnerDecision | undefined;
+  settling: () => boolean;
   onDecided: () => void;
   onOpenThread: (rootId: string) => void;
   onReact: (eventId: string, emoji: string) => Promise<void>;
@@ -46,6 +50,7 @@ function TaskRow({
     failure: string,
     onDone?: () => void,
   ) => {
+    if (settling()) return;
     setPending(true);
     setError(null);
     try {
@@ -71,7 +76,9 @@ function TaskRow({
       <button
         className="min-w-0 flex-1 text-left"
         data-testid="task-open"
-        onClick={() => onOpenThread(task.rootId)}
+        onClick={() => {
+          if (!settling()) onOpenThread(task.rootId);
+        }}
         type="button"
       >
         <span className="block truncate text-sm font-semibold">
@@ -167,6 +174,12 @@ export function ChannelTasksTab({
   onReact: (eventId: string, emoji: string) => Promise<void>;
 }) {
   const [showDone, setShowDone] = React.useState(false);
+  const movedAt = React.useRef(0);
+  const settling = () => Date.now() - movedAt.current < ROW_SETTLE_MS;
+  const onDecided = () => {
+    movedAt.current = Date.now();
+    tasks.refreshDecisions();
+  };
   const onDone = (task: ThreadTask) => tasks.setStatus(task, "done");
   const section = (id: string, title: string, list: ThreadTask[]) =>
     list.length === 0 ? null : (
@@ -179,10 +192,11 @@ export function ChannelTasksTab({
             <TaskRow
               canSetStatus={canSetStatus}
               key={task.rootId}
-              onDecided={tasks.refreshDecisions}
+              onDecided={onDecided}
               onDone={onDone}
               onOpenThread={onOpenThread}
               onReact={onReact}
+              settling={settling}
               stored={
                 task.ask ? tasks.decisions.get(task.ask.eventId) : undefined
               }
