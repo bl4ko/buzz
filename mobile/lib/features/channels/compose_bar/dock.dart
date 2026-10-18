@@ -43,69 +43,50 @@ class _ComposerDockFrame extends HookWidget {
           compactVerticalOffset,
     );
     final recordingGutterDelta = visibleBottomGutter - Grid.twelve;
-    final backdropHeight = mobileTabFooterBackdropHeight(context);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          key: const ValueKey('composer-footer-gradient'),
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: backdropHeight,
-          child: IgnorePointer(
-            child: MobileTabFooterBackdrop(height: backdropHeight),
-          ),
+    return Padding(
+      padding: EdgeInsets.only(
+        left: Grid.twelve,
+        right: Grid.twelve,
+        bottom: MediaQuery.viewPaddingOf(context).bottom + Grid.xxs,
+      ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: AnimatedBuilder(
+          animation: Listenable.merge([
+            expansionAnimation,
+            recordingTransition,
+          ]),
+          child: child,
+          builder: (context, child) {
+            final widthProgress = math.max(
+              expansionAnimation.value.clamp(0.0, 1.0),
+              recordingTransition.value,
+            );
+            final expansionProgress = expansionAnimation.value.clamp(0.0, 1.0);
+            final compactPositionProgress = 1 - expansionProgress;
+            return Transform.translate(
+              key: const ValueKey('composer-position-transition'),
+              offset: Offset(
+                0,
+                compactVerticalOffset * compactPositionProgress,
+              ),
+              child: Padding(
+                key: const ValueKey('composer-recording-outer-gutter'),
+                padding: EdgeInsets.symmetric(
+                  horizontal: forceFullWidth
+                      ? recordingGutterDelta * compactPositionProgress
+                      : 0,
+                ),
+                child: FractionallySizedBox(
+                  key: const ValueKey('composer-width-transition'),
+                  widthFactor: 0.85 + 0.15 * widthProgress,
+                  child: child,
+                ),
+              ),
+            );
+          },
         ),
-        Padding(
-          padding: EdgeInsets.only(
-            left: Grid.twelve,
-            right: Grid.twelve,
-            bottom: MediaQuery.viewPaddingOf(context).bottom + Grid.xxs,
-          ),
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([
-                expansionAnimation,
-                recordingTransition,
-              ]),
-              child: child,
-              builder: (context, child) {
-                final widthProgress = math.max(
-                  expansionAnimation.value.clamp(0.0, 1.0),
-                  recordingTransition.value,
-                );
-                final expansionProgress = expansionAnimation.value.clamp(
-                  0.0,
-                  1.0,
-                );
-                final compactPositionProgress = 1 - expansionProgress;
-                return Transform.translate(
-                  key: const ValueKey('composer-position-transition'),
-                  offset: Offset(
-                    0,
-                    compactVerticalOffset * compactPositionProgress,
-                  ),
-                  child: Padding(
-                    key: const ValueKey('composer-recording-outer-gutter'),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: forceFullWidth
-                          ? recordingGutterDelta * compactPositionProgress
-                          : 0,
-                    ),
-                    child: FractionallySizedBox(
-                      key: const ValueKey('composer-width-transition'),
-                      widthFactor: 0.85 + 0.15 * widthProgress,
-                      child: child,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

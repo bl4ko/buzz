@@ -1,6 +1,20 @@
 import 'package:buzz/features/channels/channel_tabs/channel_tab_editor_sheet.dart';
 import 'package:buzz/features/channels/channel_tabs/channel_tabs_model.dart';
+import 'package:buzz/features/channels/channel_tabs/channel_tabs_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+class _Tabs extends ChannelTabsNotifier {
+  _Tabs() : super('c');
+  final saved = <List<ChannelTab>>[];
+
+  @override
+  ChannelTabsState build() => const ChannelTabsState('c');
+
+  @override
+  Future<void> save(List<ChannelTab> tabs) async => saved.add(tabs);
+}
 
 void main() {
   test('link tabs need https and a title', () {
@@ -56,5 +70,43 @@ void main() {
       (renamed!.id, renamed.title, renamed.value),
       ('t1', 'New', 'https://a.example'),
     );
+  });
+
+  testWidgets('adding a tab returns its id so the row can select it', (
+    tester,
+  ) async {
+    final tabs = _Tabs();
+    final results = <String?>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [channelTabsProvider('c').overrideWith(() => tabs)],
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, _) => TextButton(
+              onPressed: () async => results.add(
+                await showChannelTabEditor(
+                  context,
+                  ref,
+                  channelId: 'c',
+                  initial: null,
+                ),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Title'), 'Runbooks');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Value'),
+      'https://r.example',
+    );
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(tabs.saved.single.single.title, 'Runbooks');
+    expect(results, [tabs.saved.single.single.id]);
   });
 }

@@ -15,10 +15,8 @@ class ChannelTasksState {
   final Map<String, ThreadTask> byRoot;
   final Map<String, OwnerDecision> decisions;
   List<ThreadTask> get tasks => byRoot.values.toList();
-  ThreadTaskGroups get groups => groupThreadTasks(byRoot.values);
-  int get awaitingCount => groups.needsYou
-      .where((t) => t.ask == null || !decisions.containsKey(t.ask!.eventId))
-      .length;
+  ThreadTaskGroups get groups => groupThreadTasks(byRoot.values, decisions);
+  int get awaitingCount => groups.needsYou.length;
 }
 
 class ChannelTasksNotifier extends Notifier<ChannelTasksState> {

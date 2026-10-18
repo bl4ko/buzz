@@ -105,6 +105,19 @@ void main() {
     expect(groups.done.first.eventId, 'd24');
   });
 
+  test('a decided ask leaves Needs you for In progress', () {
+    final tasks = reduceThreadTasks([
+      status('w', 'awaiting_owner', 2, rootId: '2' * 64, askText: 'Q?'),
+      status('x', 'awaiting_owner', 3, rootId: '3' * 64, askText: 'R?'),
+      status('o', 'open', 1, rootId: '1' * 64),
+    ], channelId: ch).values.toList();
+    final undecided = groupThreadTasks(tasks);
+    expect(undecided.needsYou, hasLength(2));
+    final groups = groupThreadTasks(tasks, {ask: OwnerDecision.approve});
+    expect(groups.needsYou, isEmpty);
+    expect(groups.inProgress.map((t) => t.eventId), ['x', 'w', 'o']);
+  });
+
   test('tags and approval helpers', () {
     expect(
       threadStatusTags(

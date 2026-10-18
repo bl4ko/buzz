@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
-/// Reports the laid-out height of a floating composer dock.
-///
-/// Message timelines use that height as scroll padding while still painting
-/// beneath the dock, which lets the dock's fade reveal real timeline content.
+import '../../shared/theme/theme.dart';
+
+/// Paints the composer dock on an opaque page-colour band and reports its
+/// laid-out height, which message timelines use as scroll padding.
 class ComposerDockSizeReporter extends HookWidget {
   final ValueChanged<double> onHeightChanged;
   final Widget child;
@@ -43,7 +43,25 @@ class ComposerDockSizeReporter extends HookWidget {
         return true;
       },
       child: SizeChangedLayoutNotifier(
-        child: KeyedSubtree(key: sizeKey, child: child),
+        child: KeyedSubtree(
+          key: sizeKey,
+          child: DecoratedBox(
+            key: const ValueKey('composer-dock-band'),
+            decoration: BoxDecoration(
+              color: context.colors.surface,
+              border: Border(
+                top: BorderSide(
+                  color: navigationDivider(context, 0.05),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.only(top: Grid.xxs),
+              child: child,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -16,6 +16,7 @@ import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
+import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _channelId = 'forum-channel';
@@ -757,6 +758,24 @@ void main() {
 
       expect(find.text('First post'), findsOneWidget);
       expect(find.text('Second post'), findsOneWidget);
+    });
+
+    testWidgets('the first post keeps a gap below the header', (tester) async {
+      await tester.pumpWidget(
+        _buildPostsView(
+          postsResponse: ForumPostsResponse(
+            posts: [_makePost(content: 'First post')],
+          ),
+          users: const {'alice': _aliceProfile},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final header = frostedAppBarHeight(tester.element(find.byType(ListView)));
+      expect(
+        tester.getTopLeft(find.byType(ForumPostCard)).dy - header,
+        Grid.xs,
+      );
     });
   });
 
