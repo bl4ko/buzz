@@ -353,9 +353,6 @@ private final class IosNavigationBarView: NSObject, FlutterPlatformView {
     }
     // iOS 26 does not composite this native edge over sibling Flutter content
     // in our embedding, so retain the ultra-thin material fallback there.
-    // Pages use a stationary native edge so UIKit's large-title inset
-    // adjustments cannot hide the status-area fade when the title expands or
-    // collapses.
     material.isHidden = usesSystemScrollEdge || opaque
     // Let the native fade extend past the bar without enlarging its hit area.
     // The mirrored content is transparent and the bottom edge is hidden.
