@@ -139,8 +139,51 @@ test("owner decisions come from the owner's own reactions on the asks", async ()
     assert.equal(owner.latest.groups.needsYou.length, 0);
     assert.equal(owner.latest.groups.inProgress.length, 1);
     transport.reactions = [reaction("r0", "✅", 11), reaction("r1", "❌", 12)];
-    await act(async () => owner.latest.refreshDecisions());
+    await act(async () => owner.latest.recordDecision(ASK, "deny"));
     await owner.waitFor(() => owner.latest.decisions.get(ASK) === "approve");
+  } finally {
+    await owner.unmount();
+  }
+});
+
+test("a sent decision moves the ask and clears the badge before the refetch", async () => {
+  const me = "d".repeat(64);
+  const transport = tasksTransport([
+    status("w", ROOT, "awaiting_owner", 10, "Merge PR 7?"),
+  ]);
+  let release;
+  transport.fetchEvents = async (filter) => {
+    transport.fetched.push(filter);
+    if (transport.fetched.length === 1) return [];
+    return new Promise((resolve) => (release = resolve));
+  };
+  const owner = createHookHarness((t) => useChannelTasks(CH, t, me));
+  try {
+    await owner.mount(transport);
+    await owner.waitFor(() => transport.fetched.length === 1);
+    await owner.waitFor(() => owner.latest.awaitingCount === 1);
+    await act(async () =>
+      owner.latest.recordDecision(ASK.toUpperCase(), "approve"),
+    );
+    assert.equal(owner.latest.decisions.get(ASK), "approve");
+    assert.equal(owner.latest.awaitingCount, 0);
+    assert.equal(owner.latest.groups.needsYou.length, 0);
+    assert.equal(owner.latest.groups.inProgress.length, 1);
+    await owner.waitFor(() => transport.fetched.length === 2);
+    await act(async () =>
+      release([
+        {
+          id: "r1",
+          pubkey: me,
+          created_at: 12,
+          kind: 7,
+          tags: [["e", ASK]],
+          content: "❌",
+          sig: "",
+        },
+      ]),
+    );
+    await owner.waitFor(() => owner.latest.decisions.get(ASK) === "deny");
   } finally {
     await owner.unmount();
   }

@@ -41,7 +41,7 @@ export type ChannelTasksState = {
   awaitingCount: number;
   isLoading: boolean;
   decisions: ReadonlyMap<string, OwnerDecision>;
-  refreshDecisions: () => void;
+  recordDecision: (askId: string, decision: OwnerDecision) => void;
   setStatus: (task: ThreadTask, status: TaskStatus) => Promise<void>;
 };
 
@@ -100,16 +100,34 @@ export function useChannelTasks(
         : Promise.resolve([]),
   });
   useLiveChannelEvents(channelId, decisionFilter, decisionKey, transport);
+  const scope = `${channelId ?? ""}|${me}`;
+  const [sent, setSent] = React.useState<{
+    scope: string;
+    decisions: ReadonlyMap<string, OwnerDecision>;
+  }>({ scope, decisions: new Map() });
   const decisions = React.useMemo(
-    () => ownerDecisions(decisionQuery.data ?? [], me),
-    [decisionQuery.data, me],
+    () =>
+      new Map([
+        ...(sent.scope === scope ? sent.decisions : []),
+        ...ownerDecisions(decisionQuery.data ?? [], me),
+      ]),
+    [sent, scope, decisionQuery.data, me],
   );
   const decisionKeyString = JSON.stringify(decisionKey);
-  const refreshDecisions = React.useCallback(() => {
-    void queryClient.invalidateQueries({
-      queryKey: JSON.parse(decisionKeyString) as unknown[],
-    });
-  }, [decisionKeyString, queryClient]);
+  const recordDecision = React.useCallback(
+    (askId: string, decision: OwnerDecision) => {
+      const id = askId.toLowerCase();
+      setSent((current) => {
+        const known = current.scope === scope ? current.decisions : new Map();
+        if (known.has(id)) return current;
+        return { scope, decisions: new Map(known).set(id, decision) };
+      });
+      void queryClient.invalidateQueries({
+        queryKey: JSON.parse(decisionKeyString) as unknown[],
+      });
+    },
+    [scope, decisionKeyString, queryClient],
+  );
   const setStatus = React.useCallback(
     async (task: ThreadTask, status: TaskStatus) => {
       if (!channelId) return;
@@ -144,7 +162,7 @@ export function useChannelTasks(
       awaitingCount: groups.needsYou.length,
       isLoading: query.isLoading,
       decisions,
-      refreshDecisions,
+      recordDecision,
       setStatus,
     };
   }, [
@@ -152,7 +170,7 @@ export function useChannelTasks(
     taskMap,
     query.isLoading,
     decisions,
-    refreshDecisions,
+    recordDecision,
     setStatus,
   ]);
 }

@@ -36,7 +36,7 @@ function TaskRow({
   stored: OwnerDecision | undefined;
   settling: () => boolean;
   onMoved: () => void;
-  onDecided: () => void;
+  onDecided: (askId: string, decision: OwnerDecision) => void;
   onOpenThread: (rootId: string) => void;
   onReact: (eventId: string, emoji: string) => Promise<void>;
   onDone: (task: ThreadTask) => Promise<void>;
@@ -110,7 +110,7 @@ function TaskRow({
                 "Couldn't send approval",
                 () => {
                   setAnswered({ askId: ask.eventId, value: "approve" });
-                  onDecided();
+                  onDecided(ask.eventId, "approve");
                 },
               )
             }
@@ -129,7 +129,7 @@ function TaskRow({
                 "Couldn't send denial",
                 () => {
                   setAnswered({ askId: ask.eventId, value: "deny" });
-                  onDecided();
+                  onDecided(ask.eventId, "deny");
                 },
               )
             }
@@ -181,9 +181,9 @@ export function ChannelTasksTab({
   const onMoved = () => {
     movedAt.current = Date.now();
   };
-  const onDecided = () => {
+  const onDecided = (askId: string, decision: OwnerDecision) => {
     onMoved();
-    tasks.refreshDecisions();
+    tasks.recordDecision(askId, decision);
   };
   const onDone = (task: ThreadTask) => tasks.setStatus(task, "done");
   const section = (id: string, title: string, list: ThreadTask[]) =>

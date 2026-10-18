@@ -38,7 +38,7 @@ async function render(
   onReactOverride = null,
   decisions = new Map(),
 ) {
-  calls = { opened: [], reacted: [], status: [], refreshed: 0 };
+  calls = { opened: [], reacted: [], status: [], recorded: [] };
   const groups = groupThreadTasks(tasks, decisions);
   const state = {
     channelId: "c",
@@ -47,9 +47,7 @@ async function render(
     awaitingCount: groups.needsYou.length,
     isLoading: false,
     decisions,
-    refreshDecisions: () => {
-      calls.refreshed += 1;
-    },
+    recordDecision: (askId, decision) => calls.recorded.push([askId, decision]),
     setStatus: async (t, s) => calls.status.push([t.rootId, s]),
   };
   container = document.createElement("div");
@@ -89,7 +87,7 @@ test("groups, ask, approve, deny, done, and open", async () => {
   await act(async () => q("task-approve").click());
   assert.deepEqual(calls.reacted, [[ASK, "✅"]]);
   assert.equal(q("task-decision").textContent, "Approved");
-  assert.equal(calls.refreshed, 1);
+  assert.deepEqual(calls.recorded, [[ASK, "approve"]]);
   await new Promise((resolve) => setTimeout(resolve, 600));
   await act(async () =>
     container.querySelector('[data-testid="task-done"]').click(),
@@ -120,6 +118,7 @@ test("a decision replaces the buttons and a failed publish shows an error", asyn
   await render();
   await act(async () => q("task-deny").click());
   assert.deepEqual(calls.reacted, [[ASK, "❌"]]);
+  assert.deepEqual(calls.recorded, [[ASK, "deny"]]);
   assert.equal(q("task-decision").textContent, "Denied");
   assert.equal(q("task-approve"), null);
   assert.equal(q("task-deny"), null);
@@ -157,7 +156,7 @@ test("a new ask on the same case shows the buttons again", async () => {
           awaitingCount: 1,
           isLoading: false,
           decisions: new Map(),
-          refreshDecisions: () => {},
+          recordDecision: () => {},
           setStatus: async () => {},
         },
         canSetStatus: true,
@@ -220,7 +219,7 @@ test("a fast second click cannot decide or open the row that moves up", async ()
         awaitingCount: groups.needsYou.length,
         isLoading: false,
         decisions,
-        refreshDecisions: () => {},
+        recordDecision: () => {},
         setStatus: async () => {},
       },
       canSetStatus: true,
@@ -233,7 +232,7 @@ test("a fast second click cannot decide or open the row that moves up", async ()
       },
     });
   }
-  calls = { opened: [], reacted: [], status: [], refreshed: 0 };
+  calls = { opened: [], reacted: [], status: [], recorded: [] };
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -268,7 +267,7 @@ test("a fast second click on Done cannot close the row that moves up", async () 
         awaitingCount: 0,
         isLoading: false,
         decisions: new Map(),
-        refreshDecisions: () => {},
+        recordDecision: () => {},
         setStatus: async (t, s) => {
           status.push(t.rootId[0]);
           setList((current) =>
