@@ -153,6 +153,7 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       if (!mounted || ref.read(pendingDeepLinkProvider) != link) return;
       if (preparation == DeepLinkCommunityPreparation.switched) return;
       if (preparation != DeepLinkCommunityPreparation.ready) {
+        _showTasksLinkFailed();
         notifier.consume();
         return;
       }
@@ -175,14 +176,18 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       if (channel != null) {
         _pushChannel(channel, link);
       } else {
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(const SnackBar(content: Text(tasksLinkFailedMessage)));
+        _showTasksLinkFailed();
       }
       notifier.consume();
     } finally {
       if (_resolvingTasks == link) _resolvingTasks = null;
     }
+  }
+
+  void _showTasksLinkFailed() {
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(const SnackBar(content: Text(tasksLinkFailedMessage)));
   }
 
   void _dispatchNavigableLink(BuzzDeepLink link) {

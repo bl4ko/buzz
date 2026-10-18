@@ -894,7 +894,7 @@ void main() {
       expect(find.byType(_CapturedDestination), findsOneWidget);
     });
 
-    testWidgets('unknown origin does nothing', (tester) async {
+    testWidgets('unknown origin shows a notice', (tester) async {
       final link = TasksDeepLink(
         origin: 'https://unknown.example',
         eventId: askId,
@@ -909,7 +909,7 @@ void main() {
         },
       );
       expect(find.byType(_CapturedDestination), findsNothing);
-      expect(find.byType(SnackBar), findsNothing);
+      expect(find.text(tasksLinkFailedMessage), findsOneWidget);
       expect(lookups, 0);
       expect(container.read(pendingDeepLinkProvider), isNull);
     });
