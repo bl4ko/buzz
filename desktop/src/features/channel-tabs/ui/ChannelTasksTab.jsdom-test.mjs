@@ -38,17 +38,16 @@ async function render(
   onReactOverride = null,
   decisions = new Map(),
 ) {
-  calls = { opened: [], reacted: [], status: [], refreshed: 0 };
+  calls = { opened: [], reacted: [], status: [], recorded: [] };
+  const groups = groupThreadTasks(tasks, decisions);
   const state = {
     channelId: "c",
     tasks,
-    groups: groupThreadTasks(tasks),
-    awaitingCount: 1,
+    groups,
+    awaitingCount: groups.needsYou.length,
     isLoading: false,
     decisions,
-    refreshDecisions: () => {
-      calls.refreshed += 1;
-    },
+    recordDecision: (askId, decision) => calls.recorded.push([askId, decision]),
     setStatus: async (t, s) => calls.status.push([t.rootId, s]),
   };
   container = document.createElement("div");
@@ -88,11 +87,13 @@ test("groups, ask, approve, deny, done, and open", async () => {
   await act(async () => q("task-approve").click());
   assert.deepEqual(calls.reacted, [[ASK, "✅"]]);
   assert.equal(q("task-decision").textContent, "Approved");
-  assert.equal(calls.refreshed, 1);
+  assert.deepEqual(calls.recorded, [[ASK, "approve"]]);
+  await new Promise((resolve) => setTimeout(resolve, 600));
   await act(async () =>
     container.querySelector('[data-testid="task-done"]').click(),
   );
   assert.deepEqual(calls.status, [["1".repeat(64), "done"]]);
+  await new Promise((resolve) => setTimeout(resolve, 600));
   await act(async () =>
     container.querySelector('[data-testid="task-open"]').click(),
   );
@@ -117,6 +118,7 @@ test("a decision replaces the buttons and a failed publish shows an error", asyn
   await render();
   await act(async () => q("task-deny").click());
   assert.deepEqual(calls.reacted, [[ASK, "❌"]]);
+  assert.deepEqual(calls.recorded, [[ASK, "deny"]]);
   assert.equal(q("task-decision").textContent, "Denied");
   assert.equal(q("task-approve"), null);
   assert.equal(q("task-deny"), null);
@@ -154,7 +156,7 @@ test("a new ask on the same case shows the buttons again", async () => {
           awaitingCount: 1,
           isLoading: false,
           decisions: new Map(),
-          refreshDecisions: () => {},
+          recordDecision: () => {},
           setStatus: async () => {},
         },
         canSetStatus: true,
@@ -170,6 +172,9 @@ test("a new ask on the same case shows the buttons again", async () => {
 
 test("a stored owner reaction shows the decision after a remount", async () => {
   await render(true, null, new Map([[ASK, "deny"]]));
+  assert.equal(q("tasks-group-needs-you"), null);
+  assert.match(q("tasks-group-in-progress").textContent, /Merge PR 7\?/);
+  assert.doesNotMatch(q("tasks-group-in-progress").textContent, /Needs you/);
   assert.equal(q("task-decision").textContent, "Denied");
   assert.equal(q("task-approve"), null);
   assert.equal(q("task-deny"), null);
@@ -193,4 +198,99 @@ test("both buttons stay disabled while a send is pending", async () => {
   assert.equal(q("task-deny").disabled, true);
   await act(async () => release());
   assert.equal(q("task-decision").textContent, "Approved");
+});
+
+test("a fast second click cannot decide or open the row that moves up", async () => {
+  const second = task("5".repeat(64), "awaiting_owner", {
+    createdAt: 9,
+    ask: { text: "Second?", eventId: "c".repeat(64) },
+  });
+  const list = [tasks[0], second];
+  const reacted = [];
+  const opened = [];
+  function Harness() {
+    const [decisions, setDecisions] = React.useState(new Map());
+    const groups = groupThreadTasks(list, decisions);
+    return React.createElement(ChannelTasksTab, {
+      tasks: {
+        channelId: "c",
+        tasks: list,
+        groups,
+        awaitingCount: groups.needsYou.length,
+        isLoading: false,
+        decisions,
+        recordDecision: () => {},
+        setStatus: async () => {},
+      },
+      canSetStatus: true,
+      onOpenThread: (rootId) => opened.push(rootId),
+      onReact: async (eventId, emoji) => {
+        reacted.push([eventId, emoji]);
+        setDecisions((current) =>
+          new Map(current).set(eventId, emoji === "✅" ? "approve" : "deny"),
+        );
+      },
+    });
+  }
+  calls = { opened: [], reacted: [], status: [], recorded: [] };
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => root.render(React.createElement(Harness)));
+  await act(async () => q("task-approve").click());
+  assert.deepEqual(reacted, [[ASK, "✅"]]);
+  await act(async () => q("task-approve").click());
+  await act(async () => q("task-open").click());
+  assert.deepEqual(reacted, [[ASK, "✅"]]);
+  assert.deepEqual(opened, []);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await act(async () => q("task-approve").click());
+  assert.deepEqual(reacted, [
+    [ASK, "✅"],
+    ["c".repeat(64), "✅"],
+  ]);
+});
+
+test("a fast second click on Done cannot close the row that moves up", async () => {
+  const status = [];
+  function Harness() {
+    const [list, setList] = React.useState([
+      task("1".repeat(64), "in_progress"),
+      task("2".repeat(64), "in_progress", { createdAt: 9 }),
+    ]);
+    const groups = groupThreadTasks(list);
+    return React.createElement(ChannelTasksTab, {
+      tasks: {
+        channelId: "c",
+        tasks: list,
+        groups,
+        awaitingCount: 0,
+        isLoading: false,
+        decisions: new Map(),
+        recordDecision: () => {},
+        setStatus: async (t, s) => {
+          status.push(t.rootId[0]);
+          setList((current) =>
+            current.map((item) =>
+              item.rootId === t.rootId ? { ...item, status: s } : item,
+            ),
+          );
+        },
+      },
+      canSetStatus: true,
+      onOpenThread: () => {},
+      onReact: async () => {},
+    });
+  }
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => root.render(React.createElement(Harness)));
+  await act(async () => q("task-done").click());
+  assert.deepEqual(status, ["1"]);
+  await act(async () => q("task-done").click());
+  assert.deepEqual(status, ["1"]);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await act(async () => q("task-done").click());
+  assert.deepEqual(status, ["1", "2"]);
 });

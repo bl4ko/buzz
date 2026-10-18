@@ -115,6 +115,25 @@ test("groupThreadTasks puts open with in progress and keeps 20 done", () => {
   assert.equal(groups.done[0].eventId, "d24");
 });
 
+test("groupThreadTasks moves a decided ask from Needs you to In progress", () => {
+  const tasks = [
+    ...reduceThreadTasks(
+      [
+        status("w", "awaiting_owner", 2, { root: "2".repeat(64), ask: "Q?" }),
+        status("o", "open", 1, { root: "1".repeat(64) }),
+      ],
+      CH,
+    ).values(),
+  ];
+  assert.equal(groupThreadTasks(tasks).needsYou.length, 1);
+  const groups = groupThreadTasks(tasks, new Map([[ASK, "approve"]]));
+  assert.equal(groups.needsYou.length, 0);
+  assert.deepEqual(
+    groups.inProgress.map((task) => task.eventId),
+    ["w", "o"],
+  );
+});
+
 test("buildThreadStatusTags writes the contract order", () => {
   assert.deepEqual(
     buildThreadStatusTags({

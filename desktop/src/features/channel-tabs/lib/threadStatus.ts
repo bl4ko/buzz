@@ -93,7 +93,10 @@ export function reduceThreadTasks(
   return tasks;
 }
 
-export function groupThreadTasks(tasks: Iterable<ThreadTask>): TaskGroups {
+export function groupThreadTasks(
+  tasks: Iterable<ThreadTask>,
+  decisions: ReadonlyMap<string, OwnerDecision> = new Map(),
+): TaskGroups {
   const groups: TaskGroups = {
     needsYou: [],
     inProgress: [],
@@ -101,7 +104,11 @@ export function groupThreadTasks(tasks: Iterable<ThreadTask>): TaskGroups {
     done: [],
   };
   for (const task of tasks) {
-    if (task.status === "awaiting_owner") groups.needsYou.push(task);
+    if (
+      task.status === "awaiting_owner" &&
+      !(task.ask && decisions.has(task.ask.eventId))
+    )
+      groups.needsYou.push(task);
     else if (task.status === "blocked") groups.blocked.push(task);
     else if (task.status === "done") groups.done.push(task);
     else groups.inProgress.push(task);

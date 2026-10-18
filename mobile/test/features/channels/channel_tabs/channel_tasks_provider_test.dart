@@ -154,10 +154,11 @@ void main() {
     relay.live!(reaction('r3', 'f' * 64, '❌', 1));
     expect(tasks.read().decisions[fixtures.ask], OwnerDecision.approve);
     expect(tasks.read().awaitingCount, 0);
-    expect(tasks.read().groups.needsYou, hasLength(1));
+    expect(tasks.read().groups.needsYou, isEmpty);
+    expect(tasks.read().groups.inProgress, hasLength(1));
   });
 
-  test('the badge counts only awaiting asks without an owner decision', () {
+  test('the badge and Needs you hold only asks without an owner decision', () {
     ThreadTask awaiting(String id) => ThreadTask(
       rootId: id * 64,
       channelId: pinsChannelId,
@@ -175,7 +176,8 @@ void main() {
       },
       {'2' * 64: OwnerDecision.approve, '3' * 64: OwnerDecision.deny},
     );
-    expect(state.groups.needsYou, hasLength(3));
-    expect(state.awaitingCount, 1);
+    expect(state.groups.needsYou.map((t) => t.title), ['Task 1']);
+    expect(state.awaitingCount, state.groups.needsYou.length);
+    expect(state.groups.inProgress, hasLength(2));
   });
 }

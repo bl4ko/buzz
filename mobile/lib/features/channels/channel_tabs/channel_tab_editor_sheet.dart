@@ -30,7 +30,7 @@ import 'channel_tabs_provider.dart';
   );
 }
 
-Future<void> showChannelTabEditor(
+Future<String?> showChannelTabEditor(
   BuildContext context,
   WidgetRef ref, {
   required String channelId,
@@ -40,6 +40,7 @@ Future<void> showChannelTabEditor(
   final title = TextEditingController(text: initial?.title ?? '');
   final value = TextEditingController(text: initial?.value ?? '');
   String? error;
+  String? added;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -106,6 +107,7 @@ Future<void> showChannelTabEditor(
                       ? addTab(current, tab)
                       : renameTab(current, tab.id, tab.title),
                 );
+                if (initial == null) added = tab.id;
                 if (sheetContext.mounted) Navigator.of(sheetContext).pop();
               },
               child: Text(initial == null ? 'Add' : 'Save'),
@@ -115,6 +117,7 @@ Future<void> showChannelTabEditor(
       ),
     ),
   );
+  return added;
 }
 
 Future<void> showChannelTabActions(

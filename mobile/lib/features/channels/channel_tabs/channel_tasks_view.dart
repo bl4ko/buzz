@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../shared/theme/buzz_icons.dart';
@@ -31,6 +33,15 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
   final Map<String, OwnerDecision> _decided = {};
   final Set<String> _pending = {};
   final Set<String> _closing = {};
+  Timer? _rowsMoved;
+
+  bool get _settling => _rowsMoved?.isActive ?? false;
+
+  @override
+  void dispose() {
+    _rowsMoved?.cancel();
+    super.dispose();
+  }
 
   Future<void> _run(
     Future<void> Function() action,
@@ -50,6 +61,7 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
   }
 
   Future<void> _send(String eventId, OwnerDecision decision) async {
+    if (_settling) return;
     setState(() => _pending.add(eventId));
     await _run(
       () => widget.onReact(
@@ -59,14 +71,27 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
       decision == OwnerDecision.approve
           ? "Couldn't send approval"
           : "Couldn't send denial",
-      onSuccess: () => _decided[eventId] = decision,
+      onSuccess: () {
+        _decided[eventId] = decision;
+        _holdTaps();
+      },
     );
     if (mounted) setState(() => _pending.remove(eventId));
   }
 
+  void _holdTaps() {
+    _rowsMoved?.cancel();
+    _rowsMoved = Timer(const Duration(milliseconds: 500), () {});
+  }
+
   Future<void> _close(ThreadTask task) async {
+    if (_settling) return;
     setState(() => _closing.add(task.rootId));
-    await _run(() => widget.onDone(task), "Couldn't close the task");
+    await _run(
+      () => widget.onDone(task),
+      "Couldn't close the task",
+      onSuccess: _holdTaps,
+    );
     if (mounted) setState(() => _closing.remove(task.rootId));
   }
 
@@ -79,7 +104,9 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
     final textTheme = context.textTheme;
     return InkWell(
       key: Key('task-row-${task.rootId}'),
-      onTap: () => widget.onOpenThread(task.rootId),
+      onTap: () {
+        if (!_settling && !pending) widget.onOpenThread(task.rootId);
+      },
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
           Grid.xs,
@@ -96,22 +123,19 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: Grid.xxs,
+                      runSpacing: Grid.quarter,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Flexible(
-                          child: Text(
-                            task.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        Text(
+                          task.title,
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (decision != null) ...[
-                          const SizedBox(width: Grid.xxs),
+                        if (decision != null)
                           TaskDecisionChip(decision: decision),
-                        ],
                       ],
                     ),
                     if (ask != null)

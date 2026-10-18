@@ -7,6 +7,7 @@ import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
 import 'package:buzz/shared/theme/buzz_icons.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 ThreadTask task(String id, TaskStatus status, {ThreadTaskAsk? ask}) =>
@@ -96,19 +97,18 @@ void main() {
     expect(find.text('Approve'), findsNothing);
   });
 
-  testWidgets('a decided row stays in Needs you with a chip and no buttons', (
+  testWidgets('a decided row moves to In progress with a chip and no buttons', (
     tester,
   ) async {
     final t = task('1', TaskStatus.awaitingOwner, ask: ask);
-    await pump(
-      tester,
-      canSetStatus: true,
-      tasks: ChannelTasksState(
-        {t.rootId: t},
-        {ask.eventId: OwnerDecision.deny},
-      ),
+    final decided = ChannelTasksState(
+      {t.rootId: t},
+      {ask.eventId: OwnerDecision.deny},
     );
-    expect(find.text('Needs you · 1'), findsOneWidget);
+    await pump(tester, canSetStatus: true, tasks: decided);
+    expect(decided.awaitingCount, 0);
+    expect(find.textContaining('Needs you'), findsNothing);
+    expect(find.text('In progress · 1'), findsOneWidget);
     expect(inRow('Task 1', find.byType(TaskDecisionChip)), findsOneWidget);
     expect(inRow('Task 1', find.text('Denied')), findsOneWidget);
     expect(find.text('Approve'), findsNothing);
@@ -122,6 +122,7 @@ void main() {
     final log = await pump(tester, canSetStatus: true);
     await tester.tap(inRow('Task 1', find.byTooltip('Mark Task 1 done')));
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.text('Task 2'));
     expect(find.text('Task 4'), findsNothing);
     expect(find.byIcon(BuzzIcons.chevronRight), findsOneWidget);
@@ -167,8 +168,56 @@ void main() {
     expect(find.text('Merge PR 7?'), findsOneWidget);
   });
 
-  testWidgets('titles keep one line and asks keep two lines', (tester) async {
-    final long = task(
+  testWidgets('titles wrap at the largest text size and asks keep two lines', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1206, 2622);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    const title = 'Rotate the staging relay key';
+    const long = ThreadTask(
+      rootId: 'a',
+      channelId: 'c',
+      status: TaskStatus.awaitingOwner,
+      title: title,
+      ask: ThreadTaskAsk(text: 'Rotate it now?', eventId: 'b'),
+      author: 'e',
+      createdAt: 10,
+      eventId: 'a',
+    );
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(
+          size: Size(402, 874),
+          textScaler: TextScaler.linear(3.12),
+        ),
+        child: app(
+          ChannelTasksView(
+            state: const ChannelTasksState(
+              {'a': long},
+              {'b': OwnerDecision.approve},
+            ),
+            canSetStatus: true,
+            onReact: (_, _) async {},
+            onDone: (_) async {},
+            onOpenThread: (_) {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    final paragraph = tester.renderObject<RenderParagraph>(find.text(title));
+    expect(paragraph.didExceedMaxLines, isFalse);
+    final titleRect = tester.getRect(find.text(title));
+    final chipRect = tester.getRect(find.byType(TaskDecisionChip));
+    expect(titleRect.overlaps(chipRect), isFalse);
+    expect(chipRect.right, lessThanOrEqualTo(402));
+    expect(
+      tester.getRect(find.byTooltip('Mark $title done')).overlaps(titleRect),
+      isFalse,
+    );
+
+    final askRow = task(
       '1',
       TaskStatus.awaitingOwner,
       ask: ThreadTaskAsk(text: 'Ask ' * 80, eventId: 'b' * 64),
@@ -176,11 +225,8 @@ void main() {
     await pump(
       tester,
       canSetStatus: true,
-      tasks: ChannelTasksState({long.rootId: long}),
+      tasks: ChannelTasksState({askRow.rootId: askRow}),
     );
-    final title = tester.widget<Text>(find.text('Task 1'));
-    expect(title.maxLines, 1);
-    expect(title.overflow, TextOverflow.ellipsis);
     final askText = tester.widget<Text>(find.text('Ask ' * 80));
     expect(askText.maxLines, 2);
     expect(askText.overflow, TextOverflow.ellipsis);
@@ -243,6 +289,7 @@ void main() {
     await tester.pumpWidget(host(withAsk('c' * 64), (_, _) async {}));
     expect(find.text('Approve'), findsOneWidget);
     expect(find.text('Approved'), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.text('Deny'));
     await tester.pump();
     expect(find.text('Denied'), findsOneWidget);
@@ -358,8 +405,157 @@ void main() {
     );
     pending.complete();
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     await tester.tap(button);
     await tester.pump();
     expect(calls, 2);
+  });
+
+  testWidgets('a fast second tap cannot decide or open the row that moves up', (
+    tester,
+  ) async {
+    final first = task(
+      '1',
+      TaskStatus.awaitingOwner,
+      ask: ThreadTaskAsk(text: 'First?', eventId: 'b' * 64),
+    );
+    final second = ThreadTask(
+      rootId: '2' * 64,
+      channelId: 'c',
+      status: TaskStatus.awaitingOwner,
+      title: 'Task 2',
+      ask: ThreadTaskAsk(text: 'Second?', eventId: 'c' * 64),
+      author: 'e' * 64,
+      createdAt: 9,
+      eventId: '2' * 64,
+    );
+    var decisions = <String, OwnerDecision>{};
+    final log = <String>[];
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => app(
+          ChannelTasksView(
+            state: ChannelTasksState({
+              first.rootId: first,
+              second.rootId: second,
+            }, decisions),
+            canSetStatus: true,
+            onReact: (eventId, emoji) async {
+              log.add('react:$emoji:${eventId[0]}');
+              setState(
+                () => decisions = {
+                  ...decisions,
+                  eventId: emoji == approveEmoji
+                      ? OwnerDecision.approve
+                      : OwnerDecision.deny,
+                },
+              );
+            },
+            onDone: (_) async {},
+            onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+          ),
+        ),
+      ),
+    );
+    final approve = tester.getCenter(find.text('Approve').first);
+    final title = tester.getCenter(find.text('Task 1'));
+    await tester.tapAt(approve);
+    await tester.pump();
+    expect(find.text('Needs you · 1'), findsOneWidget);
+    expect(tester.getCenter(find.text('Approve')), approve);
+    await tester.tapAt(approve);
+    await tester.tapAt(title);
+    await tester.pump();
+    expect(log, ['react:✅:b']);
+    expect(decisions.keys, ['b' * 64]);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tapAt(approve);
+    await tester.pump();
+    expect(log, ['react:✅:b', 'react:✅:c']);
+  });
+
+  testWidgets('a fast second tap on Done cannot close the row that moves up', (
+    tester,
+  ) async {
+    ThreadTask open(String id, int createdAt, [TaskStatus? status]) =>
+        ThreadTask(
+          rootId: id * 64,
+          channelId: 'c',
+          status: status ?? TaskStatus.inProgress,
+          title: 'Task $id',
+          ask: null,
+          author: 'e' * 64,
+          createdAt: createdAt,
+          eventId: id * 64,
+        );
+    var tasks = {
+      for (final t in [open('1', 10), open('2', 9)]) t.rootId: t,
+    };
+    final log = <String>[];
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => app(
+          ChannelTasksView(
+            state: ChannelTasksState(tasks),
+            canSetStatus: true,
+            onReact: (_, _) async {},
+            onDone: (t) async {
+              log.add('done:${t.rootId[0]}');
+              setState(
+                () => tasks = {
+                  ...tasks,
+                  t.rootId: open(t.rootId[0], t.createdAt, TaskStatus.done),
+                },
+              );
+            },
+            onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+          ),
+        ),
+      ),
+    );
+    final done = tester.getCenter(find.byTooltip('Mark Task 1 done'));
+    await tester.tapAt(done);
+    await tester.pump();
+    expect(tester.getCenter(find.byTooltip('Mark Task 2 done')), done);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tapAt(done);
+    await tester.pump();
+    expect(log, ['done:1']);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tapAt(done);
+    await tester.pump();
+    expect(log, ['done:1', 'done:2']);
+  });
+
+  testWidgets('a tap on the row does not open it while its decision sends', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    final log = <String>[];
+    await tester.pumpWidget(
+      app(
+        ChannelTasksView(
+          state: withAsk('b' * 64),
+          canSetStatus: true,
+          onReact: (_, _) => pending.future,
+          onDone: (_) async {},
+          onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+        ),
+      ),
+    );
+    final approve = tester.getCenter(find.text('Approve'));
+    await tester.tapAt(approve);
+    await tester.pump();
+    await tester.tapAt(approve);
+    await tester.tap(find.text('Task 1'));
+    await tester.pump();
+    expect(log, isEmpty);
+    pending.complete();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Task 1'));
+    expect(log, ['open:1']);
   });
 }

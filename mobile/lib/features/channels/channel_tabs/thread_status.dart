@@ -146,16 +146,25 @@ class ThreadTaskGroups {
   final List<ThreadTask> done;
 }
 
-ThreadTaskGroups groupThreadTasks(Iterable<ThreadTask> tasks) {
+ThreadTaskGroups groupThreadTasks(
+  Iterable<ThreadTask> tasks, [
+  Map<String, OwnerDecision> decisions = const {},
+]) {
   int newestFirst(ThreadTask a, ThreadTask b) => b.createdAt != a.createdAt
       ? b.createdAt.compareTo(a.createdAt)
       : a.eventId.compareTo(b.eventId);
   List<ThreadTask> pick(bool Function(ThreadTask) test) =>
       tasks.where(test).toList()..sort(newestFirst);
+  bool needsYou(ThreadTask t) =>
+      t.status == TaskStatus.awaitingOwner &&
+      (t.ask == null || !decisions.containsKey(t.ask!.eventId));
   return ThreadTaskGroups(
-    needsYou: pick((t) => t.status == TaskStatus.awaitingOwner),
+    needsYou: pick(needsYou),
     inProgress: pick(
-      (t) => t.status == TaskStatus.open || t.status == TaskStatus.inProgress,
+      (t) =>
+          t.status == TaskStatus.open ||
+          t.status == TaskStatus.inProgress ||
+          (t.status == TaskStatus.awaitingOwner && !needsYou(t)),
     ),
     blocked: pick((t) => t.status == TaskStatus.blocked),
     done: pick((t) => t.status == TaskStatus.done).take(20).toList(),
