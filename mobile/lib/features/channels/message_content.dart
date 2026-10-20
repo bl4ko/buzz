@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -40,6 +42,7 @@ import 'message_media_geometry.dart';
 import 'voice_note_attachment.dart';
 
 part 'message_content/media_carousel.dart';
+part 'message_content/message_fold.dart';
 part 'message_content/inline_components.dart';
 part 'message_content/token_pill.dart';
 part 'message_content/themed_bold_md.dart';
@@ -132,6 +135,10 @@ class MessageContent extends HookConsumerWidget {
 
   final int? maxLines;
 
+  final String? foldId;
+
+  final bool foldExpanded;
+
   /// Render a body that is nothing but emoji at [kEmojiOnlyFontSize], the way
   /// desktop's `MessageRow` does. Off by default: previews, search hits, and
   /// notification rows want a message to occupy its usual line height whatever
@@ -162,6 +169,8 @@ class MessageContent extends HookConsumerWidget {
     this.baseStyle,
     this.textAlign,
     this.maxLines,
+    this.foldId,
+    this.foldExpanded = false,
     this.scaleEmojiOnly = false,
     this.mediaCarouselLeadingOverflow = 0,
     this.mediaCarouselTrailingOverflow = 0,
@@ -354,13 +363,24 @@ class MessageContent extends HookConsumerWidget {
         inlineComponents: inlineComponents,
       ),
     );
-    if (trailingGallery == null) return markdown;
+    final lineHeight = (style?.fontSize ?? 15) * (style?.height ?? 1.3);
+    final body = foldId != null && maxLines == null && !emojiOnly
+        ? _MessageFold(
+            foldId: foldId!,
+            foldHeight:
+                MediaQuery.textScalerOf(context).scale(lineHeight) *
+                messageFoldLines,
+            forceExpanded: foldExpanded,
+            child: markdown,
+          )
+        : markdown;
+    if (trailingGallery == null) return body;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (trailingGallery.content.trim().isNotEmpty) markdown,
+        if (trailingGallery.content.trim().isNotEmpty) body,
         _MessageImageCarousel(
           key: ValueKey(
             trailingGallery.items.map((item) => item.url).join('\u0000'),

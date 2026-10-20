@@ -289,6 +289,8 @@ class _MessageBubble extends HookConsumerWidget {
                                       color: context.colors.onSurface,
                                     ),
                                     scaleEmojiOnly: true,
+                                    foldId: message.id,
+                                    foldExpanded: isHighlighted,
                                     mediaCarouselTrailingOverflow: Grid.gutter,
                                     onMediaReply: allMessages == null
                                         ? null
