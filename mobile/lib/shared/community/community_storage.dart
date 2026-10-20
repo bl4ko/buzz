@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:nostr/nostr.dart' as nostr;
 
 import '../storage/secure_storage.dart';
 import '../storage/serial_queue.dart';
@@ -13,10 +14,50 @@ import 'community.dart';
 
 typedef SecureStorageWrite = Future<void> Function(String key, String value);
 
+typedef PushIdentityCopies = Future<List<Map<Object?, Object?>>> Function();
+
 const _secureStorageChannel = MethodChannel('buzz/secure_storage');
 
 Future<void> _keychainWrite(String key, String value) => _secureStorageChannel
     .invokeMethod<void>('write', {'key': key, 'value': value});
+
+Future<List<Map<Object?, Object?>>> _pushIdentityCopies() async {
+  try {
+    return await _secureStorageChannel.invokeListMethod<Map<Object?, Object?>>(
+          'recoverCommunities',
+        ) ??
+        const [];
+  } on MissingPluginException {
+    return const [];
+  }
+}
+
+Community? _recoveredCommunity(Map<Object?, Object?> copy) {
+  final [id, name, relayUrl, pubkey, privateKey] = [
+    for (final field in ['id', 'name', 'relayUrl', 'pubkey', 'privateKey'])
+      copy[field],
+  ];
+  if (id is! String ||
+      name is! String ||
+      relayUrl is! String ||
+      pubkey is! String ||
+      privateKey is! String) {
+    return null;
+  }
+  try {
+    final keys = nostr.Keys(privateKey);
+    if (keys.public != pubkey.toLowerCase()) return null;
+    return Community.recovered(
+      id: id,
+      name: name,
+      relayUrl: relayUrl,
+      pubkey: keys.public,
+      nsec: keys.nsec,
+    );
+  } catch (_) {
+    return null;
+  }
+}
 
 class CommunityStorage {
   static const _keyCommunities = 'buzz_communities';
@@ -33,14 +74,31 @@ class CommunityStorage {
 
   final FlutterSecureStorage _secure;
   final SecureStorageWrite? _inPlaceWrite;
+  final PushIdentityCopies? _pushCopies;
 
-  CommunityStorage({FlutterSecureStorage? secure, SecureStorageWrite? write})
-    : _secure = secure ?? communitySecureStorage,
-      _inPlaceWrite =
-          write ??
-          (secure == null && defaultTargetPlatform == TargetPlatform.iOS
-              ? _keychainWrite
-              : null);
+  CommunityStorage({
+    FlutterSecureStorage? secure,
+    SecureStorageWrite? write,
+    PushIdentityCopies? pushCopies,
+  }) : _secure = secure ?? communitySecureStorage,
+       _inPlaceWrite =
+           write ??
+           (secure == null && defaultTargetPlatform == TargetPlatform.iOS
+               ? _keychainWrite
+               : null),
+       _pushCopies =
+           pushCopies ??
+           (secure == null && defaultTargetPlatform == TargetPlatform.iOS
+               ? _pushIdentityCopies
+               : null);
+
+  Future<List<Community>> recoverFromPushCopies() async {
+    final copies = _pushCopies;
+    if (copies == null) return const [];
+    return [
+      for (final copy in await _unlocked(copies)) ?_recoveredCommunity(copy),
+    ];
+  }
 
   /// Load all communities. On first call, migrates legacy single-community
   /// credentials if present.
@@ -204,11 +262,18 @@ class CommunityStorage {
 
   Future<String?> _read(String key) => _unlocked(() => _secure.read(key: key));
 
-  Future<void> _write(String key, String value) => _unlocked(
-    () =>
-        _inPlaceWrite?.call(key, value) ??
-        _secure.write(key: key, value: value),
-  );
+  Future<void> _write(String key, String value) => _unlocked(() async {
+    final write = _inPlaceWrite;
+    if (write != null) {
+      try {
+        return await write(key, value);
+      } on MissingPluginException {
+        await _secure.write(key: key, value: value);
+        return;
+      }
+    }
+    await _secure.write(key: key, value: value);
+  });
 
   Future<void> _delete(String key) => _unlocked(() => _secure.delete(key: key));
 

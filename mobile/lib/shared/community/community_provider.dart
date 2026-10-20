@@ -252,7 +252,7 @@ class CommunityListNotifier extends AsyncNotifier<List<Community>> {
     final storage = ref.read(communityStorageProvider);
     final communities = await storage.loadAll();
     unawaited(_removeOrphanChannelListSnapshots(communities));
-    await syncCommunitySnapshot(ref, communities);
+    if (communities.isNotEmpty) await syncCommunitySnapshot(ref, communities);
     return communities;
   }
 
