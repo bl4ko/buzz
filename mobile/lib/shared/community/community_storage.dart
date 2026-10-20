@@ -1,10 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'community.dart';
+
+typedef SecureStorageWrite = Future<void> Function(String key, String value);
+
+const _secureStorageChannel = MethodChannel('buzz/secure_storage');
+
+Future<void> _keychainWrite(String key, String value) => _secureStorageChannel
+    .invokeMethod<void>('write', {'key': key, 'value': value});
 
 class CommunityStorage {
   static const _keyCommunities = 'buzz_communities';
@@ -20,9 +28,15 @@ class CommunityStorage {
   static const _interactionNotAllowed = -25308;
 
   final FlutterSecureStorage _secure;
+  final SecureStorageWrite? _inPlaceWrite;
 
-  CommunityStorage({FlutterSecureStorage? secure})
-    : _secure = secure ?? const FlutterSecureStorage();
+  CommunityStorage({FlutterSecureStorage? secure, SecureStorageWrite? write})
+    : _secure = secure ?? const FlutterSecureStorage(),
+      _inPlaceWrite =
+          write ??
+          (secure == null && defaultTargetPlatform == TargetPlatform.iOS
+              ? _keychainWrite
+              : null);
 
   /// Load all communities. On first call, migrates legacy single-community
   /// credentials if present.
@@ -118,8 +132,11 @@ class CommunityStorage {
 
   Future<String?> _read(String key) => _unlocked(() => _secure.read(key: key));
 
-  Future<void> _write(String key, String value) =>
-      _unlocked(() => _secure.write(key: key, value: value));
+  Future<void> _write(String key, String value) => _unlocked(
+    () =>
+        _inPlaceWrite?.call(key, value) ??
+        _secure.write(key: key, value: value),
+  );
 
   Future<void> _delete(String key) => _unlocked(() => _secure.delete(key: key));
 

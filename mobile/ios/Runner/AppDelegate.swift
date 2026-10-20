@@ -2,6 +2,7 @@ import AVFoundation
 import BuzzPushKit
 import DeclaredAgeRange
 import Flutter
+import Security
 import UIKit
 import UserNotifications
 import os.log
@@ -29,6 +30,8 @@ import os.log
     endpointGrantStore: endpointGrantStore,
     keychainAccessGroup: pushKeychainAccessGroup
   )
+  private var secureStorageChannel: FlutterMethodChannel?
+  private let secureStorageQueue = DispatchQueue(label: "com.bl4ko.buzz.secure-storage")
   private var hapticsChannel: FlutterMethodChannel?
   private var qrScannerChannel: FlutterMethodChannel?
   private var inlinePhotoPickerSupportChannel: FlutterMethodChannel?
@@ -93,6 +96,33 @@ import os.log
     }
     apnsRegistrationBuffer.attach { [weak self] update in
       self?.pushChannel?.invokeMethod(update.method, arguments: update.arguments)
+    }
+    secureStorageChannel = FlutterMethodChannel(
+      name: "buzz/secure_storage",
+      binaryMessenger: messenger
+    )
+    secureStorageChannel?.setMethodCallHandler { [secureStorageQueue] call, result in
+      guard call.method == "write",
+        let arguments = call.arguments as? [String: Any],
+        let key = arguments["key"] as? String,
+        let value = arguments["value"] as? String
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      secureStorageQueue.async {
+        let status = BuzzSecureStorageWriter.write(key: key, value: value)
+        DispatchQueue.main.async {
+          result(
+            status == errSecSuccess
+              ? nil
+              : FlutterError(
+                code: "Unexpected security result code",
+                message: "Code: \(status)",
+                details: Int(status)
+              ))
+        }
+      }
     }
     hapticsChannel = FlutterMethodChannel(
       name: "buzz/haptics",

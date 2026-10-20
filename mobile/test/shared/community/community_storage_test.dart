@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:buzz/shared/community/community.dart';
@@ -239,6 +241,56 @@ void main() {
       expect(loaded, hasLength(1));
       expect(loaded.first.id, ws2.id);
     });
+
+    test(
+      'iOS writes replace stored values in place and keep them on failure',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        const channel = MethodChannel('buzz/secure_storage');
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        final keychain = <String, String>{};
+        final writes = <String>[];
+        PlatformException? failure;
+        FlutterSecureStorage.setMockInitialValues(keychain);
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          final arguments = call.arguments as Map<Object?, Object?>;
+          writes.add('${call.method} ${arguments['key']}');
+          if (failure != null) throw failure;
+          keychain[arguments['key']! as String] = arguments['value']! as String;
+          return null;
+        });
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        addTearDown(() {
+          debugDefaultTargetPlatformOverride = null;
+          messenger.setMockMethodCallHandler(channel, null);
+        });
+        final storage = CommunityStorage();
+        final community = Community.create(
+          name: 'Kept',
+          relayUrl: 'https://relay.example.com',
+        );
+
+        await storage.save(community);
+        await storage.saveActiveId(community.id);
+        failure = PlatformException(
+          code: 'Unexpected security result code',
+          details: -25293,
+        );
+        await expectLater(
+          storage.save(community.copyWith(name: 'Changed')),
+          throwsA(isA<PlatformException>()),
+        );
+
+        expect(writes, [
+          'write buzz_communities',
+          'write buzz_active_community_id',
+          'write buzz_communities',
+        ]);
+        expect((await storage.loadAll()).single.name, 'Kept');
+        expect(await storage.loadActiveId(), community.id);
+      },
+    );
 
     test('active community ID persists', () async {
       await storage.saveActiveId('ws-123');
