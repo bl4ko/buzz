@@ -31,7 +31,6 @@ void main() {
     expect(descriptor!.origin, 'wss://buzz.bl4ko.com');
     expect(descriptor.executorKeyId, 'relay-v1');
     expect(descriptor.transport, 'apns');
-
   });
 
   for (final failure in <Object>[

@@ -92,7 +92,7 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
     // reconnect) must not rebuild the manager and drop session-local forced
     // unread flags. The listener below re-syncs on reconnect instead.
     ref.watch(relaySessionProvider.notifier);
-    ref.watch(activeCommunityProvider);
+    ref.watch(activeCommunityIdentityProvider);
 
     final nsec = relayConfig.nsec?.trim();
     if (nsec == null || nsec.isEmpty) {

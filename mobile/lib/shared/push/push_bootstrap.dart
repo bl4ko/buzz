@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -18,31 +19,45 @@ import 'push_subscription_provider.dart';
 import 'push_setup_recovery.dart';
 
 const _pushBootstrapRetryDelay = Duration(seconds: 5);
+const _pushBootstrapMaxRetryDelay = Duration(minutes: 5);
 
 @visibleForTesting
 class BuzzPushAttemptGate {
-  BuzzPushAttemptGate({this.retryDelay = _pushBootstrapRetryDelay});
+  BuzzPushAttemptGate({
+    this.retryDelay = _pushBootstrapRetryDelay,
+    this.maxRetryDelay = _pushBootstrapMaxRetryDelay,
+  });
 
   final Duration retryDelay;
+  final Duration maxRetryDelay;
   String? _attempt;
+  String? _waitingAttempt;
+  String? _failedAttempt;
+  int _failures = 0;
   Timer? _retryTimer;
 
   bool tryBegin(String attempt) {
-    if (_attempt == attempt) return false;
+    if (_attempt == attempt || _waitingAttempt == attempt) return false;
     _retryTimer?.cancel();
     _retryTimer = null;
+    _waitingAttempt = null;
     _attempt = attempt;
     return true;
   }
 
   void failed(String attempt, {required VoidCallback retry}) {
     if (_attempt != attempt) return;
+    _attempt = null;
+    _failures = _failedAttempt == attempt ? _failures + 1 : 1;
+    _failedAttempt = attempt;
+    _waitingAttempt = attempt;
+    final delay = retryDelay * (1 << min(_failures - 1, 16));
     _retryTimer?.cancel();
-    _retryTimer = Timer(retryDelay, () {
+    _retryTimer = Timer(delay > maxRetryDelay ? maxRetryDelay : delay, () {
       _retryTimer = null;
-      if (_attempt != attempt) return;
-      _attempt = null;
-      retry();
+      if (_waitingAttempt != attempt) return;
+      _waitingAttempt = null;
+      if (_attempt == null) retry();
     });
   }
 
@@ -52,6 +67,7 @@ class BuzzPushAttemptGate {
     required VoidCallback retry,
   }) {
     if (_attempt != attempt) return;
+    _clearFailures();
     _retryTimer?.cancel();
     _retryTimer = Timer(delay, () {
       _retryTimer = null;
@@ -63,9 +79,15 @@ class BuzzPushAttemptGate {
 
   void complete(String attempt) {
     if (_attempt != attempt) return;
+    _clearFailures();
     _retryTimer?.cancel();
     _retryTimer = null;
     _attempt = null;
+  }
+
+  void _clearFailures() {
+    _failedAttempt = null;
+    _failures = 0;
   }
 
   void dispose() => _retryTimer?.cancel();
