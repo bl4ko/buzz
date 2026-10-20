@@ -27,7 +27,7 @@ function TaskRow({
   settling,
   onMoved,
   onDecided,
-  onOpenThread,
+  onOpenMessage,
   onReact,
   onDone,
 }: {
@@ -37,7 +37,7 @@ function TaskRow({
   settling: () => boolean;
   onMoved: () => void;
   onDecided: (askId: string, decision: OwnerDecision) => void;
-  onOpenThread: (rootId: string) => void;
+  onOpenMessage: (messageId: string, rootId: string | null) => void;
   onReact: (eventId: string, emoji: string) => Promise<void>;
   onDone: (task: ThreadTask) => Promise<void>;
 }) {
@@ -76,10 +76,12 @@ function TaskRow({
       data-testid="task-row"
     >
       <button
-        className="min-w-0 flex-1 text-left"
+        className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
         data-testid="task-open"
         onClick={() => {
-          if (!settling()) onOpenThread(task.rootId);
+          if (settling()) return;
+          if (ask) onOpenMessage(ask.eventId, task.rootId);
+          else onOpenMessage(task.rootId, null);
         }}
         type="button"
       >
@@ -167,12 +169,12 @@ function TaskRow({
 export function ChannelTasksTab({
   tasks,
   canSetStatus,
-  onOpenThread,
+  onOpenMessage,
   onReact,
 }: {
   tasks: ChannelTasksState;
   canSetStatus: boolean;
-  onOpenThread: (rootId: string) => void;
+  onOpenMessage: (messageId: string, rootId: string | null) => void;
   onReact: (eventId: string, emoji: string) => Promise<void>;
 }) {
   const [showDone, setShowDone] = React.useState(false);
@@ -200,7 +202,7 @@ export function ChannelTasksTab({
               onDecided={onDecided}
               onDone={onDone}
               onMoved={onMoved}
-              onOpenThread={onOpenThread}
+              onOpenMessage={onOpenMessage}
               onReact={onReact}
               settling={settling}
               stored={

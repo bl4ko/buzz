@@ -45,7 +45,7 @@ class ChannelTabBody extends ConsumerWidget {
             ),
         onDone: (task) =>
             ref.read(channelTasksProvider(channel.id).notifier).markDone(task),
-        onOpenThread: onOpenThread,
+        onOpenMessage: onOpenMessage,
       );
     }
     if (selected == 'pins') return ChannelPinsView(channel: channel);

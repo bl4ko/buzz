@@ -15,14 +15,14 @@ class ChannelTasksView extends StatefulWidget {
     required this.canSetStatus,
     required this.onReact,
     required this.onDone,
-    required this.onOpenThread,
+    required this.onOpenMessage,
   });
 
   final ChannelTasksState state;
   final bool canSetStatus;
   final Future<void> Function(String eventId, String emoji) onReact;
   final Future<void> Function(ThreadTask task) onDone;
-  final ValueChanged<String> onOpenThread;
+  final void Function(String messageId, String rootId) onOpenMessage;
 
   @override
   State<ChannelTasksView> createState() => _ChannelTasksViewState();
@@ -105,7 +105,8 @@ class _ChannelTasksViewState extends State<ChannelTasksView> {
     return InkWell(
       key: Key('task-row-${task.rootId}'),
       onTap: () {
-        if (!_settling && !pending) widget.onOpenThread(task.rootId);
+        if (_settling || pending) return;
+        widget.onOpenMessage(ask?.eventId ?? task.rootId, task.rootId);
       },
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
