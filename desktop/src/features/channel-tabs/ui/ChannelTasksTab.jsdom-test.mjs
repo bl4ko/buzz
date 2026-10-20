@@ -58,7 +58,8 @@ async function render(
       React.createElement(ChannelTasksTab, {
         tasks: state,
         canSetStatus,
-        onOpenThread: (rootId) => calls.opened.push(rootId),
+        onOpenMessage: (messageId, rootId) =>
+          calls.opened.push([messageId, rootId]),
         onReact:
           onReactOverride ??
           (async (eventId, emoji) => calls.reacted.push([eventId, emoji])),
@@ -97,13 +98,27 @@ test("groups, ask, approve, deny, done, and open", async () => {
   await act(async () =>
     container.querySelector('[data-testid="task-open"]').click(),
   );
-  assert.deepEqual(calls.opened, ["1".repeat(64)]);
+  assert.deepEqual(calls.opened, [[ASK, "1".repeat(64)]]);
   await act(async () => q("tasks-done-toggle").click());
   assert.equal(
     container.querySelectorAll('[data-testid="task-row"][data-status="done"]')
       .length,
     1,
   );
+});
+
+test("a row opens its ask in the thread, or the root without an ask", async () => {
+  await render();
+  const rows = [...container.querySelectorAll('[data-testid="task-open"]')];
+  assert.ok(
+    rows.every((row) => row.tagName === "BUTTON" && row.type === "button"),
+  );
+  await act(async () => rows[0].click());
+  await act(async () => rows[1].click());
+  assert.deepEqual(calls.opened, [
+    [ASK, "1".repeat(64)],
+    ["2".repeat(64), null],
+  ]);
 });
 
 test("Done, Approve, and Deny buttons need the owner", async () => {
@@ -160,7 +175,7 @@ test("a new ask on the same case shows the buttons again", async () => {
           setStatus: async () => {},
         },
         canSetStatus: true,
-        onOpenThread: () => {},
+        onOpenMessage: () => {},
         onReact: async () => {},
       }),
     ),
@@ -223,7 +238,7 @@ test("a fast second click cannot decide or open the row that moves up", async ()
         setStatus: async () => {},
       },
       canSetStatus: true,
-      onOpenThread: (rootId) => opened.push(rootId),
+      onOpenMessage: (messageId) => opened.push(messageId),
       onReact: async (eventId, emoji) => {
         reacted.push([eventId, emoji]);
         setDecisions((current) =>
@@ -278,7 +293,7 @@ test("a fast second click on Done cannot close the row that moves up", async () 
         },
       },
       canSetStatus: true,
-      onOpenThread: () => {},
+      onOpenMessage: () => {},
       onReact: async () => {},
     });
   }

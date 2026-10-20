@@ -61,14 +61,6 @@ export function useChannelTabsModel({
   );
   const { goChannel } = useAppNavigation();
   const reaction = useToggleReactionMutation();
-  const onOpenThread = React.useCallback(
-    (rootId: string) => {
-      if (!channelId) return;
-      setSelected("messages");
-      void goChannel(channelId, { thread: rootId });
-    },
-    [channelId, goChannel, setSelected],
-  );
   const onOpenMessageId = React.useCallback(
     (messageId: string, rootId: string | null) => {
       if (!channelId) return;
@@ -79,6 +71,10 @@ export function useChannelTabsModel({
       });
     },
     [channelId, goChannel, setSelected],
+  );
+  const onOpenThread = React.useCallback(
+    (rootId: string) => onOpenMessageId(rootId, null),
+    [onOpenMessageId],
   );
   const onOpenMessage = React.useCallback(
     (item: FileLinkItem) => onOpenMessageId(item.messageId, item.rootId),

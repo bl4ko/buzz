@@ -8,6 +8,7 @@ import 'package:buzz/shared/theme/buzz_icons.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 ThreadTask task(String id, TaskStatus status, {ThreadTaskAsk? ask}) =>
@@ -54,7 +55,8 @@ void main() {
           onReact: (eventId, emoji) async =>
               log.add('react:$emoji:${eventId[0]}'),
           onDone: (t) async => log.add('done:${t.rootId[0]}'),
-          onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+          onOpenMessage: (messageId, rootId) =>
+              log.add('open:${messageId[0]}:${rootId[0]}'),
         ),
       ),
     );
@@ -135,7 +137,27 @@ void main() {
     await tester.tap(find.text('Done · 2'));
     await tester.pumpAndSettle();
     expect(find.text('Task 4'), findsNothing);
-    expect(log, ['done:1', 'open:2']);
+    expect(log, ['done:1', 'open:2:2']);
+  });
+
+  testWidgets('a row opens its ask in the thread, or the root without an ask', (
+    tester,
+  ) async {
+    final log = await pump(tester, canSetStatus: false);
+    await tester.tap(find.text('Task 1'));
+    await tester.tap(find.text('Merge PR 7?'));
+    await tester.tap(find.text('Task 2'));
+    expect(log, ['open:b:1', 'open:b:1', 'open:2:2']);
+  });
+
+  testWidgets('Enter and Space on a focused row open it', (tester) async {
+    final log = await pump(tester, canSetStatus: false);
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(log, ['open:b:1', 'open:b:1']);
   });
 
   testWidgets('the Done header announces its state', (tester) async {
@@ -200,7 +222,7 @@ void main() {
             canSetStatus: true,
             onReact: (_, _) async {},
             onDone: (_) async {},
-            onOpenThread: (_) {},
+            onOpenMessage: (_, _) {},
           ),
         ),
       ),
@@ -246,7 +268,7 @@ void main() {
               canSetStatus: true,
               onReact: (_, _) async {},
               onDone: (_) async {},
-              onOpenThread: (_) {},
+              onOpenMessage: (_, _) {},
             ),
           ),
         ),
@@ -265,7 +287,7 @@ void main() {
       canSetStatus: true,
       onReact: onReact,
       onDone: (_) async {},
-      onOpenThread: (_) {},
+      onOpenMessage: (_, _) {},
     ),
   );
 
@@ -385,7 +407,7 @@ void main() {
             calls++;
             return pending.future;
           },
-          onOpenThread: (_) {},
+          onOpenMessage: (_, _) {},
         ),
       ),
     );
@@ -452,7 +474,7 @@ void main() {
               );
             },
             onDone: (_) async {},
-            onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+            onOpenMessage: (messageId, _) => log.add('open:${messageId[0]}'),
           ),
         ),
       ),
@@ -509,7 +531,7 @@ void main() {
                 },
               );
             },
-            onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+            onOpenMessage: (messageId, _) => log.add('open:${messageId[0]}'),
           ),
         ),
       ),
@@ -541,7 +563,7 @@ void main() {
           canSetStatus: true,
           onReact: (_, _) => pending.future,
           onDone: (_) async {},
-          onOpenThread: (rootId) => log.add('open:${rootId[0]}'),
+          onOpenMessage: (messageId, _) => log.add('open:${messageId[0]}'),
         ),
       ),
     );
@@ -556,6 +578,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await tester.tap(find.text('Task 1'));
-    expect(log, ['open:1']);
+    expect(log, ['open:b']);
   });
 }

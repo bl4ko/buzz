@@ -62,7 +62,7 @@ export function ChannelTabPanel({
     return (
       <ChannelTasksTab
         canSetStatus={canSetStatus}
-        onOpenThread={onOpenThread}
+        onOpenMessage={onOpenMessageId}
         onReact={onReact}
         tasks={tasks}
       />
