@@ -47,8 +47,10 @@ export function MessageFold({
   const [limit, setLimit] = React.useState<number | null>(null);
 
   React.useEffect(() => {
-    if (forceExpanded) setExpanded(true);
-  }, [forceExpanded]);
+    if (!forceExpanded) return;
+    if (foldId) setMessageFoldExpanded(foldId, true);
+    setExpanded(true);
+  }, [foldId, forceExpanded]);
 
   React.useLayoutEffect(() => {
     const content = contentRef.current;

@@ -131,4 +131,24 @@ void main() {
     expect(find.text('Show less'), findsOneWidget);
     expect(_contentHeight(tester), greaterThan(_foldHeight * 2));
   });
+
+  testWidgets('a highlight expansion stays after the highlight ends', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _pumpContent(
+      tester,
+      _paragraphs(30),
+      foldExpanded: true,
+      container: container,
+    );
+    await tester.pumpWidget(
+      _testable(container: container, const SizedBox.shrink()),
+    );
+    await _pumpContent(tester, _paragraphs(30), container: container);
+
+    expect(find.text('Show less'), findsOneWidget);
+    expect(_contentHeight(tester), greaterThan(_foldHeight * 2));
+  });
 }

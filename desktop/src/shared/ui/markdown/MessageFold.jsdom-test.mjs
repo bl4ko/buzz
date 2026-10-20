@@ -164,3 +164,12 @@ test("an expanded message stays expanded after the row remounts", async () => {
   assert.equal(toggle().textContent, "Show less");
   assert.equal(clip().style.maxHeight, "");
 });
+
+test("a jump target stays expanded after the highlight ends", async () => {
+  await render(LINE_HEIGHT * 30, { foldId: "message-2", forceExpanded: true });
+  await act(async () => root.unmount());
+  container.remove();
+
+  await render(LINE_HEIGHT * 30, { foldId: "message-2" });
+  assert.equal(toggle().textContent, "Show less");
+});

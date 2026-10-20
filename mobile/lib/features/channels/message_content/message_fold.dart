@@ -41,16 +41,23 @@ class _MessageFold extends HookConsumerWidget {
     final saved = ref.watch(
       expandedMessageFoldsProvider.select((ids) => ids.contains(foldId)),
     );
-    final forced = useState(forceExpanded);
     final overflows = useState(false);
+    final userToggled = useState(false);
     useEffect(() {
-      if (forceExpanded) forced.value = true;
+      if (!forceExpanded) return null;
+      userToggled.value = false;
+      if (!saved) {
+        Future.microtask(
+          () =>
+              ref.read(expandedMessageFoldsProvider.notifier).set(foldId, true),
+        );
+      }
       return null;
-    }, [forceExpanded]);
-    final folded = !saved && !forced.value;
+    }, [forceExpanded, foldId]);
+    final folded = !saved && !(forceExpanded && !userToggled.value);
 
     void toggle() {
-      forced.value = false;
+      userToggled.value = true;
       ref.read(expandedMessageFoldsProvider.notifier).set(foldId, folded);
     }
 
