@@ -2,6 +2,7 @@ import 'package:buzz/shared/push/dev_push_lease.dart';
 import 'package:buzz/shared/community/community.dart';
 import 'package:buzz/shared/push/push_bootstrap.dart';
 import 'package:buzz/shared/push/push_subscription.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 
@@ -51,6 +52,31 @@ void main() {
 
     expect(retries, 1);
     expect(gate.tryBegin('attempt'), isTrue);
+  });
+
+  test('a failed attempt waits for its growing retry delay', () {
+    fakeAsync((async) {
+      final gate = BuzzPushAttemptGate();
+      var retries = 0;
+
+      for (final seconds in [5, 10, 20, 40, 80, 160, 300, 300]) {
+        expect(gate.tryBegin('attempt'), isTrue);
+        gate.failed('attempt', retry: () => retries += 1);
+        expect(gate.tryBegin('attempt'), isFalse);
+        async.elapse(Duration(seconds: seconds - 1));
+        expect(gate.tryBegin('attempt'), isFalse);
+        async.elapse(const Duration(seconds: 1));
+      }
+      expect(retries, 8);
+
+      expect(gate.tryBegin('attempt'), isTrue);
+      gate.complete('attempt');
+      expect(gate.tryBegin('attempt'), isTrue);
+      gate.failed('attempt', retry: () => retries += 1);
+      async.elapse(const Duration(seconds: 5));
+      expect(retries, 9);
+      gate.dispose();
+    });
   });
 
   test('a new attempt cancels an obsolete scheduled retry', () async {

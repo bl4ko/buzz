@@ -37,7 +37,9 @@ class ChannelSortNotifier extends Notifier<ChannelSortState> {
 
     final relayConfig = ref.watch(relayConfigProvider);
     final sessionState = ref.watch(relaySessionProvider);
-    final activeCommunity = ref.watch(activeCommunityProvider).value;
+    final activeRelayUrl = ref.watch(
+      activeCommunityProvider.select((community) => community.value?.relayUrl),
+    );
 
     final nsec = relayConfig.nsec?.trim();
     if (nsec == null || nsec.isEmpty) {
@@ -56,7 +58,7 @@ class ChannelSortNotifier extends Notifier<ChannelSortState> {
       return const ChannelSortState();
     }
 
-    final relayUrl = activeCommunity?.relayUrl.trim();
+    final relayUrl = activeRelayUrl?.trim();
     if (relayUrl == null || relayUrl.isEmpty) {
       return const ChannelSortState();
     }

@@ -76,7 +76,7 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
 
     final relayConfig = ref.watch(relayConfigProvider);
     ref.watch(relaySessionProvider);
-    final activeCommunity = ref.watch(activeCommunityProvider).value;
+    final activeCommunity = ref.watch(activeCommunityIdentityProvider);
 
     final nsec = relayConfig.nsec?.trim();
     if (nsec == null || nsec.isEmpty) {
@@ -88,7 +88,7 @@ class ReadStateNotifier extends Notifier<ReadStateState> {
       nsec: nsec,
     );
     final pubkey =
-        _normalizePubkey(activeCommunity?.pubkey) ??
+        _normalizePubkey(activeCommunity.pubkey) ??
         _safeDerivedPubkey(signedRelay);
     if (pubkey == null) {
       return const ReadStateState.inert();

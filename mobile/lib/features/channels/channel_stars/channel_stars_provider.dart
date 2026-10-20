@@ -35,7 +35,7 @@ class ChannelStarsNotifier extends Notifier<ChannelStarsState> {
     final relayConfig = ref.watch(relayConfigProvider);
     final sessionState = ref.watch(relaySessionProvider);
     // Rebuild when the active community changes (pubkey may differ).
-    ref.watch(activeCommunityProvider);
+    ref.watch(activeCommunityIdentityProvider);
 
     final nsec = relayConfig.nsec?.trim();
     if (nsec == null || nsec.isEmpty) {

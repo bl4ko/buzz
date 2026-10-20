@@ -1,6 +1,8 @@
 import 'package:buzz/shared/read_state/read_state_format.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
+import 'package:buzz/shared/community/community.dart';
 import 'package:buzz/shared/community/community_provider.dart';
+import 'package:buzz/shared/community/community_storage.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/theme/theme_provider.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../shared/community/community_storage_test.dart';
 
 /// Drives the production [ReadStateNotifier] (real bookkeeping, real
 /// [ReadStateManager]) against an inert fake relay session, so a defect in
@@ -120,6 +124,46 @@ void main() {
     expect(state().isForcedUnread(channelId), isFalse);
     expect(state().isForcedUnread(msgKey), isTrue);
     expect(state().locallyForcedChannelIds, {channelId});
+  });
+
+  test('push lease bookkeeping keeps read state', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final keys = nostr.Keys.generate();
+    final storage = CommunityStorage(secure: FakeSecureStorage());
+    final community = Community.create(
+      name: 'Push',
+      relayUrl: 'https://relay.example.com',
+      pubkey: keys.public,
+      nsec: keys.nsec,
+    ).copyWith(pushNotificationsEnabled: true);
+    await storage.save(community);
+    await storage.saveActiveId(community.id);
+    container = ProviderContainer(
+      overrides: [
+        savedPrefsProvider.overrideWithValue(prefs),
+        communityStorageProvider.overrideWithValue(storage),
+        communitySnapshotWriterProvider.overrideWithValue((_) async {}),
+        relaySessionProvider.overrideWith(_FakeRelaySession.new),
+        appLifecycleProvider.overrideWith(_FakeAppLifecycle.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(activeCommunityProvider.future);
+    final notifier = container.read(readStateProvider.notifier);
+    for (var i = 0; i < 10 && !state().isReady; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    notifier.markContextUnread(msgKey, channelId: channelId);
+
+    await container
+        .read(communityListProvider.notifier)
+        .reservePushLeaseGeneration(community.id);
+    await container.read(activeCommunityProvider.future);
+    await container.pump();
+
+    expect(state().isReady, isTrue);
+    expect(state().isForcedUnread(msgKey), isTrue);
   });
 }
 

@@ -626,3 +626,9 @@ final activeCommunityProvider = FutureProvider<Community?>((ref) async {
     orElse: () => communities.first,
   );
 });
+
+final activeCommunityIdentityProvider =
+    Provider<({String? id, String? pubkey})>((ref) {
+      final community = ref.watch(activeCommunityProvider).value;
+      return (id: community?.id, pubkey: community?.pubkey);
+    });

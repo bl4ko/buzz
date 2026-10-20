@@ -24,10 +24,10 @@ final currentRelayPushDescriptorProvider =
       if (!Env.pushGatewayConfigured) return null;
       final session = ref.watch(relaySessionProvider);
       final config = ref.watch(relayConfigProvider);
-      final community = ref.watch(activeCommunityProvider).value;
+      final communityId = ref.watch(activeCommunityIdentityProvider).id;
       final memberPubkey = ref.watch(myPubkeyProvider);
       if (session.status != SessionStatus.connected ||
-          community == null ||
+          communityId == null ||
           config.nsec == null ||
           config.nsec!.isEmpty ||
           memberPubkey == null ||

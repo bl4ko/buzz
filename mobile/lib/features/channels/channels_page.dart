@@ -457,10 +457,7 @@ class ChannelsPage extends HookConsumerWidget {
       );
     }
 
-    final activeCommunity = ref
-        .watch(activeCommunityProvider)
-        .unwrapPrevious()
-        .value;
+    final activeCommunity = ref.watch(activeCommunityProvider).value;
     final communityRelay = activeCommunity?.relayUrl;
     final communityAvatar = communityRelay == null
         ? null
