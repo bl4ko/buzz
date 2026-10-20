@@ -47,6 +47,12 @@ class _Auth extends AuthNotifier {
   }
 }
 
+class _SignedOutLaunch extends AuthNotifier {
+  @override
+  Future<AuthState> build() async =>
+      const AuthState(status: AuthStatus.unauthenticated);
+}
+
 class _Age extends AgeSignalNotifier {
   @override
   AgeSignalState build() => AgeSignalState.allowed;
@@ -386,6 +392,34 @@ void main() {
       expect(send.sent, ['hello']);
     },
   );
+
+  test('a launch without a stored account keeps watch sign-in', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final states = <Map>[];
+    messenger.setMockMethodCallHandler(watchChannel, (call) async {
+      states.add(call.arguments as Map);
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(watchChannel, null));
+    final container = ProviderContainer(
+      overrides: [
+        authProvider.overrideWith(_SignedOutLaunch.new),
+        ageSignalProvider.overrideWith(_Age.new),
+        relayConfigProvider.overrideWith(_Config.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(authProvider.future);
+    container.read(watchBridgeProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(states, isNotEmpty);
+    expect(states.every((state) => state['resetStandalone'] == false), isTrue);
+    expect(states.last['available'], false);
+  });
 
   test('watch authors use the best known name, never Member', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

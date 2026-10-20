@@ -248,7 +248,7 @@ class CommunityListNotifier extends AsyncNotifier<List<Community>> {
   Future<List<Community>> build() async {
     final storage = ref.read(communityStorageProvider);
     final communities = await storage.loadAll();
-    await syncCommunitySnapshot(ref, communities);
+    if (communities.isNotEmpty) await syncCommunitySnapshot(ref, communities);
     return communities;
   }
 

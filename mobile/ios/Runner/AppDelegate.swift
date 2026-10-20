@@ -101,7 +101,20 @@ import os.log
       name: "buzz/secure_storage",
       binaryMessenger: messenger
     )
-    secureStorageChannel?.setMethodCallHandler { [secureStorageQueue] call, result in
+    secureStorageChannel?.setMethodCallHandler { [weak self, secureStorageQueue] call, result in
+      if call.method == "recoverCommunities" {
+        let appGroupIdentifier = self?.appGroupIdentifier
+        let accessGroup = self?.pushKeychainAccessGroup
+        secureStorageQueue.async {
+          let snapshot = BuzzPushStoredRelay.snapshotURL(appGroupIdentifier: appGroupIdentifier)
+            .flatMap(BuzzPushStoredRelay.snapshot(at:))
+          let communities = BuzzStoredIdentityRecovery.communities(snapshot: snapshot) {
+            BuzzPushSigningKeychain.privateKey(communityID: $0, accessGroup: accessGroup)
+          }
+          DispatchQueue.main.async { result(communities) }
+        }
+        return
+      }
       guard call.method == "write",
         let arguments = call.arguments as? [String: Any],
         let key = arguments["key"] as? String,

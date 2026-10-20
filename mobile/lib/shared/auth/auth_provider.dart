@@ -3,6 +3,7 @@ import 'package:nostr/nostr.dart' as nostr;
 
 import '../community/community.dart';
 import '../community/community_provider.dart';
+import '../community/community_storage.dart';
 
 enum AuthStatus { unknown, unauthenticated, authenticated }
 
@@ -22,9 +23,8 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     // Watching community providers here would create a circular dependency
     // because authenticateWithCommunity() writes to those providers.
     final storage = ref.read(communityStorageProvider);
-    final communities = await storage.loadAll();
+    final communities = await _withPushCopies(storage, await storage.loadAll());
     if (communities.isEmpty) {
-      await syncCommunitySnapshot(ref, communities);
       return const AuthState(status: AuthStatus.unauthenticated);
     }
 
@@ -49,8 +49,34 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
     }
 
     await storage.clearActiveId();
-    await syncCommunitySnapshot(ref, communities);
     return const AuthState(status: AuthStatus.unauthenticated);
+  }
+
+  Future<List<Community>> _withPushCopies(
+    CommunityStorage storage,
+    List<Community> communities,
+  ) async {
+    if (communities.isNotEmpty &&
+        communities.every((community) => _hasValidNsec(community.nsec))) {
+      return communities;
+    }
+    final merged = [...communities];
+    var changed = false;
+    for (final copy in await storage.recoverFromPushCopies()) {
+      final index = merged.indexWhere((community) => community.id == copy.id);
+      if (index < 0 && communities.isEmpty) {
+        merged.add(copy);
+        changed = true;
+      } else if (index >= 0 && !_hasValidNsec(merged[index].nsec)) {
+        merged[index] = merged[index].copyWith(
+          pubkey: copy.pubkey,
+          nsec: copy.nsec,
+        );
+        changed = true;
+      }
+    }
+    if (changed) await storage.saveAll(merged);
+    return merged;
   }
 
   /// Authenticate with a community. Saves it and switches to it.

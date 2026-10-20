@@ -74,6 +74,25 @@ class Community {
     );
   }
 
+  factory Community.recovered({
+    required String id,
+    required String name,
+    required String relayUrl,
+    required String pubkey,
+    required String nsec,
+  }) {
+    return Community(
+      id: id,
+      name: name,
+      relayUrl: relayUrl,
+      pubkey: pubkey,
+      nsec: nsec,
+      pushNotificationsEnabled: true,
+      pushLeaseInstallationId: _newPushLeaseInstallationId(),
+      addedAt: DateTime.now(),
+    );
+  }
+
   Community copyWith({
     String? name,
     String? relayUrl,

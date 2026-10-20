@@ -70,7 +70,7 @@ void main() {
       container = createContainer();
       final communities = await container.read(communityListProvider.future);
       expect(communities, isEmpty);
-      expect(snapshots, [isEmpty]);
+      expect(snapshots, isEmpty);
     });
 
     test('exports migrated communities on startup', () async {

@@ -23,6 +23,7 @@ const watchChannel = MethodChannel('buzz/watch');
 final watchBridgeProvider = Provider<void>((ref) {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
   var generation = 0;
+  var signedIn = false;
   var requests = 0;
   var withoutProfile = (scope: '', pubkeys: <String>{});
 
@@ -38,12 +39,13 @@ final watchBridgeProvider = Provider<void>((ref) {
 
   Future<void> publishState() async {
     generation++;
+    final status = ref.read(authProvider).asData?.value.status;
+    signedIn = signedIn || status == AuthStatus.authenticated;
     await watchChannel.invokeMethod<void>('setState', {
       'available': available(),
       'scope': scope(),
       'resetStandalone':
-          ref.read(authProvider).asData?.value.status ==
-              AuthStatus.unauthenticated ||
+          signedIn && status == AuthStatus.unauthenticated ||
           ref.read(ageSignalProvider) == AgeSignalState.restricted,
     });
   }

@@ -279,9 +279,68 @@ void main() {
       expect(auth.status, AuthStatus.unauthenticated);
       expect(await storage.loadAll(), isEmpty);
       expect(await storage.loadActiveId(), isNull);
-      expect(snapshots.last, isEmpty);
+      expect(snapshots, isEmpty);
     },
   );
+
+  group('a launch that finds no stored community', () {
+    final keys = nostr.Keys.generate();
+    final copy = <Object?, Object?>{
+      'id': 'community-1',
+      'name': 'Home',
+      'relayUrl': 'wss://relay.example',
+      'pubkey': keys.public,
+      'privateKey': keys.secret,
+    };
+
+    Future<(AuthState, List<List<Community>>, CommunityStorage)> launch(
+      List<Map<Object?, Object?>> copies,
+    ) async {
+      final storage = CommunityStorage(
+        secure: FakeSecureStorage(),
+        pushCopies: () async => copies,
+      );
+      final snapshots = <List<Community>>[];
+      final container = ProviderContainer(
+        overrides: [
+          communityStorageProvider.overrideWithValue(storage),
+          communitySnapshotWriterProvider.overrideWithValue((
+            communities,
+          ) async {
+            snapshots.add(List.of(communities));
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+      final auth = await container.read(authProvider.future);
+      await container.read(communityListProvider.future);
+      return (auth, snapshots, storage);
+    }
+
+    test('keeps the push snapshot and signing key copies', () async {
+      final (auth, snapshots, storage) = await launch([]);
+
+      expect(auth.status, AuthStatus.unauthenticated);
+      expect(snapshots, isEmpty);
+      expect(await storage.loadAll(), isEmpty);
+    });
+
+    test('restores the identity from the push copy', () async {
+      final (auth, snapshots, storage) = await launch([
+        {...copy, 'privateKey': nostr.Keys.generate().secret},
+        copy,
+      ]);
+
+      expect(auth.status, AuthStatus.authenticated);
+      expect(auth.community?.id, 'community-1');
+      expect(auth.community?.nsec, keys.nsec);
+      expect(auth.community?.relayUrl, 'wss://relay.example');
+      expect(auth.community?.pushNotificationsEnabled, isTrue);
+      expect((await storage.loadAll()).single.pubkey, keys.public);
+      expect(await storage.loadActiveId(), 'community-1');
+      expect(snapshots.last.single.id, 'community-1');
+    });
+  });
 
   test('authenticate exports the complete stored community snapshot', () async {
     final storage = CommunityStorage(secure: FakeSecureStorage());
