@@ -39,9 +39,11 @@ import {
   classifyChildren,
   hasBlockMedia,
   isImageOnlyParagraph,
+  MARKDOWN_FLOW_CLASS,
   markdownPropsAreEqual,
 } from "./markdownUtils";
 import { ImageMosaic } from "./markdown/ImageMosaic";
+import { MessageFold } from "./markdown/MessageFold";
 import { copyImageToClipboard, downloadImage } from "./markdown/imageActions";
 import { ImageGalleryStatus } from "./markdown/ImageGalleryStatus";
 import { ImageLightboxZoomControls } from "./markdown/ImageLightboxZoomControls";
@@ -1679,6 +1681,7 @@ function MarkdownInner({
   configNudgeAuthorPubkey,
   content,
   customEmoji,
+  fold,
   hardLineBreaks = true,
   imetaByUrl,
   interactive = true,
@@ -1810,26 +1813,20 @@ function MarkdownInner({
     <div
       className={cn(
         MESSAGE_MARKDOWN_CLASS,
-        [
-          "max-w-none wrap-anywhere text-message font-normal tracking-normal text-foreground",
-          "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-          "[&>*+*]:mt-3",
-          "[&>p+p]:mt-conversation-paragraph [&>ol]:space-y-conversation-list [&>ul]:space-y-conversation-list",
-          "[&>*+h1]:mt-3.5 [&>*+h2]:mt-3.5 [&>*+h3]:mt-3.5 [&>*+h4]:mt-3.5 [&>*+h5]:mt-3.5 [&>*+h6]:mt-3.5",
-          "[&>h1+*]:mt-0.5 [&>h2+*]:mt-0.5 [&>h3+*]:mt-0.5 [&>h4+*]:mt-0.5 [&>h5+*]:mt-0.5 [&>h6+*]:mt-0.5",
-          "[&>h1+h2]:mt-1.5! [&>h2+h3]:mt-1.5! [&>h3+h4]:mt-1.5! [&>h4+h5]:mt-1.5! [&>h5+h6]:mt-1.5!",
-          "[&>*+blockquote]:mt-3.5 [&>blockquote+*]:mt-3.5",
-          "[&>*+[data-code-block]]:mt-3.5 [&>[data-code-block]+*]:mt-3.5",
-          "[&>*+[data-table-block]]:mt-3.5 [&>[data-table-block]+*]:mt-3.5",
-          "[&>*+hr]:mt-4 [&>hr+*]:mt-4",
-          "[&>p+ul]:mt-1.5 [&>p+ol]:mt-1.5 [&>div+ul]:mt-1.5 [&>div+ol]:mt-1.5",
-        ].join(" "),
+        "max-w-none wrap-anywhere text-message font-normal tracking-normal text-foreground",
+        MARKDOWN_FLOW_CLASS,
         className,
       )}
     >
       <MarkdownRuntimeContext.Provider value={runtime}>
         <VideoReviewMarkdownContext.Provider value={videoReviewContext}>
-          {selectProseOrNudge(configNudge, markdownNode)}
+          {fold && configNudge === null ? (
+            <MessageFold foldId={messageId} forceExpanded={fold === "expanded"}>
+              {markdownNode}
+            </MessageFold>
+          ) : (
+            selectProseOrNudge(configNudge, markdownNode)
+          )}
           {configNudge !== null ? (
             <AttachmentGroup
               className="max-w-full flex-wrap overflow-visible pb-0"

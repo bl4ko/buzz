@@ -19,6 +19,7 @@ import { clearTrayAgentActivity } from "@/shared/api/trayMenu";
 import { getOverrides } from "@/shared/features";
 import { resetMediaCaches } from "@/shared/lib/mediaUrl";
 import { resetLinkPreviewMetadataCache } from "@/shared/lib/useResolvedLinkPreviews";
+import { resetMessageFoldState } from "@/shared/ui/markdown/messageFoldState";
 import { clearSearchHitEventCache } from "@/app/navigation/searchHitEventCache";
 import { resetNavigationDeepLinkDrain } from "@/shared/deep-link";
 import {
@@ -86,6 +87,7 @@ async function resetCommunityState({
   resetSidebarRelayConnectionCardState();
   resetMediaCaches();
   resetLinkPreviewMetadataCache();
+  resetMessageFoldState();
   resetVideoPlayerState();
   resetAudioMediaLoadScheduler();
   resetRenderScopedReactionHydration();

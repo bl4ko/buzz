@@ -343,6 +343,14 @@ export const MessageRow = React.memo(
       message.tags,
     );
     const bodyOffsetClass = emojiOnly ? "mt-1" : "mt-conversation-body";
+    const normalizedSearchQuery = searchQuery?.trim().toLowerCase();
+    const bodyFold = emojiOnly
+      ? undefined
+      : highlighted ||
+          (normalizedSearchQuery &&
+            message.body.toLowerCase().includes(normalizedSearchQuery))
+        ? "expanded"
+        : "auto";
 
     const { channels, nonDmChannelNames: channelNames } =
       useChannelNavigation();
@@ -477,6 +485,7 @@ export const MessageRow = React.memo(
                 isKnownAgentPubkey,
               )}
               content={message.body}
+              fold={bodyFold}
               messageId={message.id}
               linkPreviewsSuppressed={linkPreviewsSuppressed}
               linkPreviewTags={message.tags}

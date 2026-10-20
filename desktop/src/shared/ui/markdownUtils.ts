@@ -109,6 +109,7 @@ export function markdownPropsAreEqual(
     prev.content === next.content &&
     prev.className === next.className &&
     prev.customEmoji === next.customEmoji &&
+    prev.fold === next.fold &&
     prev.hardLineBreaks === next.hardLineBreaks &&
     prev.interactive === next.interactive &&
     prev.blockCode === next.blockCode &&
@@ -127,3 +128,17 @@ export function markdownPropsAreEqual(
     prev.videoReviewContext === next.videoReviewContext
   );
 }
+
+export const MARKDOWN_FLOW_CLASS = [
+  "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+  "[&>*+*]:mt-3",
+  "[&>p+p]:mt-conversation-paragraph [&>ol]:space-y-conversation-list [&>ul]:space-y-conversation-list",
+  "[&>*+h1]:mt-3.5 [&>*+h2]:mt-3.5 [&>*+h3]:mt-3.5 [&>*+h4]:mt-3.5 [&>*+h5]:mt-3.5 [&>*+h6]:mt-3.5",
+  "[&>h1+*]:mt-0.5 [&>h2+*]:mt-0.5 [&>h3+*]:mt-0.5 [&>h4+*]:mt-0.5 [&>h5+*]:mt-0.5 [&>h6+*]:mt-0.5",
+  "[&>h1+h2]:mt-1.5! [&>h2+h3]:mt-1.5! [&>h3+h4]:mt-1.5! [&>h4+h5]:mt-1.5! [&>h5+h6]:mt-1.5!",
+  "[&>*+blockquote]:mt-3.5 [&>blockquote+*]:mt-3.5",
+  "[&>*+[data-code-block]]:mt-3.5 [&>[data-code-block]+*]:mt-3.5",
+  "[&>*+[data-table-block]]:mt-3.5 [&>[data-table-block]+*]:mt-3.5",
+  "[&>*+hr]:mt-4 [&>hr+*]:mt-4",
+  "[&>p+ul]:mt-1.5 [&>p+ol]:mt-1.5 [&>div+ul]:mt-1.5 [&>div+ol]:mt-1.5",
+].join(" ");

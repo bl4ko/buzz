@@ -74,6 +74,7 @@ export type MarkdownProps = {
   className?: string;
   content: string;
   customEmoji?: CustomEmoji[];
+  fold?: "auto" | "expanded";
   /**
    * When true (default), single newlines become `<br>` — chat Enter behavior.
    * Git commit bodies are hard-wrapped at ~72 columns; pass false so those
