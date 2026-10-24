@@ -149,11 +149,13 @@ LABEL org.opencontainers.image.title="Buzz" \
 
 RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \
         openssl \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.0.9-2+deb12u1 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 1000 buzz \
     && useradd  --system --uid 1000 --gid 1000 --home-dir /var/lib/buzz \
