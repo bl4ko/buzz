@@ -99,6 +99,7 @@ pub struct Config {
     /// Server-owned dogfood application identity and APNs transport.
     pub profile: AppProfileConfig,
     pub database_url: String,
+    pub database_max_connections: u32,
     pub app_attest_root_cert_path: PathBuf,
     /// Ordered current key first, followed by decrypt-only predecessors.
     pub grant_keys: Vec<KeyConfig>,
@@ -269,6 +270,8 @@ impl Config {
             bounded_positive("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_WINDOW_SECONDS", 10, 86_400)?;
         let live_activity_quota_max_deliveries =
             bounded_positive("BUZZ_PUSH_LIVE_ACTIVITY_QUOTA_MAX_DELIVERIES", 10, 10_000)?;
+        let database_max_connections =
+            bounded_positive("BUZZ_PUSH_DATABASE_MAX_CONNECTIONS", 20, 100)? as u32;
         let profile = parse_profile(e)?;
         let bind_addr = e
             .get("BUZZ_PUSH_BIND_ADDR")
@@ -293,6 +296,7 @@ impl Config {
             live_activity_quota_max_deliveries,
             profile,
             database_url: req(e, "DATABASE_URL")?.to_owned(),
+            database_max_connections,
             app_attest_root_cert_path: req(e, "BUZZ_PUSH_APP_ATTEST_ROOT_CERT_PATH")?.into(),
             grant_keys,
             token_keys,
@@ -570,6 +574,28 @@ mod tests {
             assert!(
                 matches!(Config::from_map(&env), Err(ConfigError::Invalid(k)) if k == key),
                 "{key}={value}"
+            );
+        }
+    }
+
+    #[test]
+    fn database_max_connections_defaults_to_twenty_and_is_bounded() {
+        assert_eq!(
+            Config::from_map(&base()).unwrap().database_max_connections,
+            20
+        );
+        let mut env = base();
+        env.insert("BUZZ_PUSH_DATABASE_MAX_CONNECTIONS".into(), "8".into());
+        assert_eq!(Config::from_map(&env).unwrap().database_max_connections, 8);
+        for value in ["0", "101", "", "eight"] {
+            let mut env = base();
+            env.insert("BUZZ_PUSH_DATABASE_MAX_CONNECTIONS".into(), value.into());
+            assert!(
+                matches!(
+                    Config::from_map(&env),
+                    Err(ConfigError::Invalid("BUZZ_PUSH_DATABASE_MAX_CONNECTIONS"))
+                ),
+                "{value}"
             );
         }
     }
