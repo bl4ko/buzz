@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Result<_, _>>()?,
     )?;
     let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(20)
+        .max_connections(c.database_max_connections)
         .connect(&c.database_url)
         .await?;
     let authority = Arc::new(PostgresAuthorityStore::new(pool));

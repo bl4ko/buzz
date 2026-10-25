@@ -115,6 +115,8 @@ mobile configured-to-unconfigured migration is supported. Push has no existing
 enabled users. After enabling push, retain gateway configuration in updates to
 that app identity; omitting it is not a push shutdown mechanism.
 
+The runtime pool opens at most `BUZZ_PUSH_DATABASE_MAX_CONNECTIONS` connections per replica (default `20`, `1..=100`).
+
 The gateway's dedicated pool does not consume the relay-oriented `BUZZ_DB_LOCK_TIMEOUT_MS`, `BUZZ_DB_IDLE_TXN_TIMEOUT_MS`, or `BUZZ_DB_STATEMENT_TIMEOUT_MS` settings. Its session-timeout policy remains separate from the `buzz-db` writer policy and must be designed and rolled out independently.
 
 All replicas must share one PostgreSQL database. Delivery authority, replay admission, and endpoint quota reservation are transactional there, so replica count does not multiply the abuse ceiling. The gateway owns a scoped migration history under `crates/buzz-push-gateway/migrations`; it creates only the eight `push_gateway_*` authority tables, one immutable check function, plus SQLx's migration-history table and never runs relay migrations.
