@@ -38,6 +38,10 @@ static CLIENT: LazyLock<Result<reqwest::Client, reqwest::Error>> = LazyLock::new
         .build()
 });
 const MAX_AUDIO: usize = 1_440_128;
+const SONIOX_BASE: &str = "https://api.soniox.com/v1";
+const SONIOX_MODEL: &str = "stt-async-v5";
+const SONIOX_POLL: Duration = Duration::from_millis(250);
+const SONIOX_POLLS: usize = 120;
 const MAX_OUTPUT: usize = 8 * 1024 * 1024;
 const VOICES: &[&str] = &["am_michael", "af_heart", "bm_george"];
 
@@ -280,8 +284,8 @@ struct SpeechTimestamp {
 async fn transcribe_audio(
     client: &reqwest::Client,
     vad_base: &str,
-    transcription_base: &str,
-    model: &str,
+    soniox_base: &str,
+    api_key: &str,
     audio: &[u8],
 ) -> Result<String, Response> {
     let bytes = request_audio(
@@ -312,27 +316,113 @@ async fn transcribe_audio(
     let speech = speech_only(audio, &timestamps).ok_or_else(|| {
         api_error(StatusCode::BAD_REQUEST, "invalid speech audio").into_response()
     })?;
-    let bytes = request_audio(
-        client,
-        transcription_base,
-        "audio/transcriptions",
-        &[
-            ("model", model),
-            ("response_format", "json"),
-            ("language", "en"),
-            ("to_language", "en"),
-        ],
-        &speech,
+    let boundary = format!("buzz-{}", Uuid::new_v4());
+    let file = soniox_id(
+        client
+            .post(format!("{soniox_base}/files"))
+            .bearer_auth(api_key)
+            .header(
+                "Content-Type",
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(audio_body(&[], &speech, &boundary)),
     )
     .await?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| {
-        api_error(StatusCode::BAD_GATEWAY, "invalid speech response").into_response()
+    let job = soniox_id(
+        client
+            .post(format!("{soniox_base}/transcriptions"))
+            .bearer_auth(api_key)
+            .json(&json!({
+                "model": SONIOX_MODEL,
+                "file_id": file,
+                "language_hints": ["en", "sl"],
+            })),
+    )
+    .await;
+    let (job, text) = match job {
+        Ok(job) => (
+            Some(job),
+            soniox_text(client, soniox_base, api_key, job).await,
+        ),
+        Err(error) => (None, Err(error)),
+    };
+    let (client, base, key) = (client.clone(), soniox_base.to_owned(), api_key.to_owned());
+    tokio::spawn(async move {
+        let paths = job
+            .map(|job| format!("transcriptions/{job}"))
+            .into_iter()
+            .chain([format!("files/{file}")]);
+        for path in paths {
+            let deleted = client
+                .delete(format!("{base}/{path}"))
+                .bearer_auth(&key)
+                .send()
+                .await;
+            if !deleted.is_ok_and(|response| response.status().is_success()) {
+                tracing::warn!(path, "speech cleanup failed");
+            }
+        }
+    });
+    text
+}
+
+async fn soniox_json(request: reqwest::RequestBuilder) -> Result<serde_json::Value, Response> {
+    let response = request.send().await.map_err(|_| {
+        api_error(StatusCode::BAD_GATEWAY, "speech service unavailable").into_response()
     })?;
-    value
-        .get("text")
-        .and_then(|v| v.as_str())
-        .map(str::to_owned)
-        .ok_or_else(|| api_error(StatusCode::BAD_GATEWAY, "missing transcript").into_response())
+    serde_json::from_slice(&upstream_bytes(response).await?)
+        .map_err(|_| api_error(StatusCode::BAD_GATEWAY, "invalid speech response").into_response())
+}
+
+async fn soniox_id(request: reqwest::RequestBuilder) -> Result<Uuid, Response> {
+    soniox_json(request)
+        .await?
+        .get("id")
+        .and_then(|id| id.as_str())
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .ok_or_else(|| {
+            api_error(StatusCode::BAD_GATEWAY, "invalid speech response").into_response()
+        })
+}
+
+async fn soniox_text(
+    client: &reqwest::Client,
+    base: &str,
+    key: &str,
+    job: Uuid,
+) -> Result<String, Response> {
+    for _ in 0..SONIOX_POLLS {
+        tokio::time::sleep(SONIOX_POLL).await;
+        let status = soniox_json(
+            client
+                .get(format!("{base}/transcriptions/{job}"))
+                .bearer_auth(key),
+        )
+        .await?;
+        match status.get("status").and_then(|status| status.as_str()) {
+            Some("queued" | "processing") => {}
+            Some("completed") => {
+                return soniox_json(
+                    client
+                        .get(format!("{base}/transcriptions/{job}/transcript"))
+                        .bearer_auth(key),
+                )
+                .await?
+                .get("text")
+                .and_then(|text| text.as_str())
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    api_error(StatusCode::BAD_GATEWAY, "missing transcript").into_response()
+                });
+            }
+            _ => {
+                return Err(
+                    api_error(StatusCode::BAD_GATEWAY, "speech service failed").into_response()
+                )
+            }
+        }
+    }
+    Err(api_error(StatusCode::GATEWAY_TIMEOUT, "speech service timed out").into_response())
 }
 
 async fn request_audio(
@@ -376,14 +466,9 @@ async fn transcribe_inner(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Response> {
-    let base = state
-        .config
-        .speech_transcription_base_url
-        .as_deref()
-        .or(state.config.speech_base_url.as_deref())
-        .ok_or_else(|| {
-            api_error(StatusCode::SERVICE_UNAVAILABLE, "speech service disabled").into_response()
-        })?;
+    let api_key = state.config.soniox_api_key.as_deref().ok_or_else(|| {
+        api_error(StatusCode::SERVICE_UNAVAILABLE, "speech service disabled").into_response()
+    })?;
     authorize(&state, channel, &headers, &body, "transcribe").await?;
     let request: Transcription = serde_json::from_slice(&body).map_err(|_| {
         api_error(StatusCode::BAD_REQUEST, "invalid transcription request").into_response()
@@ -411,14 +496,7 @@ async fn transcribe_inner(
     let client = CLIENT.as_ref().map_err(|_| {
         api_error(StatusCode::SERVICE_UNAVAILABLE, "speech client unavailable").into_response()
     })?;
-    let text = transcribe_audio(
-        client,
-        vad_base,
-        base,
-        &state.config.speech_transcription_model,
-        &audio,
-    )
-    .await?;
+    let text = transcribe_audio(client, vad_base, SONIOX_BASE, api_key, &audio).await?;
     Ok(Json(json!({"text": text})).into_response())
 }
 
@@ -490,51 +568,117 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn vad_gates_transcription() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        for (vad_status, vad_body, expected_calls, expected_text) in [
-            (StatusCode::OK, "[]", 0, Some("")),
+    async fn vad_gates_soniox_transcription() {
+        use std::sync::Mutex;
+        const FILE: &str = "84c32fc6-4fb5-4e7a-b656-b5ec70493753";
+        const JOB: &str = "19b6d61d-02db-4c25-bc71-b4094dc310c8";
+        let vad = "POST /audio/speech/timestamps".to_owned();
+        let soniox = |status: &str| {
+            let mut calls = vec![
+                vad.clone(),
+                "POST /files".to_owned(),
+                "POST /transcriptions".to_owned(),
+                format!("GET /transcriptions/{JOB}"),
+            ];
+            if status == "completed" {
+                calls.push(format!("GET /transcriptions/{JOB}/transcript"));
+            }
+            calls.push(format!("DELETE /transcriptions/{JOB}"));
+            calls.push(format!("DELETE /files/{FILE}"));
+            calls
+        };
+        let speech = "[{\"start\":160,\"end\":2389}]";
+        for (vad_status, vad_body, job_status, expected_calls, expected_text) in [
             (
                 StatusCode::OK,
-                "[{\"start\":160,\"end\":2389}]",
-                1,
+                "[]",
+                "completed",
+                vec![vad.clone()],
+                Some(""),
+            ),
+            (
+                StatusCode::OK,
+                speech,
+                "completed",
+                soniox("completed"),
                 Some("hello"),
             ),
-            (StatusCode::OK, "[{\"start\":10,\"end\":5}]", 0, None),
-            (StatusCode::OK, "[{\"start\":-1,\"end\":5}]", 0, None),
-            (StatusCode::OK, "{}", 0, None),
-            (StatusCode::SERVICE_UNAVAILABLE, "[]", 0, None),
+            (StatusCode::OK, speech, "error", soniox("error"), None),
+            (
+                StatusCode::OK,
+                "[{\"start\":10,\"end\":5}]",
+                "completed",
+                vec![vad.clone()],
+                None,
+            ),
+            (
+                StatusCode::OK,
+                "[{\"start\":-1,\"end\":5}]",
+                "completed",
+                vec![vad.clone()],
+                None,
+            ),
+            (StatusCode::OK, "{}", "completed", vec![vad.clone()], None),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "[]",
+                "completed",
+                vec![vad.clone()],
+                None,
+            ),
         ] {
-            let calls = Arc::new(AtomicUsize::new(0));
+            let calls = Arc::new(Mutex::new(Vec::new()));
             let observed = calls.clone();
-            let app =
-                axum::Router::new().fallback(axum::routing::post(
-                    move |uri: axum::http::Uri, body: Bytes| {
-                        let observed = observed.clone();
-                        async move {
-                            if uri.path() == "/audio/speech/timestamps" {
-                                let body = String::from_utf8_lossy(&body);
-                                assert!(
-                                    body.contains("name=\"min_speech_duration_ms\"\r\n\r\n250\r\n")
-                                );
-                                (vad_status, vad_body)
-                            } else {
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method,
+                      uri: axum::http::Uri,
+                      headers: HeaderMap,
+                      body: Bytes| {
+                    let observed = observed.clone();
+                    async move {
+                        let path = uri.path().to_owned();
+                        observed.lock().unwrap().push(format!("{method} {path}"));
+                        if path == "/audio/speech/timestamps" {
+                            let body = String::from_utf8_lossy(&body);
+                            assert!(
+                                body.contains("name=\"min_speech_duration_ms\"\r\n\r\n250\r\n")
+                            );
+                            return (vad_status, vad_body.to_owned());
+                        }
+                        assert_eq!(headers["authorization"], "Bearer key");
+                        let reply = match (method.as_str(), path.as_str()) {
+                            ("POST", "/files") => {
                                 let cropped = [
                                     b"audio/wav\r\n\r\nRIFF".as_slice(),
                                     &(36u32 + 2_589 * 32).to_le_bytes(),
                                 ]
                                 .concat();
                                 assert!(body.windows(cropped.len()).any(|part| part == cropped));
-                                let body = String::from_utf8_lossy(&body);
-                                assert!(body.contains("name=\"language\"\r\n\r\nen\r\n"));
-                                assert!(body.contains("name=\"to_language\"\r\n\r\nen\r\n"));
-                                assert!(!body.contains("name=\"prompt\""));
-                                observed.fetch_add(1, Ordering::SeqCst);
-                                (StatusCode::OK, "{\"text\":\"hello\"}")
+                                assert!(!String::from_utf8_lossy(&body).contains("name=\"prompt\""));
+                                json!({"id": FILE})
                             }
-                        }
-                    },
-                ));
+                            ("POST", "/transcriptions") => {
+                                let request: serde_json::Value =
+                                    serde_json::from_slice(&body).unwrap();
+                                assert_eq!(
+                                    request,
+                                    json!({"model": "stt-async-v5", "file_id": FILE, "language_hints": ["en", "sl"]})
+                                );
+                                json!({"id": JOB, "status": "queued"})
+                            }
+                            ("GET", path) if path == format!("/transcriptions/{JOB}") => {
+                                json!({"id": JOB, "status": job_status})
+                            }
+                            ("GET", path) if path == format!("/transcriptions/{JOB}/transcript") => {
+                                json!({"id": JOB, "text": "hello", "tokens": []})
+                            }
+                            ("DELETE", _) => json!({}),
+                            _ => panic!("unexpected {method} {path}"),
+                        };
+                        (StatusCode::OK, reply.to_string())
+                    }
+                },
+            ));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
             let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -542,12 +686,22 @@ mod tests {
                 &reqwest::Client::new(),
                 &base,
                 &base,
-                "qwen",
+                "key",
                 &silent_wav(3_000),
             )
             .await;
+            for _ in 0..50 {
+                if calls.lock().unwrap().len() >= expected_calls.len() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
             server.abort();
-            assert_eq!(calls.load(Ordering::SeqCst), expected_calls, "{vad_body}");
+            assert_eq!(
+                *calls.lock().unwrap(),
+                expected_calls,
+                "{vad_body} {job_status}"
+            );
             match expected_text {
                 Some(text) => assert_eq!(result.unwrap(), text),
                 None => assert_eq!(result.unwrap_err().status(), StatusCode::BAD_GATEWAY),

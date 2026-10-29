@@ -241,8 +241,7 @@ pub struct Config {
     /// (`BUZZ_HUDDLE_EMPTY_GRACE_SECS`, default 120 s, at most 900 s, 0 ends at once).
     pub huddle_empty_grace: Duration,
     pub(crate) speech_base_url: Option<String>,
-    pub(crate) speech_transcription_base_url: Option<String>,
-    pub(crate) speech_transcription_model: String,
+    pub(crate) soniox_api_key: Option<String>,
 
     /// Inter-relay mesh configuration (`BUZZ_MESH`, `BUZZ_MESH_BIND_ADDR`).
     /// Opt-in: mesh forms only when `BUZZ_MESH=on` is explicit. The default
@@ -1425,9 +1424,7 @@ impl Config {
             huddle_audio_available,
             huddle_empty_grace,
             speech_base_url: std::env::var("BUZZ_SPEECH_BASE_URL").ok(),
-            speech_transcription_base_url: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_BASE_URL").ok(),
-            speech_transcription_model: std::env::var("BUZZ_SPEECH_TRANSCRIPTION_MODEL")
-                .unwrap_or_else(|_| "Systran/faster-whisper-small".to_owned()),
+            soniox_api_key: std::env::var("BUZZ_SONIOX_API_KEY").ok(),
             mesh,
             mesh_demo_echo,
             relay_owner_pubkey,
