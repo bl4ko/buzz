@@ -24,6 +24,7 @@ def main():
         tests.mkdir(parents=True)
         for source in [
             root / "mobile/ios/Bl4uzzWatch/WatchRelay.swift",
+            root / "mobile/ios/Bl4uzzWatch/WatchSchnorr.swift",
             root / "mobile/ios/Bl4uzzWatch/WatchApprovalRouter.swift",
             root / "mobile/ios/Bl4uzzWatch/WatchPresentation.swift",
             root / "mobile/ios/BuzzPushKit/Sources/BuzzPushKit/NostrHTTPAuth.swift",
