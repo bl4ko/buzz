@@ -341,6 +341,8 @@ public final class BuzzDevPushEnrollmentDriver {
   private let appAttest: BuzzDevAppAttesting
   private let now: () -> Date
   private let lifetimeSeconds: Int64
+  // Renew while the installation is valid; an expired one needs a new attestation.
+  private var renewalLeadSeconds: Int64 { max(300, min(604_800, lifetimeSeconds / 4)) }
   private let installationIdBytes: () throws -> Data
 
   /// Creates a driver backed by Apple's App Attest service and persists the
@@ -451,7 +453,7 @@ public final class BuzzDevPushEnrollmentDriver {
       $0.gatewayOrigin == gatewayOrigin && $0.relayPubkey == relayPubkey
         && $0.appProfile == Self.appProfile
         && $0.endpointHash == endpointHash && $0.endpointEpoch == Self.endpointEpoch
-        && $0.expiresAt > nowSeconds + 300
+        && $0.expiresAt > nowSeconds + renewalLeadSeconds
     }.max { $0.generation < $1.generation }
     if pendingEnrollment == nil, let reusableGrant = newestSharedGrant {
       // Reuse the newest delegation without invalidating sibling communities.
@@ -481,8 +483,8 @@ public final class BuzzDevPushEnrollmentDriver {
 
     // A previously attested installation can delegate independently to a new
     // relay key, or issue a higher-generation grant for the same relay,
-    // without attempting duplicate APNs-token enrollment. An installation in
-    // its final five minutes is renewed by the authenticated delegation.
+    // without attempting duplicate APNs-token enrollment. An installation
+    // inside the renewal lead is renewed by the authenticated delegation.
     let reusableInstallation = storedRecords.first { record in
       guard record.gatewayOrigin == gatewayOrigin,
         record.appProfile == Self.appProfile,
@@ -508,7 +510,7 @@ public final class BuzzDevPushEnrollmentDriver {
       let existing = UUID(uuidString: handle)
     {
       let expiresAt =
-        reusableInstallation.expiresAt > nowSeconds + 300
+        reusableInstallation.expiresAt > nowSeconds + renewalLeadSeconds
         ? reusableInstallation.expiresAt
         : renewedExpiration
       pending = BuzzPushPendingEnrollmentRecord(

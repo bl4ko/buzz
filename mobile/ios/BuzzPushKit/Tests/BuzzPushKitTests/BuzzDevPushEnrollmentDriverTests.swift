@@ -936,6 +936,83 @@ final class BuzzDevPushEnrollmentDriverTests: XCTestCase {
     XCTAssertEqual(record.endpointGrant, "refreshed-grant")
   }
 
+  func testGrantInsideRenewalLeadRenewsBeforeItExpires() async throws {
+    let existing = BuzzPushEndpointGrantRecord(
+      gatewayOrigin: Self.gatewayOrigin,
+      relayOrigin: "wss://relay.example",
+      relayPubkey: Self.relayPubkey,
+      relayMetadataPubkey: Self.relayPubkey,
+      gatewayInstallationHandle: Self.installationHandle,
+      appAttestKeyId: Self.keyId,
+      installationId: Self.installationId,
+      endpointGrant: "existing-grant",
+      endpointHash: Self.hex(SHA256.hash(data: Data((1...32).map(UInt8.init)))),
+      appProfile: "buzz-ios-dogfood",
+      endpointEpoch: 1,
+      generation: 7,
+      expiresAt: Self.now + 900
+    )
+    let store = MemoryGrantStore(records: [existing])
+    let driver = try makeDriver(
+      store: store,
+      appAttest: RecordingAppAttest(),
+      installationIdBytes: {
+        XCTFail("Grant refresh must reuse the persisted installation id")
+        return Data(repeating: 0xFF, count: 16)
+      }
+    )
+    URLProtocolStub.handler = { request in
+      switch (request.httpMethod, request.url?.absoluteString) {
+      case ("GET", "https://relay.example/"):
+        return Self.response(
+          request,
+          status: 200,
+          json: [
+            "self": Self.relayPubkey,
+            "push": ["keys": [["pubkey": Self.relayPubkey, "current": true]]],
+          ]
+        )
+      case ("POST", "http://push.example/v1/installations/challenges"):
+        return Self.response(
+          request,
+          status: 200,
+          json: [
+            "challenge_id": Self.firstChallengeId,
+            "challenge": Self.challenge,
+            "expires_at": Self.now + 300,
+          ]
+        )
+      case ("POST", "http://push.example/v1/installations"):
+        XCTFail("An expiring installation must renew through authenticated delegation")
+        return Self.response(request, status: 500, json: [:])
+      case ("POST", "http://push.example/v1/delegations"):
+        let body = try Self.body(request)
+        XCTAssertEqual(body["installation_handle"] as? String, Self.installationHandle)
+        XCTAssertEqual(body["generation"] as? Int, 8)
+        XCTAssertEqual(body["expires_at"] as? Int64, Self.expiresAt)
+        return Self.response(
+          request,
+          status: 201,
+          json: ["endpoint_grant": "refreshed-grant"]
+        )
+      default:
+        XCTFail("Unexpected request \(request.url?.absoluteString ?? "nil")")
+        return Self.response(request, status: 500, json: [:])
+      }
+    }
+
+    let record = try await driver.enroll(
+      deviceToken: Data((1...32).map(UInt8.init)),
+      relayURL: Self.relayURL
+    )
+
+    XCTAssertEqual(record.installationId, Self.installationId)
+    XCTAssertEqual(record.gatewayInstallationHandle, Self.installationHandle)
+    XCTAssertEqual(record.generation, 8)
+    XCTAssertEqual(record.expiresAt, Self.expiresAt)
+    XCTAssertEqual(record.endpointGrant, "refreshed-grant")
+  }
+
   func testRejectsMultipleCurrentRelayKeysBeforeGatewayEnrollment() async throws {
     let driver = try makeDriver(store: MemoryGrantStore(), appAttest: RecordingAppAttest())
     URLProtocolStub.handler = { request in
