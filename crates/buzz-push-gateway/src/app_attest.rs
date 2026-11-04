@@ -299,6 +299,39 @@ mod tests {
         fixture
     }
 
+    #[test]
+    fn real_ios27_assertion_with_extension_data_verifies() {
+        #[derive(Deserialize)]
+        struct Capture {
+            app_id: String,
+            public_key_hex: String,
+            client_data: String,
+            challenge: String,
+            assertion_b64: String,
+            previous_counter: u32,
+            expected_counter: u32,
+        }
+        let c: Capture = serde_json::from_str(include_str!(
+            "../tests/fixtures/app-attest-ios27-assertion.json"
+        ))
+        .unwrap();
+        let key = hex::decode(&c.public_key_hex).unwrap();
+        let verify = |client_data: &[u8], previous: u32| {
+            verifier(&c.app_id, APPLE_ROOT_CERT_PEM).verify_assertion(
+                &c.assertion_b64,
+                client_data,
+                &key,
+                previous,
+                &c.challenge,
+                &c.challenge,
+            )
+        };
+        let verified = verify(c.client_data.as_bytes(), c.previous_counter).unwrap();
+        assert_eq!(verified.counter, c.expected_counter);
+        assert!(verify(b"other transcript", c.previous_counter).is_err());
+        assert!(verify(c.client_data.as_bytes(), c.expected_counter).is_err());
+    }
+
     fn verifier(app_id: &str, root_cert_pem: &[u8]) -> AppAttestVerifier {
         AppAttestVerifier {
             app_id: app_id.to_owned(),
