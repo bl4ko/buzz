@@ -136,6 +136,7 @@ part 'channel_detail_page/huddle_call_controls.dart';
 part 'channel_detail_page/huddle_drawer.dart';
 part 'channel_detail_page/huddle_reactions.dart';
 part 'channel_detail_page/message_bubble.dart';
+part 'channel_detail_page/message_list_unread.dart';
 part 'channel_detail_page/banners.dart';
 part 'channel_detail_page/app_bar.dart';
 

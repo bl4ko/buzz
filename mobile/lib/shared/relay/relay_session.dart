@@ -33,6 +33,7 @@ export 'relay_session_types.dart';
 part 'relay_session_auth.dart';
 part 'relay_session_subscriptions.dart';
 part 'relay_session_snapshot.dart';
+part 'relay_session_background.dart';
 
 class RelaySessionNotifier extends Notifier<SessionState> {
   RelaySessionNotifier({
@@ -525,29 +526,10 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     return () => _beforePauseCallbacks.remove(owner);
   }
 
-  /// Keeps the socket open in the background until the returned callback runs.
-  void Function() holdInBackground() {
-    final owner = Object();
-    _backgroundHolds.add(owner);
-    return () {
-      if (!_backgroundHolds.remove(owner) || _backgroundHolds.isNotEmpty) {
-        return;
-      }
-      if (_backgroundedAt != null && !_paused) _scheduleBackgroundPause();
-    };
-  }
-
   /// Called by the app lifecycle provider when the app goes to background.
   void onAppPaused() {
     _backgroundedAt = _now();
     _scheduleBackgroundPause();
-  }
-
-  void _scheduleBackgroundPause() {
-    _backgroundGraceTimer?.cancel();
-    _backgroundGraceTimer = Timer(_backgroundGraceDuration, () {
-      unawaited(_pauseAfterCallbacks());
-    });
   }
 
   Future<void> _pauseAfterCallbacks() async {
