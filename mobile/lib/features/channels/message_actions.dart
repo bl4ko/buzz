@@ -62,8 +62,9 @@ Future<void> _saveForLater(
     final items = await ref.read(remindersProvider.future);
     if (!context.mounted ||
         ref.read(relayConfigProvider) != community ||
-        ref.read(myPubkeyProvider) != account)
+        ref.read(myPubkeyProvider) != account) {
       return;
+    }
     final matches =
         items.where((item) => item.target?.eventId == message.id).toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -82,13 +83,15 @@ Future<void> _saveForLater(
     }
     if (!context.mounted ||
         ref.read(relayConfigProvider) != community ||
-        ref.read(myPubkeyProvider) != account)
+        ref.read(myPubkeyProvider) != account) {
       return;
+    }
     await ref.read(remindersProvider.notifier).refresh();
     if (!context.mounted ||
         ref.read(relayConfigProvider) != community ||
-        ref.read(myPubkeyProvider) != account)
+        ref.read(myPubkeyProvider) != account) {
       return;
+    }
     messenger.showSnackBar(const SnackBar(content: Text('Saved for later')));
   } catch (_) {
     if (context.mounted &&

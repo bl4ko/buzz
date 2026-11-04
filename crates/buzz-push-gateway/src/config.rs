@@ -474,10 +474,7 @@ mod tests {
     #[test]
     fn live_activity_credentials_are_all_or_none() {
         let keys = [
-            (
-                "BUZZ_PUSH_APNS_AUTH_KEY_PATH",
-                "/run/buzz/apns/auth-key.p8",
-            ),
+            ("BUZZ_PUSH_APNS_AUTH_KEY_PATH", "/run/buzz/apns/auth-key.p8"),
             ("BUZZ_PUSH_APNS_AUTH_KEY_ID", "ABC123DEFG"),
             ("BUZZ_PUSH_APNS_TEAM_ID", "55S37D9HA7"),
         ];
@@ -532,11 +529,13 @@ mod tests {
         assert_eq!(config.application.live_activity, None);
         assert_eq!(
             config.application.apns_cert_path,
-            PathBuf::from("/dogfood-identity.pem")
+            PathBuf::from("/apns-identity.pem")
         );
-        assert!(crate::live_activity::transport_from_config(&config.application)
-            .unwrap()
-            .is_none());
+        assert!(
+            crate::live_activity::transport_from_config(&config.application)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

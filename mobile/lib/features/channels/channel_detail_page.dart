@@ -1078,8 +1078,9 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
                   child: ComposerDockSizeReporter(
                     key: const ValueKey('channel-composer-dock'),
                     onHeightChanged: (height) {
-                      if ((composerDockHeight.value - height).abs() < 0.5)
+                      if ((composerDockHeight.value - height).abs() < 0.5) {
                         return;
+                      }
                       composerDockHeight.value = height;
                     },
                     child: Column(

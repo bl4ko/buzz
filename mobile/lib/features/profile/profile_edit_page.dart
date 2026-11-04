@@ -60,8 +60,9 @@ class ProfileEditPage extends HookConsumerWidget {
         return null;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted)
+        if (context.mounted) {
           unawaited(ref.read(profileProvider.notifier).refresh());
+        }
       });
       return null;
     }, const []);

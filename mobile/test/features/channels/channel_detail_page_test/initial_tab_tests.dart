@@ -32,9 +32,7 @@ void initialTabTests() {
   testWidgets('channel page starts on messages without an initial tab', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      _buildTestable(messages: const [], tasks: tasks),
-    );
+    await tester.pumpWidget(_buildTestable(messages: const [], tasks: tasks));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ChannelTabBody), findsNothing);
   });

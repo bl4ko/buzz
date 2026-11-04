@@ -2611,8 +2611,8 @@ mod postgres_tests {
     use super::*;
     use crate::channel::{ChannelType, ChannelVisibility};
     use crate::migration;
-    use crate::test_support::ScratchDb;
     use crate::store::relay_members::bootstrap_owner;
+    use crate::test_support::ScratchDb;
     use crate::user::{ensure_user, set_agent_owner};
     use nostr::Keys;
     use sqlx::postgres::PgPoolOptions;
@@ -2652,7 +2652,7 @@ mod postgres_tests {
                 .await
                 .expect("ensure user");
         }
-        bootstrap_owner(
+        let _ = bootstrap_owner(
             &pool,
             community,
             &hex::encode(&community_owner),

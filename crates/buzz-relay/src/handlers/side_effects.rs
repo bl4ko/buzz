@@ -491,9 +491,9 @@ async fn may_delete_channel_event(
     .await
     .is_ok()
         || state
-        .db
-        .is_agent_owner(tenant.community(), author, actor)
-        .await?)
+            .db
+            .is_agent_owner(tenant.community(), author, actor)
+            .await?)
 }
 
 /// Validate a standard NIP-09 deletion event before it is stored.
@@ -683,7 +683,8 @@ pub async fn validate_admin_event(
         extract_h_tag_channel(event).ok_or_else(|| anyhow::anyhow!("missing or invalid h tag"))?;
 
     let actor_bytes = event.pubkey.to_bytes().to_vec();
-    let is_community_owner = actor_is_community_owner(state, tenant.community(), &actor_bytes).await?;
+    let is_community_owner =
+        actor_is_community_owner(state, tenant.community(), &actor_bytes).await?;
 
     // Reject mutations on archived channels, except a member leaving by
     // themselves (still subject to the last-owner rule). kind:9002 is not
@@ -2005,7 +2006,8 @@ pub(crate) async fn validate_put_user(
     // order `put_members` writes them in: an heir named first lets the sole
     // owner step down after, and an owner who steps down can't then grant an
     // elevated role.
-    let is_community_owner = actor_is_community_owner(state, tenant.community(), &actor_bytes).await?;
+    let is_community_owner =
+        actor_is_community_owner(state, tenant.community(), &actor_bytes).await?;
     let mut checked = Vec::with_capacity(targets.len());
     for target in targets {
         let actor_role: Option<MemberRole> = if is_community_owner {
