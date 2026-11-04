@@ -13,17 +13,20 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: theme,
+          themeAnimationDuration: Duration.zero,
           home: Builder(
             builder: (context) {
-              final color = navigationSectionForeground(context);
-              if (theme.extension<AppColors>()?.sectionForeground != null) {
-                expect(color, const Color(0xFF7AA2F7));
-                expect(color, isNot(navigationPrimaryForeground(context)));
-              } else {
-                expect(
-                  color,
-                  navigationPrimaryForeground(context).withValues(alpha: 0.8),
-                );
+              const storm = Color(0xFF7AA2F7);
+              final hasSectionRole =
+                  theme.extension<AppColors>()?.sectionForeground != null;
+              for (final color in [
+                navigationSectionForeground(context),
+                navigationHeadingForeground(context),
+              ]) {
+                expect(color, hasSectionRole ? storm : isNot(storm));
+              }
+              if (hasSectionRole) {
+                expect(storm, isNot(navigationPrimaryForeground(context)));
               }
               return const SizedBox();
             },

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'adaptive_theme.dart';
 import 'chat_colors.dart';
 import 'color_scheme.dart';
 import 'app_theme.dart';
+import 'theme_catalog.dart';
+
+/// The separate dark Tokyo Night Storm theme.
+const stormThemeName = 'tokyo-night-storm';
 
 /// Chat-only colors, independent of controls and navigation.
 @immutable
@@ -41,17 +46,29 @@ class ChatColors extends ThemeExtension<ChatColors> {
 
 /// Builds the single mobile palette. Legacy theme names remain readable for
 /// community preference compatibility, but never select an application palette.
-ThemeData mobileAppearanceTheme(Brightness brightness, String chatColor) {
-  final theme = brightness == Brightness.dark
+ThemeData mobileAppearanceTheme(
+  Brightness brightness,
+  String chatColor, {
+  String? theme,
+}) {
+  final storm = brightness == Brightness.dark && theme == stormThemeName
+      ? findTheme(stormThemeName)
+      : null;
+  final base = storm != null
+      ? AppTheme.dark(
+          colorScheme: generateColorScheme(storm),
+          themeName: stormThemeName,
+        )
+      : brightness == Brightness.dark
       ? AppTheme.dark()
       : AppTheme.light();
   final index = chatColorIndex(chatColor);
-  return theme.copyWith(
+  return base.copyWith(
     extensions: [
-      ...theme.extensions.values,
+      ...base.extensions.values,
       ChatColors(
-        outgoing: chatColorForScheme(theme.colorScheme, index),
-        foreground: chatForegroundForScheme(theme.colorScheme, index),
+        outgoing: chatColorForScheme(base.colorScheme, index),
+        foreground: chatForegroundForScheme(base.colorScheme, index),
       ),
     ],
   );

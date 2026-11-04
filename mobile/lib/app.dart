@@ -417,7 +417,11 @@ class App extends HookConsumerWidget {
       title: 'Buzz',
       debugShowCheckedModeBanner: false,
       theme: mobileAppearanceTheme(Brightness.light, communityTheme.accent),
-      darkTheme: mobileAppearanceTheme(Brightness.dark, communityTheme.accent),
+      darkTheme: mobileAppearanceTheme(
+        Brightness.dark,
+        communityTheme.accent,
+        theme: communityTheme.theme,
+      ),
       themeMode: themeMode,
       // Above the navigator, so an age restriction cannot be bypassed by a
       // route that was pushed while the store signal request was in flight.

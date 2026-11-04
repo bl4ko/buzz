@@ -12,6 +12,9 @@ class _ThemePreviewExperience extends HookConsumerWidget {
     final stored = ref.read(communityThemeProvider);
     final draftMode = useState(stored.mode);
     final draftAccent = useState(chatColorIndex(stored.accent));
+    final draftStorm = useState(
+      stored.theme == stormThemeName && stored.mode == ThemeMode.dark,
+    );
     final platformBrightness = MediaQuery.platformBrightnessOf(context);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final brightness = switch (draftMode.value) {
@@ -20,15 +23,27 @@ class _ThemePreviewExperience extends HookConsumerWidget {
       ThemeMode.system => platformBrightness,
     };
     final selectedEntry = findTheme(
-      brightness == Brightness.dark ? buzzDarkThemeName : buzzThemeName,
+      draftStorm.value
+          ? stormThemeName
+          : brightness == Brightness.dark
+          ? buzzDarkThemeName
+          : buzzThemeName,
     )!;
-    final selectedBaseScheme = brightness == Brightness.dark
+    final selectedBaseScheme = draftStorm.value
+        ? generateColorScheme(selectedEntry)
+        : brightness == Brightness.dark
         ? darkColorScheme
         : lightColorScheme;
 
+    // Light, Dark, Tokyo Night Storm, then System.
     void cycleAppearance() {
-      final index = _appearanceOrder.indexOf(draftMode.value);
       unawaited(HapticFeedback.selectionClick());
+      if (draftMode.value == ThemeMode.dark && !draftStorm.value) {
+        draftStorm.value = true;
+        return;
+      }
+      draftStorm.value = false;
+      final index = _appearanceOrder.indexOf(draftMode.value);
       draftMode.value = _appearanceOrder[(index + 1) % _appearanceOrder.length];
     }
 
@@ -38,7 +53,9 @@ class _ThemePreviewExperience extends HookConsumerWidget {
           .read(communityThemeProvider.notifier)
           .setPreference(
             CommunityThemePreference(
-              theme: draftMode.value == ThemeMode.dark
+              theme: draftStorm.value
+                  ? stormThemeName
+                  : draftMode.value == ThemeMode.dark
                   ? buzzDarkThemeName
                   : buzzThemeName,
               accent: chatColorChoices[draftAccent.value].wireValue,
@@ -114,7 +131,10 @@ class _ThemePreviewExperience extends HookConsumerWidget {
                   ),
                   Expanded(
                     child: Text(
-                      appearanceModeLabel(draftMode.value),
+                      draftStorm.value
+                          ? 'Tokyo Night Storm'
+                          : appearanceModeLabel(draftMode.value),
+                      key: const ValueKey('theme-preview-appearance-label'),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -249,6 +269,7 @@ class _ThemeDevicePairPreview extends StatelessWidget {
     final previewTheme = mobileAppearanceTheme(
       brightness,
       chatColorChoices[accentIndex].wireValue,
+      theme: theme.name,
     );
 
     return Row(

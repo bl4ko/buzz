@@ -50,6 +50,44 @@ void main() {
     expect(find.text('Dracula'), findsNothing);
   });
 
+  testWidgets('cycles to Tokyo Night Storm after Dark and saves it', (
+    tester,
+  ) async {
+    final notifier = _RecordingCommunityThemeNotifier();
+    await _pumpPicker(tester, themeNotifier: () => notifier);
+    final label = find.byKey(const ValueKey('theme-preview-appearance-label'));
+    final cycle = find.byKey(
+      const ValueKey('theme-preview-appearance-action-button'),
+    );
+    // System -> Light -> Dark -> Storm.
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(cycle);
+      await tester.pumpAndSettle();
+    }
+    expect(tester.widget<Text>(label).data, 'Tokyo Night Storm');
+    expect(
+      find.byKey(const ValueKey('theme-preview-page-tokyo-night-storm')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('theme-preview-set')));
+    await tester.pumpAndSettle();
+    expect(notifier.lastPreference?.theme, stormThemeName);
+    expect(notifier.lastPreference?.followSystem, isFalse);
+  });
+
+  testWidgets('a saved Storm theme opens on Storm and cycles to System', (
+    tester,
+  ) async {
+    await _pumpPicker(tester, themeNotifier: _StormThemeNotifier.new);
+    final label = find.byKey(const ValueKey('theme-preview-appearance-label'));
+    expect(tester.widget<Text>(label).data, 'Tokyo Night Storm');
+    await tester.tap(
+      find.byKey(const ValueKey('theme-preview-appearance-action-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(label).data, 'System');
+  });
+
   testWidgets('mode and chat color remain drafts until Set', (tester) async {
     final notifier = _RecordingCommunityThemeNotifier();
     await _pumpPicker(tester, themeNotifier: () => notifier);
@@ -175,7 +213,7 @@ void main() {
     'appearance cycles through Light Dark System with reduced motion',
     (tester) async {
       await _pumpPicker(tester, reduceMotion: true);
-      for (final label in ['Light', 'Dark', 'System']) {
+      for (final label in ['Light', 'Dark', 'Tokyo Night Storm', 'System']) {
         await tester.tap(
           find.byKey(const ValueKey('theme-preview-appearance-action-button')),
         );
@@ -200,4 +238,13 @@ class _RecordingCommunityThemeNotifier extends CommunityThemeNotifier {
     lastPreference = preference;
     state = preference;
   }
+}
+
+class _StormThemeNotifier extends _RecordingCommunityThemeNotifier {
+  @override
+  CommunityThemePreference build() => CommunityThemePreference(
+    theme: stormThemeName,
+    accent: defaultCommunityTheme.accent,
+    followSystem: false,
+  );
 }
