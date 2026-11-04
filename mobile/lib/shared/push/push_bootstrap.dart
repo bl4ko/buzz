@@ -24,23 +24,52 @@ class BuzzPushAttemptGate {
   BuzzPushAttemptGate({
     this.retryDelay = _pushBootstrapRetryDelay,
     this.maxRetryDelay = _pushBootstrapMaxRetryDelay,
+    this.now = DateTime.now,
   });
 
   final Duration retryDelay;
   final Duration maxRetryDelay;
+  final DateTime Function() now;
   String? _attempt;
   String? _waitingAttempt;
   String? _failedAttempt;
   int _failures = 0;
   Timer? _retryTimer;
+  DateTime? _retryAt;
+  VoidCallback? _retryAction;
 
   bool tryBegin(String attempt) {
     if (_attempt == attempt || _waitingAttempt == attempt) return false;
-    _retryTimer?.cancel();
-    _retryTimer = null;
+    _cancelRetry();
     _waitingAttempt = null;
     _attempt = attempt;
     return true;
+  }
+
+  // iOS pauses Dart timers while the device sleeps; resume checks wall time.
+  void retryIfDue() {
+    final retryAt = _retryAt;
+    if (retryAt != null && !now().isBefore(retryAt)) _fireRetry();
+  }
+
+  void _scheduleRetry(Duration delay, VoidCallback action) {
+    _cancelRetry();
+    _retryAt = now().add(delay);
+    _retryAction = action;
+    _retryTimer = Timer(delay, _fireRetry);
+  }
+
+  void _fireRetry() {
+    final action = _retryAction;
+    _cancelRetry();
+    action?.call();
+  }
+
+  void _cancelRetry() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _retryAt = null;
+    _retryAction = null;
   }
 
   void failed(String attempt, {required VoidCallback retry}) {
@@ -50,9 +79,7 @@ class BuzzPushAttemptGate {
     _failedAttempt = attempt;
     _waitingAttempt = attempt;
     final delay = retryDelay * (1 << min(_failures - 1, 16));
-    _retryTimer?.cancel();
-    _retryTimer = Timer(delay > maxRetryDelay ? maxRetryDelay : delay, () {
-      _retryTimer = null;
+    _scheduleRetry(delay > maxRetryDelay ? maxRetryDelay : delay, () {
       if (_waitingAttempt != attempt) return;
       _waitingAttempt = null;
       if (_attempt == null) retry();
@@ -66,9 +93,7 @@ class BuzzPushAttemptGate {
   }) {
     if (_attempt != attempt) return;
     _clearFailures();
-    _retryTimer?.cancel();
-    _retryTimer = Timer(delay, () {
-      _retryTimer = null;
+    _scheduleRetry(delay, () {
       if (_attempt != attempt) return;
       _attempt = null;
       retry();
@@ -78,8 +103,7 @@ class BuzzPushAttemptGate {
   void complete(String attempt) {
     if (_attempt != attempt) return;
     _clearFailures();
-    _retryTimer?.cancel();
-    _retryTimer = null;
+    _cancelRetry();
     _attempt = null;
   }
 
@@ -88,7 +112,18 @@ class BuzzPushAttemptGate {
     _failures = 0;
   }
 
-  void dispose() => _retryTimer?.cancel();
+  void dispose() => _cancelRetry();
+}
+
+/// Renews a week early so a lease outlives days with the app closed.
+@visibleForTesting
+Duration buzzPushRenewalDelay({
+  required int grantExpiresAt,
+  required DateTime now,
+}) {
+  final remaining = grantExpiresAt * 1000 - now.millisecondsSinceEpoch;
+  final lead = min(const Duration(days: 7).inMilliseconds, remaining ~/ 2);
+  return Duration(milliseconds: max(1000, remaining - lead));
 }
 
 @visibleForTesting
@@ -197,7 +232,10 @@ class BuzzPushBootstrap extends HookConsumerWidget {
 
     useEffect(() {
       final listener = AppLifecycleListener(
-        onResume: () => _runRevocationOutbox(revocationOutbox.trigger),
+        onResume: () {
+          _runRevocationOutbox(revocationOutbox.trigger);
+          publicationAttempt.retryIfDue();
+        },
       );
       _runRevocationOutbox(revocationOutbox.start);
       return listener.dispose;
@@ -313,16 +351,11 @@ class BuzzPushBootstrap extends HookConsumerWidget {
               memberPubkey!,
               relay,
             );
-            final renewInMilliseconds =
-                grant.expiresAt * 1000 -
-                DateTime.now().millisecondsSinceEpoch -
-                const Duration(minutes: 5).inMilliseconds;
             publicationAttempt.retryAfter(
               attempt,
-              delay: Duration(
-                milliseconds: renewInMilliseconds > 1000
-                    ? renewInMilliseconds
-                    : 1000,
+              delay: buzzPushRenewalDelay(
+                grantExpiresAt: grant.expiresAt,
+                now: DateTime.now(),
               ),
               retry: () {
                 if (context.mounted) publicationRetry.value += 1;

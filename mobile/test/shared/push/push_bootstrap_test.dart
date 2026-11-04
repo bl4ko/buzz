@@ -106,6 +106,74 @@ void main() {
     expect(gate.tryBegin('attempt'), isTrue);
   });
 
+  test('renewal runs on resume once wall time passes a paused timer', () {
+    fakeAsync((async) {
+      var wall = DateTime.utc(2026, 11, 4);
+      final gate = BuzzPushAttemptGate(now: () => wall);
+      var retries = 0;
+
+      expect(gate.tryBegin('attempt'), isTrue);
+      gate.retryAfter(
+        'attempt',
+        delay: const Duration(days: 23),
+        retry: () => retries += 1,
+      );
+      gate.retryIfDue();
+      expect(retries, 0);
+
+      wall = wall.add(const Duration(days: 23));
+      gate.retryIfDue();
+      expect(retries, 1);
+      expect(gate.tryBegin('attempt'), isTrue);
+
+      async.elapse(const Duration(days: 30));
+      expect(retries, 1);
+      gate.dispose();
+    });
+  });
+
+  test('a failed attempt also retries on resume after its backoff', () {
+    fakeAsync((async) {
+      var wall = DateTime.utc(2026, 11, 4);
+      final gate = BuzzPushAttemptGate(now: () => wall);
+      var retries = 0;
+
+      expect(gate.tryBegin('attempt'), isTrue);
+      gate.failed('attempt', retry: () => retries += 1);
+      wall = wall.add(const Duration(seconds: 5));
+      gate.retryIfDue();
+      expect(retries, 1);
+      gate.dispose();
+    });
+  });
+
+  test('renewal is scheduled a week before the grant expires', () {
+    final now = DateTime.utc(2026, 11, 4);
+    final in30Days = now.add(const Duration(days: 30));
+    expect(
+      buzzPushRenewalDelay(
+        grantExpiresAt: in30Days.millisecondsSinceEpoch ~/ 1000,
+        now: now,
+      ),
+      const Duration(days: 23),
+    );
+    expect(
+      buzzPushRenewalDelay(
+        grantExpiresAt:
+            now.add(const Duration(hours: 2)).millisecondsSinceEpoch ~/ 1000,
+        now: now,
+      ),
+      const Duration(hours: 1),
+    );
+    expect(
+      buzzPushRenewalDelay(
+        grantExpiresAt: now.millisecondsSinceEpoch ~/ 1000 - 60,
+        now: now,
+      ),
+      const Duration(seconds: 1),
+    );
+  });
+
   test('completed bootstrap attempt can run again for later work', () {
     final gate = BuzzPushAttemptGate();
     addTearDown(gate.dispose);
