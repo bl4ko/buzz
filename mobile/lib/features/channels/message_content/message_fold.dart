@@ -41,7 +41,6 @@ class _MessageFold extends HookConsumerWidget {
     final saved = ref.watch(
       expandedMessageFoldsProvider.select((ids) => ids.contains(foldId)),
     );
-    final overflows = useState(false);
     final userToggled = useState(false);
     useEffect(() {
       if (!forceExpanded) return null;
@@ -61,81 +60,74 @@ class _MessageFold extends HookConsumerWidget {
       ref.read(expandedMessageFoldsProvider.notifier).set(foldId, folded);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+    return _FoldLayout(
+      foldHeight: foldHeight,
+      folded: folded,
       children: [
-        _FoldClip(
-          foldHeight: foldHeight,
-          folded: folded,
-          onOverflowChanged: (value) {
-            if (context.mounted) overflows.value = value;
-          },
-          child: child,
-        ),
-        if (overflows.value)
-          TextButton(
-            key: const ValueKey('message-fold-toggle'),
-            onPressed: toggle,
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(Grid.xl, Grid.md),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-              alignment: Alignment.centerLeft,
-              foregroundColor: context.colors.primary,
-              textStyle: context.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+        child,
+        TextButton(
+          key: const ValueKey('message-fold-toggle'),
+          onPressed: toggle,
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(Grid.xl, Grid.md),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            alignment: Alignment.centerLeft,
+            foregroundColor: context.colors.primary,
+            textStyle: context.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
-            child: Text(folded ? 'Show more' : 'Show less'),
           ),
+          child: Text(folded ? 'Show more' : 'Show less'),
+        ),
       ],
     );
   }
 }
 
-class _FoldClip extends SingleChildRenderObjectWidget {
+class _FoldLayout extends MultiChildRenderObjectWidget {
   final double foldHeight;
   final bool folded;
-  final ValueChanged<bool> onOverflowChanged;
 
-  const _FoldClip({
+  const _FoldLayout({
     required this.foldHeight,
     required this.folded,
-    required this.onOverflowChanged,
-    required super.child,
+    required super.children,
   });
 
   @override
-  _RenderFoldClip createRenderObject(BuildContext context) => _RenderFoldClip(
-    foldHeight: foldHeight,
-    folded: folded,
-    onOverflowChanged: onOverflowChanged,
-  );
+  _RenderFoldLayout createRenderObject(BuildContext context) =>
+      _RenderFoldLayout(foldHeight: foldHeight, folded: folded);
 
   @override
-  void updateRenderObject(BuildContext context, _RenderFoldClip renderObject) {
+  void updateRenderObject(
+    BuildContext context,
+    _RenderFoldLayout renderObject,
+  ) {
     renderObject
       ..foldHeight = foldHeight
-      ..folded = folded
-      ..onOverflowChanged = onOverflowChanged;
+      ..folded = folded;
   }
 }
 
-class _RenderFoldClip extends RenderProxyBox {
-  _RenderFoldClip({
-    required double foldHeight,
-    required bool folded,
-    required this.onOverflowChanged,
-  }) : _foldHeight = foldHeight,
-       _folded = folded;
+class _FoldParentData extends ContainerBoxParentData<RenderBox> {}
 
-  ValueChanged<bool> onOverflowChanged;
+/// Lays out the body and, only when the body is taller than the fold, the
+/// toggle below it, in one pass so no later frame changes the row height.
+class _RenderFoldLayout extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _FoldParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _FoldParentData> {
+  _RenderFoldLayout({required double foldHeight, required bool folded})
+    : _foldHeight = foldHeight,
+      _folded = folded;
+
   final _clipLayer = LayerHandle<ClipRectLayer>();
   final _maskLayer = LayerHandle<ShaderMaskLayer>();
-  bool? _reportedOverflow;
   bool _clipping = false;
+  bool _overflow = false;
+  double _bodyHeight = 0;
 
   double _foldHeight;
   set foldHeight(double value) {
@@ -151,80 +143,108 @@ class _RenderFoldClip extends RenderProxyBox {
     markNeedsLayout();
   }
 
+  RenderBox get _body => firstChild!;
+  RenderBox get _toggle => lastChild!;
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _FoldParentData) {
+      child.parentData = _FoldParentData();
+    }
+  }
+
   @override
   bool get alwaysNeedsCompositing => _clipping;
 
+  bool _overflows(double height) => height > _foldHeight + 0.5;
+
   double _foldedHeight(double height) =>
-      _folded && height > _foldHeight + 0.5 ? _foldHeight : height;
+      _folded && _overflows(height) ? _foldHeight : height;
+
+  @override
+  double computeMinIntrinsicWidth(double height) => math.max(
+    _body.getMinIntrinsicWidth(double.infinity),
+    _toggle.getMinIntrinsicWidth(double.infinity),
+  );
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _body.getMaxIntrinsicWidth(double.infinity);
+
+  double _intrinsicHeight(double width) {
+    final body = _body.getMaxIntrinsicHeight(width);
+    return _foldedHeight(body) +
+        (_overflows(body) ? _toggle.getMaxIntrinsicHeight(width) : 0);
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _intrinsicHeight(width);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _intrinsicHeight(width);
 
   @override
   Size computeDryLayout(BoxConstraints constraints) {
-    final child = this.child;
-    if (child == null) return constraints.smallest;
-    final childSize = child.getDryLayout(
-      constraints.copyWith(maxHeight: double.infinity),
+    final inner = constraints.copyWith(
+      minHeight: 0,
+      maxHeight: double.infinity,
     );
-    return constraints.constrain(
-      Size(childSize.width, _foldedHeight(childSize.height)),
-    );
+    final body = _body.getDryLayout(inner);
+    var width = body.width;
+    var height = _foldedHeight(body.height);
+    if (_overflows(body.height)) {
+      final toggle = _toggle.getDryLayout(inner.loosen());
+      width = math.max(width, toggle.width);
+      height += toggle.height;
+    }
+    return constraints.constrain(Size(width, height));
   }
-
-  @override
-  double computeMinIntrinsicHeight(double width) =>
-      _foldedHeight(super.computeMinIntrinsicHeight(width));
-
-  @override
-  double computeMaxIntrinsicHeight(double width) =>
-      _foldedHeight(super.computeMaxIntrinsicHeight(width));
 
   @override
   void performLayout() {
-    final child = this.child;
-    if (child == null) {
-      size = constraints.smallest;
-      _setClipping(false);
-      return;
-    }
-    child.layout(
-      constraints.copyWith(maxHeight: double.infinity),
-      parentUsesSize: true,
+    final inner = constraints.copyWith(
+      minHeight: 0,
+      maxHeight: double.infinity,
     );
-    final overflow = child.size.height > _foldHeight + 0.5;
-    final clipping = _folded && overflow;
-    size = constraints.constrain(
-      Size(child.size.width, clipping ? _foldHeight : child.size.height),
-    );
-    _setClipping(clipping);
-    if (_reportedOverflow != overflow) {
-      _reportedOverflow = overflow;
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (attached && _reportedOverflow == overflow) {
-          onOverflowChanged(overflow);
-        }
-      });
+    _body.layout(inner, parentUsesSize: true);
+    _overflow = _overflows(_body.size.height);
+    final clipping = _folded && _overflow;
+    _bodyHeight = clipping ? _foldHeight : _body.size.height;
+    var width = _body.size.width;
+    var height = _bodyHeight;
+    if (_overflow) {
+      _toggle.layout(inner.loosen(), parentUsesSize: true);
+      (_toggle.parentData! as _FoldParentData).offset = Offset(0, _bodyHeight);
+      width = math.max(width, _toggle.size.width);
+      height += _toggle.size.height;
+    } else {
+      _toggle.layout(BoxConstraints.tight(Size.zero));
     }
-  }
-
-  void _setClipping(bool value) {
-    if (value == _clipping) return;
-    _clipping = value;
-    markNeedsCompositingBitsUpdate();
+    size = constraints.constrain(Size(width, height));
+    if (clipping != _clipping) {
+      _clipping = clipping;
+      markNeedsCompositingBitsUpdate();
+    }
   }
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    final child = this.child;
-    if (child == null) return;
+    if (_overflow) {
+      context.paintChild(
+        _toggle,
+        offset + (_toggle.parentData! as _FoldParentData).offset,
+      );
+    }
     if (!_clipping) {
       _clipLayer.layer = null;
       _maskLayer.layer = null;
-      context.paintChild(child, offset);
+      context.paintChild(_body, offset);
       return;
     }
-    final bounds = Offset.zero & size;
-    final fadeStart = size.height <= _messageFoldFadeExtent
+    final bounds = Offset.zero & Size(_body.size.width, _bodyHeight);
+    final fadeStart = _bodyHeight <= _messageFoldFadeExtent
         ? 0.0
-        : 1 - _messageFoldFadeExtent / size.height;
+        : 1 - _messageFoldFadeExtent / _bodyHeight;
     _clipLayer.layer = context.pushClipRect(needsCompositing, offset, bounds, (
       clipContext,
       clipOffset,
@@ -236,12 +256,12 @@ class _RenderFoldClip extends RenderProxyBox {
           colors: const [Color(0xFF000000), Color(0x00000000)],
           stops: [fadeStart, 1],
         ).createShader(bounds)
-        ..maskRect = clipOffset & size
+        ..maskRect = clipOffset & bounds.size
         ..blendMode = BlendMode.dstIn;
       _maskLayer.layer = mask;
       clipContext.pushLayer(
         mask,
-        (maskContext, maskOffset) => maskContext.paintChild(child, maskOffset),
+        (maskContext, maskOffset) => maskContext.paintChild(_body, maskOffset),
         clipOffset,
       );
     }, oldLayer: _clipLayer.layer);
@@ -249,12 +269,30 @@ class _RenderFoldClip extends RenderProxyBox {
 
   @override
   Rect? describeApproximatePaintClip(RenderObject child) =>
-      _clipping ? Offset.zero & size : null;
+      _clipping && child == _body
+      ? Offset.zero & Size(_body.size.width, _bodyHeight)
+      : null;
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    visitor(_body);
+    if (_overflow) visitor(_toggle);
+  }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    if (_clipping && !(Offset.zero & size).contains(position)) return false;
-    return super.hitTestChildren(result, position: position);
+    if (_overflow) {
+      final offset = (_toggle.parentData! as _FoldParentData).offset;
+      final hit = result.addWithPaintOffset(
+        offset: offset,
+        position: position,
+        hitTest: (result, transformed) =>
+            _toggle.hitTest(result, position: transformed),
+      );
+      if (hit) return true;
+    }
+    if (_clipping && position.dy > _bodyHeight) return false;
+    return _body.hitTest(result, position: position);
   }
 
   @override

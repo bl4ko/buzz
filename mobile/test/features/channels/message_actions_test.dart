@@ -807,8 +807,8 @@ void main() {
           },
         );
         expect(find.byType(BottomSheet), findsOneWidget);
-        expect(find.byType(SheetActionSection), findsNWidgets(3));
-        expect(find.byType(AppListCard), findsNWidgets(3));
+        expect(find.byType(SheetActionSection), findsNWidgets(4));
+        expect(find.byType(AppListCard), findsNWidgets(4));
         expect(captures, 0);
         expect(harness.sourceHidden.value, isFalse);
         for (final label in [
@@ -817,6 +817,7 @@ void main() {
           'Copy text',
           'Edit message',
           'Delete message',
+          'Pin message',
         ]) {
           expect(
             find.ancestor(

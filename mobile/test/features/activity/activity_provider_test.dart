@@ -281,15 +281,17 @@ void main() {
         content: id,
         sig: '',
       );
+      final ownRoot = 'a' * 64;
+      final otherRoot = 'b' * 64;
       final session = _RecordingSessionNotifier()
-        ..seed(message('own-root', author: 'me_pk'))
+        ..seed(message(ownRoot, author: 'me_pk'))
         ..seed(message('plain-message'))
         ..seed(
           message(
             'thread-reply',
             tags: [
-              ['e', 'own-root', '', 'root'],
-              ['e', 'own-root', '', 'reply'],
+              ['e', ownRoot, '', 'root'],
+              ['e', ownRoot, '', 'reply'],
             ],
           ),
         )
@@ -297,8 +299,8 @@ void main() {
           message(
             'unrelated-reply',
             tags: [
-              ['e', 'other-root', '', 'root'],
-              ['e', 'other-root', '', 'reply'],
+              ['e', otherRoot, '', 'root'],
+              ['e', otherRoot, '', 'reply'],
             ],
           ),
         )
@@ -311,7 +313,7 @@ void main() {
             kind: 7,
             tags: [
               ['h', 'channel-1'],
-              ['e', 'own-root'],
+              ['e', ownRoot],
               ['p', 'me_pk'],
             ],
             content: '👍',
@@ -351,8 +353,8 @@ void main() {
         'reaction',
       });
       final reaction = feed.activity.singleWhere((item) => item.kind == 7);
-      expect(reaction.targetEventId, 'own-root');
-      expect(reaction.displayContent, 'own-root');
+      expect(reaction.targetEventId, ownRoot);
+      expect(reaction.displayContent, ownRoot);
       await _waitFor(
         () =>
             session.visibleDmSubscriptionBatches.isNotEmpty &&
@@ -559,14 +561,14 @@ void main() {
       content: 'hi',
       sig: '',
     );
-    // The newest window holds one quiet mention and 49 real ones; a full
+    // The newest window holds one quiet mention and 99 real ones; a full
     // window of older real mentions sits behind it.
     final session = _RecordingSessionNotifier()
       ..seed(mention('quiet', 1000, quiet: true));
-    for (var i = 0; i < 49; i++) {
+    for (var i = 0; i < 99; i++) {
       session.seed(mention('new-$i', 900 + i));
     }
-    for (var i = 0; i < 50; i++) {
+    for (var i = 0; i < 100; i++) {
       session.seed(mention('old-$i', 100 + i));
     }
     final container = ProviderContainer(
@@ -584,9 +586,9 @@ void main() {
     await container.read(channelsProvider.future);
     final feed = await container.read(activityProvider.future);
 
-    expect(feed.mentions, hasLength(50));
-    expect(feed.mentions.map((item) => item.id), contains('old-49'));
-    expect(feed.mentions.map((item) => item.id), isNot(contains('old-48')));
+    expect(feed.mentions, hasLength(100));
+    expect(feed.mentions.map((item) => item.id), contains('old-99'));
+    expect(feed.mentions.map((item) => item.id), isNot(contains('old-98')));
   });
 
   test(

@@ -598,11 +598,12 @@ void main() {
     });
 
     test('huddle starts mark chat in thread only for chat=thread', () {
+      const huddleRoomId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
       for (final (content, chatInThread) in [
-        ({'ephemeral_channel_id': 'child', 'chat': 'thread'}, true),
-        ({'ephemeral_channel_id': 'child'}, false),
-        ({'ephemeral_channel_id': 'child', 'chat': 'channel'}, false),
-        ({'ephemeral_channel_id': 'child', 'chat': true}, false),
+        ({'ephemeral_channel_id': huddleRoomId, 'chat': 'thread'}, true),
+        ({'ephemeral_channel_id': huddleRoomId}, false),
+        ({'ephemeral_channel_id': huddleRoomId, 'chat': 'channel'}, false),
+        ({'ephemeral_channel_id': huddleRoomId, 'chat': true}, false),
       ]) {
         final event = SystemEvent.fromHuddleEvent(
           NostrEvent(
@@ -618,7 +619,7 @@ void main() {
           ),
         );
         expect(event!.chatInThread, chatInThread, reason: '$content');
-        expect(event.ephemeralChannelId, 'child');
+        expect(event.ephemeralChannelId, huddleRoomId);
       }
     });
 

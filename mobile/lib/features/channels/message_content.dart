@@ -8,7 +8,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -459,6 +458,18 @@ class MessageContent extends HookConsumerWidget {
         inlineComponents: inlineComponents,
       ),
     );
+    final lineHeight = (style?.fontSize ?? 15) * (style?.height ?? 1.3);
+    Widget foldable(Widget child) =>
+        foldId != null && maxLines == null && !emojiOnly
+        ? _MessageFold(
+            foldId: foldId!,
+            foldHeight:
+                MediaQuery.textScalerOf(context).scale(lineHeight) *
+                messageFoldLines,
+            forceExpanded: foldExpanded,
+            child: child,
+          )
+        : child;
     final segments = bubble
         ? messageBubbleSegments(finalContent, imetaByUrl)
         : const <({String text, bool attachment})>[];
@@ -525,7 +536,7 @@ class MessageContent extends HookConsumerWidget {
                               ),
                               child: GptMarkdownTheme(
                                 gptThemeData: bubbleMarkdownTheme,
-                                child: renderMarkdown(segment.text),
+                                child: foldable(renderMarkdown(segment.text)),
                               ),
                             ),
                           ),
@@ -536,17 +547,7 @@ class MessageContent extends HookConsumerWidget {
             ],
           )
         : renderMarkdown(finalContent);
-    final lineHeight = (style?.fontSize ?? 15) * (style?.height ?? 1.3);
-    final body = foldId != null && maxLines == null && !emojiOnly
-        ? _MessageFold(
-            foldId: foldId!,
-            foldHeight:
-                MediaQuery.textScalerOf(context).scale(lineHeight) *
-                messageFoldLines,
-            forceExpanded: foldExpanded,
-            child: markdown,
-          )
-        : markdown;
+    final body = bubble ? markdown : foldable(markdown);
     if (trailingGallery == null) return body;
 
     return Column(
@@ -1192,7 +1193,7 @@ class MessageNotifiedLine extends ConsumerWidget {
                 label:
                     mentionLabels[pubkey] ??
                     mentionNames[pubkey] ??
-                    '${pubkey.substring(0, 8)}…',
+                    (pubkey.length > 8 ? '${pubkey.substring(0, 8)}…' : pubkey),
                 isAgent: agentMentionPubkeys.contains(pubkey),
                 textStyle: style,
               ),

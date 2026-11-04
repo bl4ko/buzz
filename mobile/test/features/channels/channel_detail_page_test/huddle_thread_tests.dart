@@ -1,5 +1,12 @@
 part of '../channel_detail_page_test.dart';
 
+const _threadHuddleId =
+    '2222222222222222222222222222222222222222222222222222222222222222';
+const _typingHuddleId =
+    '3333333333333333333333333333333333333333333333333333333333333333';
+const _speechHuddleId =
+    '4444444444444444444444444444444444444444444444444444444444444444';
+
 const _speechChannel = MethodChannel('buzz/huddle_speech');
 const _huddleAgentKey =
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -63,14 +70,14 @@ void huddleThreadTests() {
         id: 'thread-huddle-reply-1',
         pubkey: 'bob',
         content: 'Can you check the logs?',
-        rootId: 'thread-huddle',
+        rootId: _threadHuddleId,
         createdAt: now + 1,
       ),
       _threadReply(
         id: 'thread-huddle-reply-2',
         pubkey: 'agent',
         content: 'Logs are clean.',
-        rootId: 'thread-huddle',
+        rootId: _threadHuddleId,
         createdAt: now + 2,
       ),
     ];
@@ -78,14 +85,14 @@ void huddleThreadTests() {
       _buildTestable(
         messages: [
           _huddleMsg(
-            id: 'thread-huddle',
+            id: _threadHuddleId,
             kind: EventKind.huddleStarted,
             createdAt: now,
             chatInThread: true,
           ),
           ...replies,
         ],
-        threadReplies: {'thread-huddle': replies},
+        threadReplies: {_threadHuddleId: replies},
         users: const {
           'alice': UserProfile(pubkey: 'alice', displayName: 'Alice'),
         },
@@ -95,7 +102,9 @@ void huddleThreadTests() {
 
     expect(find.text('Huddle in progress'), findsOneWidget);
     expect(find.text('Logs are clean.'), findsNothing);
-    final summary = find.byKey(const ValueKey('thread-summary-thread-huddle'));
+    final summary = find.byKey(
+      const ValueKey('thread-summary-$_threadHuddleId'),
+    );
     expect(summary, findsOneWidget);
     expect(
       find.descendant(of: summary, matching: find.textContaining('2 replies')),
@@ -133,7 +142,7 @@ void huddleThreadTests() {
       _buildTestable(
         messages: [
           _huddleMsg(
-            id: 'typing-huddle',
+            id: _typingHuddleId,
             kind: EventKind.huddleStarted,
             pubkey: 'self',
             createdAt: now,
@@ -168,7 +177,7 @@ void huddleThreadTests() {
     const preparing = ValueKey('huddle-agent-preparing-response-agent');
     expect(find.byKey(preparing), findsNothing);
 
-    typing.setEntries([typingIn('typing-huddle')]);
+    typing.setEntries([typingIn(_typingHuddleId)]);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byKey(preparing), findsOneWidget);
@@ -208,7 +217,7 @@ void huddleThreadTests() {
         final relay = _PublishedEvents();
         final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
         final start = _huddleMsg(
-          id: 'speech-huddle',
+          id: _speechHuddleId,
           kind: EventKind.huddleStarted,
           pubkey: 'self',
           createdAt: now,
@@ -235,7 +244,7 @@ void huddleThreadTests() {
                 ),
                 'self': UserProfile(pubkey: 'self', displayName: 'Self'),
               }),
-              threadReplies: {'speech-huddle': const []},
+              threadReplies: {_speechHuddleId: const []},
               relayConfigNotifier: _HuddleRelayConfigNotifier(),
               huddleCurrentPubkey: 'self',
               huddleHumanCountLoader: (_) async => 2,
@@ -285,7 +294,7 @@ void huddleThreadTests() {
             expect(transcript.tags, contains(equals(const ['h', _channelId])));
             expect(
               transcript.tags,
-              contains(equals(const ['e', 'speech-huddle', '', 'reply'])),
+              contains(equals(['e', _speechHuddleId, '', 'reply'])),
             );
           } else {
             expect(
@@ -311,7 +320,7 @@ void huddleThreadTests() {
               id: 'agent-progress',
               pubkey: _huddleAgentKey,
               content: 'Reading deploy logs',
-              rootId: 'speech-huddle',
+              rootId: _speechHuddleId,
               createdAt: later,
             ),
           ];
@@ -330,7 +339,7 @@ void huddleThreadTests() {
               id: 'agent-final',
               pubkey: _huddleAgentKey,
               content: 'Deploy is healthy.',
-              rootId: 'speech-huddle',
+              rootId: _speechHuddleId,
               createdAt: later + 1,
               voiceFinal: true,
             ),
@@ -372,7 +381,7 @@ void huddleThreadTests() {
             chat.tags.where((tag) => tag.first == 'e').toList(),
             threaded
                 ? [
-                    ['e', 'speech-huddle', '', 'reply'],
+                    ['e', _speechHuddleId, '', 'reply'],
                   ]
                 : isEmpty,
           );

@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 const _me = 'me';
 const _agent = 'agent';
 const _human = 'human';
-const _huddleRoot = 'huddle-root';
-const _otherRoot = 'other-root';
+final _huddleRoot = 'a' * 64;
+final _otherRoot = 'b' * 64;
 
 NostrEvent _event({
   required String pubkey,
@@ -68,8 +68,8 @@ void main() {
       bool notify({required bool active}) => shouldNotifyForEvent(
         event,
         _me,
-        participatedRootIds: const {_huddleRoot, _otherRoot},
-        quietRootIds: active ? const {_huddleRoot} : const {},
+        participatedRootIds: {_huddleRoot, _otherRoot},
+        quietRootIds: active ? {_huddleRoot} : const {},
         quietAuthorPubkeys: active ? const {_agent} : const {},
       );
       expect(notify(active: true), quiet, reason: 'active ${event.id}');

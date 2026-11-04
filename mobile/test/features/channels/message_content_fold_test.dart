@@ -56,7 +56,7 @@ void main() {
   testWidgets('a short message has no fold control', (tester) async {
     await _pumpContent(tester, 'A short reply.');
 
-    expect(_toggle, findsNothing);
+    expect(_toggle.hitTestable(), findsNothing);
     expect(_contentHeight(tester), lessThan(_foldHeight));
   });
 
@@ -110,7 +110,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 16));
 
-    expect(_toggle, findsNothing);
+    expect(_toggle.hitTestable(), findsNothing);
   });
 
   testWidgets('an expanded message stays expanded after it remounts', (

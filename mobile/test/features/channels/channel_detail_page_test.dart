@@ -50,6 +50,7 @@ import 'package:buzz/features/channels/channel_detail_page.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
 import 'package:buzz/features/channels/channel_tabs/channel_tab_body.dart';
+import 'package:buzz/features/channels/channel_tabs/channel_tabs_provider.dart';
 import 'package:buzz/features/channels/channel_tabs/channel_tasks_provider.dart';
 import 'package:buzz/features/channels/channel_tabs/thread_status.dart';
 import 'package:buzz/features/channels/channel_window.dart';
@@ -513,14 +514,13 @@ Widget _buildTestable({
         currentPubkeyProvider.overrideWith((ref) => huddleCurrentPubkey),
       if (sendMessage != null)
         sendMessageProvider.overrideWithValue(sendMessage),
-      if (messagePins != null)
-        channelMessagePinsProvider(
-          _channelId,
-        ).overrideWith(() => _FixedPinsNotifier(messagePins)),
-      if (tasks != null)
-        channelTasksProvider(
-          _channelId,
-        ).overrideWith(() => _FixedTasksNotifier(tasks)),
+      channelMessagePinsProvider(_channelId).overrideWith(
+        () => _FixedPinsNotifier(messagePins ?? const ChannelMessagePins()),
+      ),
+      channelTabsProvider(_channelId).overrideWith(_FixedTabsNotifier.new),
+      channelTasksProvider(_channelId).overrideWith(
+        () => _FixedTasksNotifier(tasks ?? const ChannelTasksState()),
+      ),
       appLifecycleProvider.overrideWith(_TestAppLifecycleNotifier.new),
       // Compose bar drafts persist through SharedPreferences.
       savedPrefsProvider.overrideWithValue(_testPrefs),
@@ -5278,10 +5278,10 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(
+          expect(
             find.byKey(const ValueKey('channel-jump-to-oldest-unread')),
+            findsNothing,
           );
-          await tester.pumpAndSettle();
 
           expect(findRichText('Message 21'), findsOneWidget);
           expect(findRichText('Message 50'), findsNothing);
@@ -5858,7 +5858,8 @@ void main() {
         ]);
         await _settleThenFinishFetch(tester);
         expect(messagesNotifier.fetchOlderCalls, 2);
-        expect(unreadButton, findsOneWidget);
+        expect(unreadButton, findsNothing);
+        expect(_unreadDividerIn('reachable-unread'), findsOneWidget);
       },
     );
 
@@ -5938,7 +5939,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(messagesNotifier.fetchOlderCalls, 1);
+      expect(messagesNotifier.fetchOlderCalls, 2);
       expect(_channelItemLeadingEdge(tester, 99 - 21), closeTo(0.35, 0.01));
       expect(findRichText('Message 21'), findsOneWidget);
       expect(findRichText('Message 75'), findsNothing);
@@ -19144,6 +19145,13 @@ class _FixedTasksNotifier extends ChannelTasksNotifier {
 
   @override
   ChannelTasksState build() => tasks;
+}
+
+class _FixedTabsNotifier extends ChannelTabsNotifier {
+  _FixedTabsNotifier() : super(_channelId);
+
+  @override
+  ChannelTabsState build() => const ChannelTabsState(_channelId);
 }
 
 class _FixedPinsNotifier extends ChannelMessagePinsNotifier {

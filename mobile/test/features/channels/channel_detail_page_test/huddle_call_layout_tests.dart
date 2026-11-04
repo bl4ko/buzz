@@ -1,5 +1,8 @@
 part of '../channel_detail_page_test.dart';
 
+const _layoutHuddleId =
+    '1111111111111111111111111111111111111111111111111111111111111111';
+
 typedef _IphoneHuddleCall = ({
   List<String> nativeCalls,
   _FakeMessagesNotifier messages,
@@ -41,7 +44,7 @@ Future<void> _withIphoneHuddleCall(
   });
   final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
   final start = _huddleMsg(
-    id: 'layout-huddle',
+    id: _layoutHuddleId,
     kind: EventKind.huddleStarted,
     pubkey: 'self',
     createdAt: now,
@@ -65,7 +68,7 @@ Future<void> _withIphoneHuddleCall(
           'agent': UserProfile(pubkey: 'agent', displayName: 'Pollen'),
           'self': UserProfile(pubkey: 'self', displayName: 'Self'),
         }),
-        threadReplies: {'layout-huddle': const []},
+        threadReplies: {_layoutHuddleId: const []},
         relayConfigNotifier: _HuddleRelayConfigNotifier(),
         huddleCurrentPubkey: 'self',
         huddleHumanCountLoader: (_) async => 2,
@@ -142,7 +145,7 @@ void huddleCallLayoutTests() {
             id: 'agent-first',
             pubkey: 'agent',
             content: 'Looking at it.',
-            rootId: 'layout-huddle',
+            rootId: _layoutHuddleId,
             createdAt: call.later,
             voiceFinal: true,
           ),
@@ -150,7 +153,7 @@ void huddleCallLayoutTests() {
             id: 'agent-final',
             pubkey: 'agent',
             content: 'Deploy is healthy.',
-            rootId: 'layout-huddle',
+            rootId: _layoutHuddleId,
             createdAt: call.later + 1,
             voiceFinal: true,
           ),
@@ -158,7 +161,7 @@ void huddleCallLayoutTests() {
             id: 'agent-progress',
             pubkey: 'agent',
             content: 'Reading more logs',
-            rootId: 'layout-huddle',
+            rootId: _layoutHuddleId,
             createdAt: call.later + 2,
           ),
           _textMsg(
@@ -232,7 +235,7 @@ void huddleCallLayoutTests() {
           id: 'agent-first',
           pubkey: 'agent',
           content: 'Deploy is healthy.',
-          rootId: 'layout-huddle',
+          rootId: _layoutHuddleId,
           createdAt: call.later,
           voiceFinal: true,
         );
@@ -262,7 +265,7 @@ void huddleCallLayoutTests() {
             id: 'agent-second',
             pubkey: 'agent',
             content: 'Still healthy.',
-            rootId: 'layout-huddle',
+            rootId: _layoutHuddleId,
             createdAt: call.later + 1,
             voiceFinal: true,
           ),
@@ -290,7 +293,7 @@ void huddleCallLayoutTests() {
             id: 'agent-final',
             pubkey: 'agent',
             content: 'Deploy is healthy.',
-            rootId: 'layout-huddle',
+            rootId: _layoutHuddleId,
             createdAt: call.later,
             voiceFinal: true,
           ),
@@ -393,7 +396,7 @@ void huddleCallLayoutTests() {
                 id: 'agent-final',
                 pubkey: 'agent',
                 content: 'The $words is healthy.',
-                rootId: 'layout-huddle',
+                rootId: _layoutHuddleId,
                 createdAt: call.later,
                 voiceFinal: true,
               ),

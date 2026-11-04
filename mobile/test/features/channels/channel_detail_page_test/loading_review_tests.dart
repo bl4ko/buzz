@@ -304,6 +304,10 @@ void _loadingReviewTests() {
     );
     list.itemScrollController!.jumpTo(index: 0);
     await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('message-fold-toggle')).hitTestable().first,
+    );
+    await tester.pumpAndSettle();
     final head = find.byType(MessageContent).first;
     expect(tester.getSize(head).height, greaterThan(800));
     final rect = tester.getRect(head);

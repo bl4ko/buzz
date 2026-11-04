@@ -322,6 +322,11 @@ class FakeRelay {
     final until = filter['until'] as int?;
     if (since != null && event.createdAt < since) return false;
     if (until != null && event.createdAt > until) return false;
+    if (filter['files_and_links'] == true &&
+        !event.tags.any((tag) => tag.isNotEmpty && tag[0] == 'imeta') &&
+        !RegExp(r'https?://').hasMatch(event.content)) {
+      return false;
+    }
     // Buzz pagination: strictly after the cursor in `created_at DESC, id ASC`.
     final beforeId = filter['before_id'] as String?;
     if (beforeId != null &&
@@ -525,6 +530,7 @@ const _filterKeys = {
   'limit',
   'before_id',
   'page',
+  'files_and_links',
 };
 const _windowKeys = {
   'top_level',

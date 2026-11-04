@@ -218,7 +218,14 @@ void main() {
           find.byKey(const ValueKey('theme-preview-appearance-action-button')),
         );
         await tester.pumpAndSettle();
-        expect(find.text(label), findsOneWidget);
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(const ValueKey('theme-preview-appearance-label')),
+              )
+              .data,
+          label,
+        );
         expect(tester.takeException(), isNull);
       }
     },

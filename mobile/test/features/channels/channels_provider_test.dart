@@ -1954,7 +1954,7 @@ void main() {
         session: session,
         overrides: [
           activeHuddleThreadProvider.overrideWithValue((
-            rootId: 'huddle-root',
+            rootId: _huddleRootId,
             agentPubkeys: {'agent'},
           )),
         ],
@@ -1971,7 +1971,7 @@ void main() {
             kind: EventKind.streamMessage,
             tags: [
               const ['h', _channelA],
-              const ['e', 'huddle-root', '', 'reply'],
+              ['e', _huddleRootId, '', 'reply'],
               if (mention) const ['p', myPk],
             ],
             content: 'reply',
@@ -3134,6 +3134,8 @@ void main() {
   });
 }
 
+const _huddleRootId =
+    'abababababababababababababababababababababababababababababababab';
 const _channelA = '11111111-1111-4111-8111-111111111111';
 const _channelB = '22222222-2222-4222-8222-222222222222';
 const _channelD = '44444444-4444-4444-8444-444444444444';

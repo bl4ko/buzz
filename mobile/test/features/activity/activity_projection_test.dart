@@ -24,6 +24,11 @@ NostrEvent _event(
   sig: '',
 );
 
+String _root(String name) => name.codeUnits
+    .map((unit) => unit.toRadixString(16).padLeft(2, '0'))
+    .join()
+    .padRight(64, '0');
+
 void main() {
   test(
     'keeps mentions in muted channels and suppresses ordinary muted traffic',
@@ -57,22 +62,22 @@ void main() {
             'my-reply',
             author: 'me',
             tags: [
-              ['e', 'participated', '', 'root'],
-              ['e', 'participated', '', 'reply'],
+              ['e', _root('participated'), '', 'root'],
+              ['e', _root('participated'), '', 'reply'],
             ],
           ),
           for (final root in ['participated', 'followed', 'unrelated'])
             _event(
               root,
               tags: [
-                ['e', root, '', 'root'],
-                ['e', root, '', 'reply'],
+                ['e', _root(root), '', 'root'],
+                ['e', _root(root), '', 'reply'],
               ],
             ),
         ],
         myPubkey: 'me',
         channelIds: {'channel'},
-        interestedRootIds: {'followed'},
+        interestedRootIds: {_root('followed')},
       );
       expect(feed.all.map((item) => item.id).toSet(), {
         'participated',
@@ -132,8 +137,8 @@ void main() {
             'mine',
             author: 'me',
             tags: [
-              ['e', 'root', '', 'root'],
-              ['e', 'root', '', 'reply'],
+              ['e', _root('root'), '', 'root'],
+              ['e', _root('root'), '', 'reply'],
             ],
           ),
           _event(
@@ -160,7 +165,7 @@ void main() {
       final item = buildInboxItems(feed.all).single;
       expect(item.item.displayContent, 'Updated text');
       expect(item.item.targetEventId, 'mine');
-      expect(item.threadRootId, 'root');
+      expect(item.threadRootId, _root('root'));
       expect(matchesInboxFilter(item, InboxFilter.reaction), isTrue);
       expect(groupedChannelReadTimestamp(item), isNull);
       expect(
