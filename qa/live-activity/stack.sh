@@ -103,13 +103,13 @@ start_services() {
     BUZZ_PUSH_MAX_GRANT_LIFETIME_SECONDS=2592000 \
     BUZZ_PUSH_APP_ATTEST_ROOT_CERT_PATH="$fixtures/apple-app-attestation-root.pem" \
     BUZZ_PUSH_APP_ATTEST_ENVIRONMENT=simulator \
-    BUZZ_PUSH_DOGFOOD_APP_ATTEST_APP_ID="simulator.$BUNDLE" \
-    BUZZ_PUSH_DOGFOOD_APNS_CERT_PATH="$fixtures/apns-test-identity.pem" \
-    BUZZ_PUSH_DOGFOOD_APNS_TOPIC="$BUNDLE" \
-    BUZZ_PUSH_DOGFOOD_APNS_ENVIRONMENT=sandbox \
-    BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_PATH="$fixtures/apns-test-auth-key.p8" \
-    BUZZ_PUSH_DOGFOOD_APNS_AUTH_KEY_ID=QAKEY00001 \
-    BUZZ_PUSH_DOGFOOD_APNS_TEAM_ID=QATEAM0001 \
+    BUZZ_PUSH_APP_ATTEST_APP_ID="simulator.$BUNDLE" \
+    BUZZ_PUSH_APNS_CERT_PATH="$fixtures/apns-test-identity.pem" \
+    BUZZ_PUSH_APNS_TOPIC="$BUNDLE" \
+    BUZZ_PUSH_APNS_ENVIRONMENT=sandbox \
+    BUZZ_PUSH_APNS_AUTH_KEY_PATH="$fixtures/apns-test-auth-key.p8" \
+    BUZZ_PUSH_APNS_AUTH_KEY_ID=QAKEY00001 \
+    BUZZ_PUSH_APNS_TEAM_ID=QATEAM0001 \
     BUZZ_PUSH_QA_APNS_BASE_URL=http://127.0.0.1:$PORT_APNS \
     RUST_LOG=info "$BIN/buzz-push-gateway"
   mkdir -p "$STATE/repos"
