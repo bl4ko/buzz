@@ -307,7 +307,44 @@ pub async fn accept_lease_event(
     .execute(tx.conn())
     .await?;
 
+    let mut replaced_installation = None;
     if let Some(active) = active {
+        if let Some(holder) = sqlx::query(
+            "SELECT installation_id, source_event_id, source_created_at FROM push_leases \
+             WHERE community_id=$1 AND author=$2 AND installation_id<>$3 AND active \
+               AND endpoint_hash=$4 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(author)
+        .bind(installation_id)
+        .bind(active.endpoint_hash)
+        .fetch_optional(tx.conn())
+        .await?
+        {
+            let holder_created_at: i64 = holder.try_get("source_created_at")?;
+            let holder_event_id: Vec<u8> = holder.try_get("source_event_id")?;
+            let newer = version.source_created_at > holder_created_at
+                || (version.source_created_at == holder_created_at
+                    && version.source_event_id < holder_event_id.as_slice());
+            if !newer {
+                return Ok(AcceptLeaseOutcome::EndpointAlreadyLeased);
+            }
+            let holder_installation: String = holder.try_get("installation_id")?;
+            // Raising the watermark keeps leases signed before this replacement stale.
+            sqlx::query(
+                "UPDATE push_leases SET active=false, endpoint_enabled=false, \
+                 endpoint_hash=NULL, endpoint_grant=NULL, max_class=NULL, subscriptions=NULL, \
+                 source_created_at=GREATEST(source_created_at, $4), updated_at=now() \
+                 WHERE community_id=$1 AND author=$2 AND installation_id=$3",
+            )
+            .bind(community.as_uuid())
+            .bind(author)
+            .bind(&holder_installation)
+            .bind(version.source_created_at)
+            .execute(tx.conn())
+            .await?;
+            replaced_installation = Some(holder_installation);
+        }
         let active_count: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM push_leases WHERE community_id=$1 AND author=$2              AND active AND installation_id<>$3",
         )
@@ -318,18 +355,6 @@ pub async fn accept_lease_event(
         .await?;
         if active_count >= max_active_leases {
             return Ok(AcceptLeaseOutcome::LeaseQuotaExceeded);
-        }
-        let duplicate: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM push_leases WHERE community_id=$1 AND author=$2              AND installation_id<>$3 AND active AND endpoint_hash=$4)",
-        )
-        .bind(community.as_uuid())
-        .bind(author)
-        .bind(installation_id)
-        .bind(active.endpoint_hash)
-        .fetch_one(tx.conn())
-        .await?;
-        if duplicate {
-            return Ok(AcceptLeaseOutcome::EndpointAlreadyLeased);
         }
     }
 
@@ -402,6 +427,30 @@ pub async fn accept_lease_event(
             return Ok(outcome);
         }
         return Err(error.into());
+    }
+    if let Some(replaced) = replaced_installation {
+        sqlx::query(
+            "DELETE FROM push_live_activity_state WHERE community_id=$1 AND author=$2 \
+               AND installation_id=$3 AND EXISTS (SELECT 1 FROM push_live_activity_state \
+                 WHERE community_id=$1 AND author=$2 AND installation_id=$4)",
+        )
+        .bind(community.as_uuid())
+        .bind(author)
+        .bind(installation_id)
+        .bind(&replaced)
+        .execute(tx.conn())
+        .await?;
+        sqlx::query(
+            "UPDATE push_live_activity_state SET installation_id=$3, lease_generation=$5 \
+             WHERE community_id=$1 AND author=$2 AND installation_id=$4",
+        )
+        .bind(community.as_uuid())
+        .bind(author)
+        .bind(installation_id)
+        .bind(&replaced)
+        .bind(version.generation)
+        .execute(tx.conn())
+        .await?;
     }
     tx.commit().await?;
     Ok(AcceptLeaseOutcome::Accepted)
@@ -1600,6 +1649,10 @@ impl Db {
 #[cfg(test)]
 #[path = "push/delivery_postgres_tests.rs"]
 mod delivery_postgres_tests;
+
+#[cfg(test)]
+#[path = "push/repair_postgres_tests.rs"]
+mod repair_postgres_tests;
 
 #[cfg(test)]
 mod postgres_tests {
