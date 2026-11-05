@@ -449,9 +449,9 @@ async fn lease(db: &Db, community: CommunityId, author: &Keys, installation: &st
     let source: [u8; 32] = rand::random();
     sqlx::query(
         "INSERT INTO push_leases (community_id, author, installation_id, source_event_id, \
-             source_created_at, generation, active, app_profile, endpoint_hash, endpoint_grant, \
+             source_created_at, generation, active, endpoint_hash, endpoint_grant, \
              max_class, subscriptions, expires_at) \
-         VALUES ($1, $2, $3, $4, 1, 1, true, 'buzz-ios-dogfood', $5, 'grant', 'default', \
+         VALUES ($1, $2, $3, $4, 1, 1, true, $5, 'grant', 'default', \
              '[]'::jsonb, EXTRACT(EPOCH FROM now())::bigint + 86400)",
     )
     .bind(community.as_uuid())

@@ -556,6 +556,10 @@ fn canonical_origin(relay_url: &str, host: &str) -> Result<String, String> {
 }
 
 #[cfg(test)]
+#[path = "push_lease_postgres_tests.rs"]
+mod postgres_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};

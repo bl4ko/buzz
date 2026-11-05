@@ -16,6 +16,11 @@ stable specification after validating the design through launch and use.
 - Stop old gateway replicas before cutover. The gateway migration requires an
   empty authority store because endpoint fingerprints changed. The relay migration
   requires no active legacy leases. Neither migration deletes that state.
+- An active lease that another active lease of the same author holds the
+  endpoint for replaces it when the new event is newer (a re-pair on the same
+  device). The relay retires the old lease and moves its Live Activity state in
+  the same transaction; older events for the old lease stay stale. Leases of
+  other authors are never retired.
 - Publish the matching gateway image and chart, update deployment configuration,
   then enable the new relay capability. Verify enrollment, delivery, renewal and
   revocation on a physical device before production activation.
