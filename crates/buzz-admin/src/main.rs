@@ -33,6 +33,7 @@ use anyhow::Result;
 use buzz_core::tenant::{relay_url_authority, TenantContext};
 use buzz_db::{
     partition::{PartitionAuditOutcome, PartitionAuditReport},
+    user::AgentOwnerTransfer,
     Db, DbConfig,
 };
 use buzz_media::{BucketSnapshot, MediaConfig, MediaStorage, S3AddressingStyle, SweepError};
@@ -93,6 +94,20 @@ enum Command {
     RepublishMembers,
     /// List all relay members.
     ListMembers,
+    #[command(about = "Move an agent's stored owner to another relay member")]
+    SetAgentOwner {
+        #[arg(long, help = "Agent public key, npub or hex")]
+        agent: String,
+        #[arg(
+            long,
+            help = "New owner public key, npub or hex; must be a relay member"
+        )]
+        owner: String,
+        #[arg(long, help = "Identity of the operator, stored in the audit log")]
+        operator_id: String,
+        #[arg(long, help = "Reason for the change, stored in the audit log")]
+        reason: String,
+    },
     /// Generate a new Nostr keypair (for bootstrapping).
     GenerateKey,
     /// Run pending database migrations.
@@ -206,6 +221,12 @@ async fn run(cli: Cli) -> Result<i32> {
         Command::RemoveMember { pubkey, role } => cmd_remove_member(pubkey, role).await,
         Command::RepublishMembers => cmd_republish_members().await,
         Command::ListMembers => cmd_list_members().await,
+        Command::SetAgentOwner {
+            agent,
+            owner,
+            operator_id,
+            reason,
+        } => cmd_set_agent_owner(agent, owner, operator_id, reason).await,
         Command::ProductFeedback {
             command: ProductFeedbackCommand::List { limit },
         } => cmd_list_product_feedback(limit).await,
@@ -567,6 +588,93 @@ async fn cmd_republish_members() -> Result<i32> {
     Ok(0)
 }
 
+async fn cmd_set_agent_owner(
+    agent_arg: String,
+    owner_arg: String,
+    operator_id: String,
+    reason: String,
+) -> Result<i32> {
+    let (agent, owner) = match (parse_pubkey_hex(&agent_arg), parse_pubkey_hex(&owner_arg)) {
+        (Ok(agent), Ok(owner)) => (agent, owner),
+        (Err(msg), _) | (_, Err(msg)) => {
+            eprintln!("error: {msg}");
+            return Ok(1);
+        }
+    };
+    if operator_id.trim().is_empty() || reason.trim().is_empty() {
+        eprintln!("error: --operator-id and --reason must not be empty");
+        return Ok(1);
+    }
+    let db = connect_db().await?;
+    let tenant = resolve_admin_tenant(&db).await?;
+    let outcome = match db
+        .transfer_agent_owner(
+            tenant.community(),
+            &hex::decode(&agent)?,
+            &hex::decode(&owner)?,
+        )
+        .await
+    {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            eprintln!("error: DB write failed: {e}");
+            return Ok(5);
+        }
+    };
+    let (code, status) = set_agent_owner_result(&outcome);
+    let mut evidence = serde_json::json!({
+        "event": "agent_owner_transfer",
+        "status": status,
+        "community": tenant.host(),
+        "agent": agent,
+        "new_owner": owner,
+        "operator_id": operator_id,
+        "reason": reason,
+    });
+    if let AgentOwnerTransfer::Changed { previous } = &outcome {
+        evidence["previous_owner"] = hex::encode(previous).into();
+        let entry = buzz_audit::NewAuditEntry {
+            community_id: tenant.community(),
+            action: buzz_audit::AuditAction::AgentOwnerChanged,
+            actor_pubkey: None,
+            object_id: Some(agent.clone()),
+            detail: serde_json::json!({
+                "previous_owner": hex::encode(previous),
+                "new_owner": owner,
+                "operator_id": operator_id,
+                "reason": reason,
+            }),
+        };
+        match buzz_audit::AuditService::new(db.pool().clone())
+            .log(entry)
+            .await
+        {
+            Ok(stored) => {
+                evidence["audit_seq"] = stored.seq.into();
+                evidence["changed_at"] = stored.created_at.to_rfc3339().into();
+            }
+            Err(e) => {
+                evidence["audit_error"] = e.to_string().into();
+                println!("{evidence}");
+                return Ok(6);
+            }
+        }
+    }
+    println!("{evidence}");
+    Ok(code)
+}
+
+fn set_agent_owner_result(outcome: &AgentOwnerTransfer) -> (i32, &'static str) {
+    match outcome {
+        AgentOwnerTransfer::Changed { .. } => (0, "changed"),
+        AgentOwnerTransfer::Unchanged => (0, "unchanged"),
+        AgentOwnerTransfer::SelfOwner => (1, "owner_is_agent"),
+        AgentOwnerTransfer::AgentNotFound => (2, "agent_not_found"),
+        AgentOwnerTransfer::NoStoredOwner => (3, "no_stored_owner"),
+        AgentOwnerTransfer::OwnerNotMember => (4, "owner_not_member"),
+    }
+}
+
 async fn cmd_list_product_feedback(limit: u16) -> Result<i32> {
     let db = connect_db().await?;
     let feedback = db.list_product_feedback(i64::from(limit)).await?;
@@ -914,6 +1022,57 @@ mod storage_snapshot_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_set_agent_owner() {
+        let cli = Cli::try_parse_from([
+            "buzz-admin",
+            "set-agent-owner",
+            "--agent",
+            "a1",
+            "--owner",
+            "b2",
+            "--operator-id",
+            "op",
+            "--reason",
+            "rotation",
+        ])
+        .expect("parse set-agent-owner command");
+        assert!(matches!(
+            cli.command,
+            Command::SetAgentOwner { ref agent, ref owner, ref operator_id, ref reason }
+                if agent == "a1" && owner == "b2" && operator_id == "op" && reason == "rotation"
+        ));
+        assert!(Cli::try_parse_from([
+            "buzz-admin",
+            "set-agent-owner",
+            "--agent",
+            "a1",
+            "--owner",
+            "b2"
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn set_agent_owner_result_codes() {
+        let cases = [
+            (
+                AgentOwnerTransfer::Changed {
+                    previous: vec![1; 32],
+                },
+                (0, "changed"),
+            ),
+            (AgentOwnerTransfer::Unchanged, (0, "unchanged")),
+            (AgentOwnerTransfer::SelfOwner, (1, "owner_is_agent")),
+            (AgentOwnerTransfer::AgentNotFound, (2, "agent_not_found")),
+            (AgentOwnerTransfer::NoStoredOwner, (3, "no_stored_owner")),
+            (AgentOwnerTransfer::OwnerNotMember, (4, "owner_not_member")),
+        ];
+        for (outcome, expected) in cases {
+            assert_eq!(set_agent_owner_result(&outcome), expected, "{outcome:?}");
+        }
+    }
 
     #[test]
     fn parses_partition_audit_month_horizon() {
