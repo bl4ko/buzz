@@ -28,6 +28,8 @@ pub enum AuditAction {
     RateLimitExceeded,
     /// A media file was uploaded via the Blossom endpoint.
     MediaUploaded,
+    #[allow(missing_docs)]
+    AgentOwnerChanged,
 }
 
 impl AuditAction {
@@ -45,6 +47,7 @@ impl AuditAction {
             Self::AuthFailure => "auth_failure",
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::MediaUploaded => "media_uploaded",
+            Self::AgentOwnerChanged => "agent_owner_changed",
         }
     }
 
@@ -60,6 +63,7 @@ impl AuditAction {
         Self::AuthFailure,
         Self::RateLimitExceeded,
         Self::MediaUploaded,
+        Self::AgentOwnerChanged,
     ];
 }
 

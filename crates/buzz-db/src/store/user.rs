@@ -415,6 +415,100 @@ async fn set_agent_owner_with_operation(
     Ok(true)
 }
 
+#[allow(missing_docs)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentOwnerTransfer {
+    Changed { previous: Vec<u8> },
+    Unchanged,
+    AgentNotFound,
+    NoStoredOwner,
+    OwnerNotMember,
+    SelfOwner,
+}
+
+#[allow(missing_docs)]
+pub async fn transfer_agent_owner(
+    pool: &PgPool,
+    community_id: CommunityId,
+    agent_pubkey: &[u8],
+    owner_pubkey: &[u8],
+) -> Result<AgentOwnerTransfer> {
+    if agent_pubkey == owner_pubkey {
+        return Ok(AgentOwnerTransfer::SelfOwner);
+    }
+    let mut tx = crate::begin_community_write_transaction(
+        pool,
+        community_id,
+        crate::observability::WriterOperation::Authorization,
+    )
+    .await?;
+    crate::relay_invite::lock_admission(tx.conn(), community_id).await?;
+    let outcome =
+        transfer_agent_owner_in(tx.conn(), community_id, agent_pubkey, owner_pubkey).await?;
+    if matches!(outcome, AgentOwnerTransfer::Changed { .. }) {
+        tx.commit().await?;
+    } else {
+        tx.rollback().await?;
+    }
+    Ok(outcome)
+}
+
+async fn transfer_agent_owner_in(
+    conn: &mut sqlx::PgConnection,
+    community_id: CommunityId,
+    agent_pubkey: &[u8],
+    owner_pubkey: &[u8],
+) -> Result<AgentOwnerTransfer> {
+    let stored: Option<Option<Vec<u8>>> = sqlx::query_scalar(
+        "SELECT agent_owner_pubkey FROM users WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(agent_pubkey)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let previous = match stored {
+        None => return Ok(AgentOwnerTransfer::AgentNotFound),
+        Some(None) => return Ok(AgentOwnerTransfer::NoStoredOwner),
+        Some(Some(previous)) => previous,
+    };
+    let member: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM relay_members WHERE community_id = $1 AND pubkey = $2)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(hex::encode(owner_pubkey))
+    .fetch_one(&mut *conn)
+    .await?;
+    if !member {
+        return Ok(AgentOwnerTransfer::OwnerNotMember);
+    }
+    if previous == owner_pubkey {
+        return Ok(AgentOwnerTransfer::Unchanged);
+    }
+    sqlx::query("INSERT INTO users (community_id, pubkey) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        .bind(community_id.as_uuid())
+        .bind(owner_pubkey)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query(
+        "UPDATE users SET agent_owner_pubkey = $3 \
+         WHERE community_id = $1 AND pubkey = $2 AND agent_owner_pubkey = $4",
+    )
+    .bind(community_id.as_uuid())
+    .bind(agent_pubkey)
+    .bind(owner_pubkey)
+    .bind(&previous)
+    .execute(&mut *conn)
+    .await?;
+    crate::relay_invite::revoke_restricted_agent_invites(
+        conn,
+        community_id,
+        agent_pubkey,
+        owner_pubkey,
+    )
+    .await?;
+    Ok(AgentOwnerTransfer::Changed { previous })
+}
+
 /// Get the channel_add_policy and agent_owner_pubkey for a user.
 /// Returns None if the pubkey is not in the users table.
 /// Returns Some((policy_str, owner_bytes_or_none)) if found.
@@ -689,6 +783,17 @@ impl Db {
         .await
     }
 
+    #[allow(missing_docs)]
+    #[datastore_span(name = "transfer_agent_owner", system = "postgresql")]
+    pub async fn transfer_agent_owner(
+        &self,
+        community_id: CommunityId,
+        agent_pubkey: &[u8],
+        owner_pubkey: &[u8],
+    ) -> Result<AgentOwnerTransfer> {
+        transfer_agent_owner(&self.pool, community_id, agent_pubkey, owner_pubkey).await
+    }
+
     /// Get the channel_add_policy and agent_owner_pubkey for a user.
     #[datastore_span(name = "get_agent_channel_policy", system = "postgresql")]
     pub async fn get_agent_channel_policy(
@@ -940,6 +1045,87 @@ mod postgres_tests {
 
     /// set_channel_add_policy should return Err when the pubkey does not exist
     /// in the users table (0 rows affected -> NotFound).
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn test_transfer_agent_owner() {
+        let db = setup_db().await;
+        let community = make_community(&db.pool).await;
+        let (agent, other_agent, old_owner, new_owner, outsider) = (
+            random_pubkey(),
+            random_pubkey(),
+            random_pubkey(),
+            random_pubkey(),
+            random_pubkey(),
+        );
+        for pubkey in [&agent, &other_agent, &old_owner] {
+            ensure_user(&db.pool, community, pubkey).await.unwrap();
+        }
+        for agent_pubkey in [&agent, &other_agent] {
+            assert!(
+                set_agent_owner(&db.pool, community, agent_pubkey, &old_owner)
+                    .await
+                    .unwrap()
+            );
+        }
+        sqlx::query(
+            "INSERT INTO relay_members (community_id, pubkey, role) VALUES ($1, $2, 'admin')",
+        )
+        .bind(community.as_uuid())
+        .bind(hex::encode(&new_owner))
+        .execute(&db.pool)
+        .await
+        .unwrap();
+        let transfer = |agent: Vec<u8>, owner: Vec<u8>| {
+            let db = db.clone();
+            async move {
+                db.transfer_agent_owner(community, &agent, &owner)
+                    .await
+                    .unwrap()
+            }
+        };
+        let owner_of = |agent: Vec<u8>| {
+            let db = db.clone();
+            async move {
+                db.get_agent_channel_policy(community, &agent)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .1
+            }
+        };
+
+        assert_eq!(
+            transfer(agent.clone(), outsider.clone()).await,
+            AgentOwnerTransfer::OwnerNotMember
+        );
+        assert_eq!(
+            transfer(new_owner.clone(), new_owner.clone()).await,
+            AgentOwnerTransfer::SelfOwner
+        );
+        assert_eq!(
+            transfer(random_pubkey(), new_owner.clone()).await,
+            AgentOwnerTransfer::AgentNotFound
+        );
+        assert_eq!(
+            transfer(old_owner.clone(), new_owner.clone()).await,
+            AgentOwnerTransfer::NoStoredOwner
+        );
+        assert_eq!(owner_of(agent.clone()).await, Some(old_owner.clone()));
+
+        assert_eq!(
+            transfer(agent.clone(), new_owner.clone()).await,
+            AgentOwnerTransfer::Changed {
+                previous: old_owner.clone()
+            }
+        );
+        assert_eq!(
+            transfer(agent.clone(), new_owner.clone()).await,
+            AgentOwnerTransfer::Unchanged
+        );
+        assert_eq!(owner_of(agent.clone()).await, Some(new_owner.clone()));
+        assert_eq!(owner_of(other_agent.clone()).await, Some(old_owner.clone()));
+    }
+
     #[tokio::test]
     #[ignore = "requires Postgres"]
     async fn test_set_channel_add_policy_nonexistent_user() {
