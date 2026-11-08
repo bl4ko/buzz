@@ -134,11 +134,14 @@ abstract final class OlympusMotion {
       progress >= 0.7 ? 1 : Curves.easeIn.transform(progress / 0.7);
 
   static double pulse(double progress) {
+    const floor = 0.35;
     final phase = progress % 1;
-    if (phase < 0.6) return 0.25;
+    if (phase < 0.6) return floor;
     if (phase < 0.75) {
-      return 0.25 + 0.75 * Curves.easeInOut.transform(_segment(phase, .6, .75));
+      return floor +
+          (1 - floor) * Curves.easeInOut.transform(_segment(phase, .6, .75));
     }
-    return 1 - 0.75 * Curves.easeInOut.transform(_segment(phase, .75, 1));
+    return 1 -
+        (1 - floor) * Curves.easeInOut.transform(_segment(phase, .75, 1));
   }
 }

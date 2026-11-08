@@ -67,6 +67,14 @@ void main() {
       expect(find.text('Scan a QR code').hitTestable(), findsOneWidget);
 
       reducedMotion.value = false;
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(reduceMotion: true);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(clock(), isNull);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+
+      tester.platformDispatcher.clearAccessibilityFeaturesTestValue();
       await tester.pump();
       final resumed = clock()!.value;
       await tester.pump(const Duration(milliseconds: 100));

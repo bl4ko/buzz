@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
 import 'olympus_art.dart';
+import 'use_olympus_reduced_motion.dart';
 
 class OlympusCloudSpinner extends HookWidget {
   const OlympusCloudSpinner({
@@ -15,7 +16,7 @@ class OlympusCloudSpinner extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    final reducedMotion = useOlympusReducedMotion(context);
     final controller = useAnimationController(
       duration: const Duration(milliseconds: 1200),
     );
