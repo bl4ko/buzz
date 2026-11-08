@@ -60,6 +60,36 @@ export function validateDistributionProfile(
     );
 }
 
+export function brandAppBundle(app, name = "Olympus") {
+  const plist = path.join(app, "Contents/Info.plist");
+  run("plutil", ["-replace", "CFBundleName", "-string", name, plist]);
+  // Finder shows the localized name only if this equals the file name.
+  run("plutil", [
+    "-replace",
+    "CFBundleDisplayName",
+    "-string",
+    path.basename(app, ".app"),
+    plist,
+  ]);
+  run("plutil", [
+    "-replace",
+    "LSHasLocalizedDisplayName",
+    "-bool",
+    "YES",
+    plist,
+  ]);
+  const strings = path.join(
+    app,
+    "Contents/Resources/en.lproj/InfoPlist.strings",
+  );
+  mkdirSync(path.dirname(strings), { recursive: true });
+  writeFileSync(
+    strings,
+    JSON.stringify({ CFBundleName: name, CFBundleDisplayName: name }),
+  );
+  run("plutil", ["-convert", "binary1", strings]);
+}
+
 function run(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: root,
@@ -289,9 +319,8 @@ async function release(build, upload) {
         path.join(desktop, "src-tauri/target/release/bundle/macos/Bl4uzz.app"),
         app,
       ]);
+      brandAppBundle(app);
       const plist = path.join(app, "Contents/Info.plist");
-      for (const field of ["CFBundleName", "CFBundleDisplayName"])
-        run("plutil", ["-replace", field, "-string", "Bl4uzz", plist]);
       run("plutil", [
         "-insert",
         "ITSAppUsesNonExemptEncryption",
