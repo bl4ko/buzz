@@ -12,7 +12,7 @@ import 'message_footer_layout.dart';
 import 'reply_summary_link.dart';
 
 import 'dart:async';
-import 'dart:math' show cos, max, min, pi;
+import 'dart:math' show max, min;
 import 'dart:ui' show ImageFilter, lerpDouble;
 
 import 'package:flutter/foundation.dart';
@@ -46,7 +46,6 @@ import '../../shared/widgets/bouncing_dots_indicator.dart';
 import '../../shared/widgets/concentric_sheet_surface.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/frosted_scaffold.dart';
-import '../../shared/widgets/flapping_bee.dart';
 import '../../shared/widgets/keyboard_dismiss_on_drag.dart';
 import '../../shared/widgets/load_error_view.dart';
 import '../../shared/widgets/message_author_meta.dart';

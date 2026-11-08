@@ -1,57 +1,15 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:buzz/shared/widgets/bee_refresh_indicator.dart';
-import 'package:buzz/shared/widgets/flapping_bee.dart';
+import 'package:buzz/shared/olympus/olympus_pull_bolt.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/widget_helpers.dart';
 
 void main() {
-  testWidgets('full eye progress fills each eye cutout to its edge', (
-    tester,
-  ) async {
-    const beeKey = ValueKey('full-eye-bee');
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Center(
-          child: FlappingBee(
-            key: beeKey,
-            width: 466,
-            color: Colors.black,
-            flapAmount: 0,
-            eyeProgress: 1,
-          ),
-        ),
-      ),
-    );
-
-    final boundary = tester.renderObject<RenderRepaintBoundary>(
-      find.descendant(
-        of: find.byKey(beeKey),
-        matching: find.byType(RepaintBoundary),
-      ),
-    );
-    final bytes = await tester.runAsync(() async {
-      final image = await boundary.toImage();
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      image.dispose();
-      return data;
-    });
-    expect(bytes, isNotNull);
-
-    int alphaAt(int x, int y) => bytes!.getUint8(((y * 466) + x) * 4 + 3);
-
-    // These points sit inside the 27px eye cutouts but outside the old 20px
-    // pupil radius, directly covering the light rings seen behind the emoji.
-    expect(alphaAt(217, 84), 255);
-    expect(alphaAt(300, 84), 255);
-  });
-
-  testWidgets('shows the bee while pulling to refresh', (tester) async {
+  testWidgets('shows the bolt while pulling to refresh', (tester) async {
     const contentKey = ValueKey('loading-content');
     var refreshes = 0;
     final refreshCompleter = Completer<void>();
@@ -81,13 +39,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     await tester.pump(const Duration(milliseconds: 300));
 
-    final beeFinder = find.byType(FlappingBee);
+    final beeFinder = find.byType(OlympusPullBolt);
     final loadingTop = tester.getTopLeft(listFinder).dy;
     final loadingContentTop = tester.getTopLeft(find.byKey(contentKey)).dy;
     final gapTransform = tester.widget<Transform>(
       find.byKey(const ValueKey('bee-refresh-retained-gap')),
     );
     expect(beeFinder, findsOneWidget);
+    expect(tester.widget<OlympusPullBolt>(beeFinder).loading, isTrue);
     expect(refreshes, 1);
     expect(gapTransform.transform.getTranslation().y, closeTo(72, 1));
     expect(loadingTop - restingTop, closeTo(72, 1));
@@ -153,7 +112,7 @@ void main() {
     await gesture.moveBy(const Offset(0, 12));
     await tester.pump();
 
-    final beeFinder = find.byType(FlappingBee);
+    final beeFinder = find.byType(OlympusPullBolt);
     expect(beeFinder, findsNothing);
     expect(
       tester.getTopLeft(find.byKey(contentKey)).dy,
@@ -175,7 +134,10 @@ void main() {
         .storage[0];
     expect(partialScale, greaterThan(0.6));
     expect(partialScale, lessThan(1));
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, isNull);
+    expect(
+      tester.widget<OlympusPullBolt>(beeFinder).charge,
+      inExclusiveRange(0, 1),
+    );
     expect(hapticCalls, isEmpty);
 
     await gesture.moveBy(const Offset(0, 120));
@@ -183,7 +145,6 @@ void main() {
 
     final pulledContentTop = tester.getTopLeft(find.byKey(contentKey)).dy;
     expect(tester.getTopLeft(beeFinder).dy, greaterThan(earlyTop));
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, isNull);
     expect(find.byKey(const ValueKey('bee-refresh-eyes-emoji')), findsNothing);
     final pulledBeeRect = tester.getRect(beeFinder);
     final pulledGap = pulledContentTop - restingContentTop;
@@ -209,7 +170,6 @@ void main() {
     );
     expect(hapticCalls, hasLength(1));
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.mediumImpact');
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, isNull);
     expect(find.byKey(const ValueKey('bee-refresh-eyes-emoji')), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 350));
@@ -219,9 +179,7 @@ void main() {
     );
     await tester.pump();
 
-    final pupilProgress = tester.widget<FlappingBee>(beeFinder).eyeProgress;
-    expect(pupilProgress, greaterThan(0));
-    expect(pupilProgress, lessThan(0.5));
+    expect(tester.widget<OlympusPullBolt>(beeFinder).charge, 1);
     expect(find.byKey(const ValueKey('bee-refresh-eyes-emoji')), findsNothing);
     expect(hapticCalls, hasLength(1));
 
@@ -232,7 +190,6 @@ void main() {
     );
     await tester.pump();
 
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, 1);
     expect(
       find.byKey(const ValueKey('bee-refresh-eyes-emoji')),
       findsOneWidget,
@@ -281,7 +238,6 @@ void main() {
       find.byKey(const ValueKey('bee-refresh-eyes-emoji')),
       findsOneWidget,
     );
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, 1);
     expect(hapticCalls, hasLength(3));
 
     await secondGesture.moveBy(
@@ -293,7 +249,6 @@ void main() {
       find.byKey(const ValueKey('bee-refresh-eyes-emoji')),
       findsOneWidget,
     );
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, 1);
     expect(hapticCalls, hasLength(3));
 
     await secondGesture.up();
@@ -301,7 +256,6 @@ void main() {
     final hapticsAfterRelease = hapticCalls.length;
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, isNull);
     expect(find.byKey(const ValueKey('bee-refresh-eyes-emoji')), findsNothing);
     expect(hapticCalls, hasLength(hapticsAfterRelease));
 
@@ -339,7 +293,7 @@ void main() {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(ListView)),
     );
-    final beeFinder = find.byType(FlappingBee);
+    final beeFinder = find.byType(OlympusPullBolt);
     for (var step = 0; step < 10; step++) {
       await gesture.moveBy(
         const Offset(0, 50),
@@ -347,7 +301,6 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 10));
       if (beeFinder.evaluate().isNotEmpty) {
-        expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, isNull);
         expect(
           find.byKey(const ValueKey('bee-refresh-eyes-emoji')),
           findsNothing,
@@ -362,40 +315,38 @@ void main() {
     expect(refreshes, 1);
     expect(hapticCalls, hasLength(1));
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.mediumImpact');
-    expect(tester.widget<FlappingBee>(beeFinder).eyeProgress, isNull);
     expect(find.byKey(const ValueKey('bee-refresh-eyes-emoji')), findsNothing);
 
     refreshCompleter.complete();
     await tester.pumpAndSettle();
   });
 
-  testWidgets('keeps the bee static when motion is disabled', (tester) async {
+  testWidgets('keeps the bolt static when motion is disabled', (tester) async {
+    final refresh = Completer<void>();
     await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(disableAnimations: true),
-        child: WidgetHelpers.testable(
-          child: Builder(
-            builder: (context) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: true),
-              child: BeeRefreshIndicator(
-                onRefresh: () async {},
-                child: ListView(children: const [SizedBox(height: 800)]),
-              ),
-            ),
-          ),
+      WidgetHelpers.testable(
+        disableAnimations: true,
+        child: BeeRefreshIndicator(
+          onRefresh: () => refresh.future,
+          child: ListView(children: const [SizedBox(height: 800)]),
         ),
       ),
     );
 
     await tester.timedDrag(
       find.byType(ListView),
-      const Offset(0, 160),
+      const Offset(0, 320),
       const Duration(milliseconds: 400),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    final bee = tester.widget<FlappingBee>(find.byType(FlappingBee));
-    expect(bee.flapAmount, 0);
+    expect(
+      tester.widget<OlympusPullBolt>(find.byType(OlympusPullBolt)).loading,
+      isTrue,
+    );
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    refresh.complete();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('provides elastic always-scrollable physics', (tester) async {

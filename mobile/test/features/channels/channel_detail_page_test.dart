@@ -98,7 +98,7 @@ import 'package:buzz/shared/widgets/app_list_card.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:buzz/shared/widgets/frosted_scaffold.dart';
-import 'package:buzz/shared/widgets/flapping_bee.dart';
+import 'package:buzz/shared/olympus/olympus_bolt_spinner.dart';
 import 'package:buzz/shared/widgets/keyboard_dismiss_on_drag.dart';
 import 'package:buzz/shared/widgets/tabler_star_icon.dart';
 import 'package:buzz/shared/widgets/skeleton.dart';
@@ -7858,19 +7858,32 @@ void main() {
 
       final loadingBee = find.byKey(const ValueKey('huddle-loading-bee'));
       expect(loadingBee, findsOneWidget);
-      expect(find.byType(FlappingBee), findsOneWidget);
-      expect(tester.widget<FlappingBee>(loadingBee).width, 60);
+      expect(
+        find.descendant(
+          of: loadingBee,
+          matching: find.byType(OlympusBoltSpinner),
+        ),
+        findsOneWidget,
+      );
       expect(find.bySemanticsLabel('Joining Huddle'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('huddle-participant-avatar-self')),
         findsNothing,
       );
-      final initialFlap = tester.widget<FlappingBee>(loadingBee).flapAmount;
+      final charge =
+          (tester
+                      .widget<CustomPaint>(
+                        find.descendant(
+                          of: loadingBee,
+                          matching: find.byType(CustomPaint),
+                        ),
+                      )
+                      .painter!
+                  as OlympusBoltPainter)
+              .progress;
+      final initialCharge = charge.value;
       await tester.pump(const Duration(milliseconds: 120));
-      expect(
-        tester.widget<FlappingBee>(loadingBee).flapAmount,
-        isNot(initialFlap),
-      );
+      expect(charge.value, isNot(initialCharge));
 
       connectGate.complete();
       await tester.pumpAndSettle();
