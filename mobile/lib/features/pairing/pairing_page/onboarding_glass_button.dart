@@ -24,7 +24,7 @@ extension _OnboardingActionStyles on BuildContext {
               states.contains(WidgetState.pressed);
           final dark = context._onboardingIsDark;
           final fill = dark
-              ? (active ? const Color(0xA81C1C1C) : const Color(0x851C1C1C))
+              ? (active ? const Color(0xB32E3F78) : const Color(0x802E3F78))
               : (active ? const Color(0x9EFFFFFF) : const Color(0x85FFFFFF));
           return ClipRRect(
             borderRadius: BorderRadius.circular(999),

@@ -8,6 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:buzz/app.dart';
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/shared/auth/auth.dart';
+import 'package:buzz/shared/olympus/olympus_bolt_spinner.dart';
+import 'package:buzz/shared/olympus/olympus_colors.dart';
+import 'package:buzz/shared/olympus/olympus_splash.dart';
 import 'package:buzz/shared/relay/app_lifecycle_provider.dart';
 import 'package:buzz/shared/relay/relay_closed_policy.dart';
 import 'package:buzz/shared/theme/theme_provider.dart';
@@ -102,13 +105,53 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.bySemanticsLabel('Buzz'), findsOneWidget);
+    expect(find.bySemanticsLabel('Olympus'), findsOneWidget);
     expect(find.text('Sign in with email').hitTestable(), findsNothing);
     expect(
       find.text('or sign in with email'),
       HostedEnvironment.enabled ? findsOneWidget : findsNothing,
     );
     expect(find.text('Scan a QR code'), findsOneWidget);
+  });
+
+  testWidgets('starts on the navy Olympus splash, then shows the welcome', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final auth = Completer<AuthState>();
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authProvider.overrideWith(() => _PendingAuthNotifier(auth.future)),
+          ageSignalProvider.overrideWith(() => _AllowedAgeSignalNotifier()),
+          savedPrefsProvider.overrideWithValue(prefs),
+        ],
+        child: const App(),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.widget<ColoredBox>(find.byKey(const Key('olympus-splash'))).color,
+      OlympusColors.navy,
+    );
+    expect(
+      tester.widget<OlympusBoltSpinner>(find.byType(OlympusBoltSpinner)).color,
+      OlympusColors.gold,
+    );
+    expect(
+      tester.getCenter(find.byType(OlympusSplash)),
+      tester.getCenter(find.byType(App)),
+    );
+    expect(find.bySemanticsLabel('Starting Buzz'), findsOneWidget);
+
+    auth.complete(const AuthState(status: AuthStatus.unauthenticated));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(OlympusSplash), findsNothing);
+    expect(find.bySemanticsLabel('Olympus'), findsOneWidget);
+    semantics.dispose();
   });
 
   testWidgets('unavailable secure storage offers retry instead of pairing', (
@@ -155,6 +198,15 @@ void main() {
     expect(builds, 3);
     expect(find.text('Scan a QR code'), findsOneWidget);
   });
+}
+
+class _PendingAuthNotifier extends AuthNotifier {
+  _PendingAuthNotifier(this._state);
+
+  final Future<AuthState> _state;
+
+  @override
+  Future<AuthState> build() => _state;
 }
 
 class _FakeCommunityList extends CommunityListNotifier {

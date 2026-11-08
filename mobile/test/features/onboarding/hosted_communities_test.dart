@@ -49,7 +49,7 @@ void main() {
             overrides: [hostedFlowProvider.overrideWithValue(f.flow)],
           ),
         );
-        await pumpUntilVisible(tester, find.bySemanticsLabel('Buzz'));
+        await pumpUntilVisible(tester, find.bySemanticsLabel('Olympus'));
         await revealOptionsWithSemantics(tester);
         await tester.pump();
         tester.view.physicalSize = const Size(420, 900);
@@ -360,7 +360,7 @@ Future<void> revealOptionsWithSemantics(WidgetTester tester) async {
   final handle = tester.ensureSemantics();
   try {
     await tester.pump();
-    final wordmark = tester.getSemantics(find.bySemanticsLabel('Buzz'));
+    final wordmark = tester.getSemantics(find.bySemanticsLabel('Olympus'));
     final data = wordmark.getSemanticsData();
     final actionIds = data.customSemanticsActionIds!;
     expect(actionIds, hasLength(1));
@@ -369,8 +369,8 @@ Future<void> revealOptionsWithSemantics(WidgetTester tester) async {
       'More connection options',
     );
     // The action belongs to the wordmark, never an unlabelled page-sized stop.
-    expect(data.label, 'Buzz');
-    expect(wordmark.rect.height, lessThan(200));
+    expect(data.label, 'Olympus');
+    expect(wordmark.rect.height, lessThan(260));
     wordmark.owner!.performAction(
       wordmark.id,
       ui.SemanticsAction.customAction,
@@ -384,7 +384,7 @@ Future<void> revealOptionsWithSemantics(WidgetTester tester) async {
   }
 }
 
-// The welcome bees intentionally never settle. Wait for the requested control
+// The welcome sky intentionally never settles. Wait for the requested control
 // and its ancestor fades to finish instead of waiting for every app animation.
 Future<void> pumpUntilVisible(WidgetTester tester, Finder target) async {
   bool visible() {

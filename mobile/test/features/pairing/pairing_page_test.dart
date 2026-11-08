@@ -11,9 +11,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:buzz/shared/theme/buzz_icons.dart';
 import 'package:buzz/features/pairing/pairing_page.dart';
-import 'package:buzz/features/pairing/pairing_page/onboarding_wordmark.dart';
 import 'package:buzz/features/pairing/pairing_provider.dart';
 import 'package:buzz/shared/community/community.dart';
+import 'package:buzz/shared/olympus/olympus_colors.dart';
+import 'package:buzz/shared/olympus/olympus_sky.dart';
 import 'package:buzz/shared/security/sensitive_action_authorizer.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/frosted_app_bar.dart';
@@ -64,7 +65,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pumpAndSettle();
         expect(tester.element(action), same(originalAction));
-        expect(find.bySemanticsLabel('Buzz'), findsNothing);
+        expect(find.bySemanticsLabel('Olympus'), findsNothing);
         expect(
           find.text('Choose an address for your community.'),
           findsOneWidget,
@@ -149,7 +150,7 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          expect(find.bySemanticsLabel('Buzz'), findsNothing);
+          expect(find.bySemanticsLabel('Olympus'), findsNothing);
           expect(find.text('Scan a QR code'), findsOneWidget);
           expect(find.text('Enter community link'), findsOneWidget);
           expect(find.text('Create a community'), findsOneWidget);
@@ -224,7 +225,7 @@ void main() {
         WidgetHelpers.testable(child: const PairingPage()),
       );
 
-      expect(find.bySemanticsLabel('Buzz'), findsOneWidget);
+      expect(find.bySemanticsLabel('Olympus'), findsOneWidget);
       expect(find.text('Welcome to Buzz'), findsNothing);
       expect(
         find.text(
@@ -321,7 +322,7 @@ void main() {
       variant: TargetPlatformVariant.only(TargetPlatform.iOS),
     );
 
-    testWidgets('uses dark status-bar icons on the onboarding surface', (
+    testWidgets('uses light status-bar icons on the Olympus sky', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -332,12 +333,12 @@ void main() {
         find.byKey(const Key('pairing-onboarding-system-overlay')),
       );
 
-      expect(overlay.value.statusBarIconBrightness, Brightness.dark);
+      expect(overlay.value.statusBarIconBrightness, Brightness.light);
       expect(overlay.value.statusBarColor, Colors.transparent);
     });
 
     testWidgets(
-      'switches welcome artwork and readable controls with appearance',
+      'keeps the Olympus sky and readable controls in both appearances',
       (tester) async {
         Future<void> show(Brightness brightness) async {
           await tester.pumpWidget(
@@ -354,71 +355,39 @@ void main() {
         }
 
         await show(Brightness.light);
-        var decoration =
-            tester
-                    .widget<DecoratedBox>(
-                      find.byKey(const Key('pairing-onboarding-background')),
-                    )
-                    .decoration
-                as BoxDecoration;
-        expect(
-          (decoration.image!.image as AssetImage).assetName,
-          'assets/images/shell-gradient.png',
-        );
-        expect(decoration.image!.fit, BoxFit.fill);
         await _expandPairingCode(tester);
         await tester.enterText(find.byType(TextField), 'pairing-code-draft');
-
-        await show(Brightness.dark);
-        decoration =
+        for (final brightness in [Brightness.dark, Brightness.light]) {
+          await show(brightness);
+          expect(
             tester
-                    .widget<DecoratedBox>(
-                      find.byKey(const Key('pairing-onboarding-background')),
-                    )
-                    .decoration
-                as BoxDecoration;
-        expect(decoration.image, isNull);
-        expect(decoration.color, const Color(0xFF11181D));
-        expect(
-          tester
-              .widget<OnboardingWordmark>(
-                find.byKey(const Key('pairing-buzz-wordmark')),
-              )
-              .color,
-          const Color(0xFFE6EDF0),
-        );
-        expect(
-          tester.widget<TextField>(find.byType(TextField)).style!.color,
-          const Color(0xFFE6EDF0),
-        );
-        expect(
-          tester
-              .widget<TextField>(find.byType(TextField))
-              .decoration!
-              .fillColor,
-          const Color(0xFF233039),
-        );
-        expect(find.text('pairing-code-draft'), findsOneWidget);
-        expect(
-          tester
-              .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
-                find.byKey(const Key('pairing-onboarding-system-overlay')),
-              )
-              .value
-              .statusBarIconBrightness,
-          Brightness.light,
-        );
-
-        await show(Brightness.light);
-        expect(
-          tester
-              .widget<OnboardingWordmark>(
-                find.byKey(const Key('pairing-buzz-wordmark')),
-              )
-              .color,
-          isNull,
-        );
-        expect(find.text('pairing-code-draft'), findsOneWidget);
+                .widget<ColoredBox>(find.byKey(const Key('olympus-sky')))
+                .color,
+            OlympusColors.navy,
+          );
+          expect(find.bySemanticsLabel('Olympus'), findsOneWidget);
+          expect(
+            tester.widget<TextField>(find.byType(TextField)).style!.color,
+            OlympusColors.marble,
+          );
+          expect(
+            tester
+                .widget<TextField>(find.byType(TextField))
+                .decoration!
+                .fillColor,
+            OlympusColors.navyRaised,
+          );
+          expect(find.text('pairing-code-draft'), findsOneWidget);
+          expect(
+            tester
+                .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+                  find.byKey(const Key('pairing-onboarding-system-overlay')),
+                )
+                .value
+                .statusBarIconBrightness,
+            Brightness.light,
+          );
+        }
         expect(tester.takeException(), isNull);
       },
     );
@@ -441,12 +410,10 @@ void main() {
 
       expect(overlay.value.statusBarIconBrightness, Brightness.light);
       expect(overlay.value.statusBarColor, Colors.transparent);
-      final background = tester.widget<DecoratedBox>(
-        find.byKey(const Key('pairing-onboarding-background')),
+      expect(
+        tester.widget<ColoredBox>(find.byKey(const Key('olympus-sky'))).color,
+        OlympusColors.navy,
       );
-      final backgroundDecoration = background.decoration as BoxDecoration;
-      expect(backgroundDecoration.color, const Color(0xFF11181D));
-      expect(backgroundDecoration.image, isNull);
       expect(
         tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
         Colors.transparent,
@@ -851,8 +818,9 @@ void main() {
       expect(codeFinder, findsOneWidget);
       expect(find.text('123 456'), findsNothing);
 
-      const onboardingInk = Color(0xFFE6EDF0);
-      const onboardingCtaLabel = Color(0xFF172229);
+      const onboardingInk = OlympusColors.marble;
+      const onboardingCta = OlympusColors.gold;
+      const onboardingCtaLabel = OlympusColors.navy;
       await tester.enterText(codeFinder, '123456');
       await tester.pump();
       final confirmFinder = find.widgetWithText(FilledButton, 'Use biometrics');
@@ -861,7 +829,7 @@ void main() {
       final cancelButton = tester.widget<TextButton>(cancelFinder);
       expect(
         confirmButton.style?.backgroundColor?.resolve(<WidgetState>{}),
-        onboardingInk,
+        onboardingCta,
       );
       expect(
         confirmButton.style?.foregroundColor?.resolve(<WidgetState>{}),
@@ -929,43 +897,23 @@ void main() {
         await tester.pumpAndSettle();
 
         final errorFinder = find.text(errorMessage);
-        expect(Theme.of(tester.element(errorFinder)).brightness, brightness);
-        final errorInk = tester.widget<Text>(errorFinder).style!.color!;
         expect(
-          errorInk,
-          isDark ? const Color(0xFFE6EDF0) : const Color(0xFF111111),
+          Theme.of(tester.element(errorFinder)).brightness,
+          Brightness.dark,
         );
+        final errorInk = tester.widget<Text>(errorFinder).style!.color!;
+        expect(errorInk, OlympusColors.marble);
 
         final backgroundFinder = find.byKey(
           const Key('pairing-onboarding-background'),
         );
-        final background = tester.widget<DecoratedBox>(backgroundFinder);
-        final decoration = background.decoration as BoxDecoration;
-        expect(
-          decoration.color,
-          isDark ? const Color(0xFF11181D) : const Color(0xFFE7F0EF),
-        );
-        if (isDark) {
-          expect(decoration.image, isNull);
-        } else {
-          expect(
-            (decoration.image!.image as AssetImage).assetName,
-            'assets/images/shell-gradient.png',
-          );
-          await tester.runAsync(
-            () => precacheImage(
-              decoration.image!.image,
-              tester.element(backgroundFinder),
-            ),
-          );
-        }
         final size = tester.getSize(backgroundFinder);
         final errorRect = tester
             .getRect(errorFinder)
             .shift(-tester.getTopLeft(backgroundFinder));
 
-        // Render the production decoration and painter without foreground
-        // content, so sampled pixels are the actual surface behind the error.
+        // Render the production sky without foreground content, so sampled
+        // pixels are the actual surface behind the error.
         const captureKey = Key('sas-error-background-capture');
         await tester.pumpWidget(
           Directionality(
@@ -974,12 +922,7 @@ void main() {
               key: captureKey,
               child: SizedBox.fromSize(
                 size: size,
-                child: DecoratedBox(
-                  decoration: decoration,
-                  child: CustomPaint(
-                    painter: (background.child! as CustomPaint).painter,
-                  ),
-                ),
+                child: const OlympusSky(child: SizedBox.expand()),
               ),
             ),
           ),
