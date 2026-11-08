@@ -104,53 +104,59 @@ fn format_elapsed(elapsed: Duration) -> String {
     format!("{hours}h {minutes}m {seconds}s")
 }
 
-/// Builds the standalone Buzz bee as a transparent, macOS template image.
-///
-/// The app icon includes a rounded square, which is useful for the Dock but
-/// looks out of place beside the monochrome menu-bar icons. Keeping this
-/// vector-derived mask here also lets macOS tint it correctly in light and
-/// dark menu bars without a separate bitmap asset.
+/// Builds the Olympus mark (mountain struck by a bolt) as a transparent,
+/// macOS template image so the menu bar can tint it.
 fn tray_bee_icon() -> Image<'static> {
-    const WIDTH: u32 = 64;
-    const HEIGHT: u32 = 43;
+    const WIDTH: u32 = 45;
+    const HEIGHT: u32 = 44;
     const SAMPLES_PER_AXIS: u32 = 4;
-    const BEE_WIDTH: f32 = 466.0;
-    const BEE_HEIGHT: f32 = 309.0;
+    const UNITS_PER_PIXEL: f32 = 834.0 / HEIGHT as f32;
+    const LEFT: f32 = 512.0 - WIDTH as f32 * UNITS_PER_PIXEL / 2.0;
+    const TOP: f32 = 48.0;
+    const BOLT_GAP: f32 = 48.0;
+    const MOUNTAIN: [(f32, f32); 3] = [(110.0, 860.0), (512.0, 230.0), (914.0, 860.0)];
+    const BOLT: [(f32, f32); 7] = [
+        (742.0, 70.0),
+        (610.0, 330.0),
+        (690.0, 330.0),
+        (600.0, 560.0),
+        (830.0, 262.0),
+        (740.0, 262.0),
+        (830.0, 70.0),
+    ];
 
-    fn circle_contains(x: f32, y: f32, center_x: f32, center_y: f32, radius: f32) -> bool {
-        let delta_x = x - center_x;
-        let delta_y = y - center_y;
-        delta_x * delta_x + delta_y * delta_y <= radius * radius
+    fn edges(polygon: &[(f32, f32)]) -> impl Iterator<Item = ((f32, f32), (f32, f32))> + '_ {
+        polygon
+            .iter()
+            .copied()
+            .zip(polygon.iter().copied().cycle().skip(1))
     }
 
-    fn rounded_rect_contains(
-        x: f32,
-        y: f32,
-        left: f32,
-        top: f32,
-        width: f32,
-        height: f32,
-        radius: f32,
-    ) -> bool {
-        let right = left + width;
-        let bottom = top + height;
-        let closest_x = x.clamp(left + radius, right - radius);
-        let closest_y = y.clamp(top + radius, bottom - radius);
-        let delta_x = x - closest_x;
-        let delta_y = y - closest_y;
-        delta_x * delta_x + delta_y * delta_y <= radius * radius
+    fn polygon_contains(polygon: &[(f32, f32)], x: f32, y: f32) -> bool {
+        edges(polygon).fold(false, |inside, ((x1, y1), (x2, y2))| {
+            if (y1 > y) != (y2 > y) && x < (x2 - x1) * (y - y1) / (y2 - y1) + x1 {
+                !inside
+            } else {
+                inside
+            }
+        })
     }
 
-    fn bee_contains(x: f32, y: f32) -> bool {
-        let silhouette = circle_contains(x, y, 91.7, 154.5, 91.7)
-            || circle_contains(x, y, 374.3, 154.5, 91.7)
-            || rounded_rect_contains(x, y, 128.0, 0.0, 210.0, 309.0, 34.0);
-        let cutout = circle_contains(x, y, 193.3, 84.4, 27.0)
-            || circle_contains(x, y, 276.0, 84.4, 27.0)
-            || rounded_rect_contains(x, y, 166.3, 157.2, 136.9, 38.3, 5.0)
-            || rounded_rect_contains(x, y, 166.9, 235.1, 136.2, 37.6, 5.0);
+    fn distance_to_edges(polygon: &[(f32, f32)], x: f32, y: f32) -> f32 {
+        edges(polygon)
+            .map(|((x1, y1), (x2, y2))| {
+                let (dx, dy) = (x2 - x1, y2 - y1);
+                let t = (((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+                (x - x1 - t * dx).hypot(y - y1 - t * dy)
+            })
+            .fold(f32::INFINITY, f32::min)
+    }
 
-        silhouette && !cutout
+    fn mark_contains(x: f32, y: f32) -> bool {
+        if polygon_contains(&BOLT, x, y) {
+            return true;
+        }
+        polygon_contains(&MOUNTAIN, x, y) && distance_to_edges(&BOLT, x, y) > BOLT_GAP
     }
 
     let mut rgba = vec![0; (WIDTH * HEIGHT * 4) as usize];
@@ -161,13 +167,13 @@ fn tray_bee_icon() -> Image<'static> {
             let mut covered_samples = 0;
             for sample_y in 0..SAMPLES_PER_AXIS {
                 for sample_x in 0..SAMPLES_PER_AXIS {
-                    let x = (pixel_x as f32 + (sample_x as f32 + 0.5) / SAMPLES_PER_AXIS as f32)
-                        / WIDTH as f32
-                        * BEE_WIDTH;
-                    let y = (pixel_y as f32 + (sample_y as f32 + 0.5) / SAMPLES_PER_AXIS as f32)
-                        / HEIGHT as f32
-                        * BEE_HEIGHT;
-                    if bee_contains(x, y) {
+                    let x = LEFT
+                        + (pixel_x as f32 + (sample_x as f32 + 0.5) / SAMPLES_PER_AXIS as f32)
+                            * UNITS_PER_PIXEL;
+                    let y = TOP
+                        + (pixel_y as f32 + (sample_y as f32 + 0.5) / SAMPLES_PER_AXIS as f32)
+                            * UNITS_PER_PIXEL;
+                    if mark_contains(x, y) {
                         covered_samples += 1;
                     }
                 }
@@ -614,7 +620,18 @@ pub fn update_tray_agent_activity<R: Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use super::{requeue_actions, TrayAction, TrayActionQueue};
+    use super::{requeue_actions, tray_bee_icon, TrayAction, TrayActionQueue};
+
+    #[test]
+    fn tray_icon_masks_the_olympus_mark() {
+        let icon = tray_bee_icon();
+        let alpha = |x: u32, y: u32| icon.rgba()[((y * icon.width() + x) * 4 + 3) as usize];
+
+        assert_eq!((icon.width(), icon.height()), (45, 44));
+        assert_eq!(alpha(0, 0), 0);
+        assert_eq!(alpha(22, 40), u8::MAX);
+        assert_eq!(alpha(36, 2), u8::MAX);
+    }
 
     #[test]
     fn open_channel_action_serializes_with_frontend_field_names() {
