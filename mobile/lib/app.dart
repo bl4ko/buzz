@@ -460,7 +460,9 @@ class App extends HookConsumerWidget {
       },
       home: authState.when(
         loading: () => const _SplashScreen(),
-        error: (_, _) => const PairingPage(),
+        error: (error, _) => error is SecureStorageUnavailableException
+            ? const _StorageUnavailableScreen()
+            : const PairingPage(),
         data: (state) => switch (state.status) {
           AuthStatus.authenticated => HostedAppGate(
             authenticated: true,
@@ -522,6 +524,38 @@ class _SplashScreen extends StatelessWidget {
     return const Scaffold(
       body: Center(
         child: BuzzLoadingIndicator(size: 56, semanticLabel: 'Starting Buzz'),
+      ),
+    );
+  }
+}
+
+class _StorageUnavailableScreen extends HookConsumerWidget {
+  const _StorageUnavailableScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void retry() => ref.invalidate(authProvider);
+    useOnAppLifecycleStateChange((_, state) {
+      if (state == AppLifecycleState.resumed) retry();
+    });
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(Grid.sm),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Buzz cannot read its saved sign-in yet. '
+                'Unlock your iPhone, then try again.',
+                textAlign: TextAlign.center,
+                style: context.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: Grid.sm),
+              FilledButton(onPressed: retry, child: const Text('Retry')),
+            ],
+          ),
+        ),
       ),
     );
   }

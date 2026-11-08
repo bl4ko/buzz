@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:buzz/app.dart';
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/shared/auth/auth.dart';
+import 'package:buzz/shared/relay/app_lifecycle_provider.dart';
 import 'package:buzz/shared/theme/theme_provider.dart';
 
 void main() {
@@ -108,6 +109,51 @@ void main() {
     );
     expect(find.text('Scan a QR code'), findsOneWidget);
   });
+
+  testWidgets('unavailable secure storage offers retry instead of pairing', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    var builds = 0;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        retry: (_, _) => null,
+        overrides: [
+          authProvider.overrideWith(
+            () => _FakeAuthNotifier(() {
+              if (++builds < 3) throw const SecureStorageUnavailableException();
+            }),
+          ),
+          appLifecycleProvider.overrideWith(_IdleLifecycle.new),
+          ageSignalProvider.overrideWith(() => _AllowedAgeSignalNotifier()),
+          savedPrefsProvider.overrideWithValue(prefs),
+        ],
+        child: const App(),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Scan a QR code'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(builds, 2);
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump();
+    expect(builds, 3);
+    expect(find.text('Scan a QR code'), findsOneWidget);
+  });
+}
+
+class _IdleLifecycle extends AppLifecycleNotifier {
+  @override
+  AppLifecycleState build() => AppLifecycleState.resumed;
 }
 
 class _AllowedAgeSignalNotifier extends AgeSignalNotifier {
@@ -119,8 +165,13 @@ class _AllowedAgeSignalNotifier extends AgeSignalNotifier {
 }
 
 class _FakeAuthNotifier extends AuthNotifier {
+  _FakeAuthNotifier([this._onBuild]);
+
+  final void Function()? _onBuild;
+
   @override
   Future<AuthState> build() async {
+    _onBuild?.call();
     return const AuthState(status: AuthStatus.unauthenticated);
   }
 }

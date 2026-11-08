@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,14 +15,9 @@ import 'package:buzz/shared/push/push_bridge.dart';
 import '../community/community_storage_test.dart';
 
 class _LockedKeychain extends FakeSecureStorage {
-  final _availability = StreamController<bool>.broadcast();
   bool locked = false;
+  bool reportsLock = true;
   final mutationsWhileLocked = <String>[];
-
-  void unlock() {
-    locked = false;
-    _availability.add(true);
-  }
 
   Never _interactionNotAllowed() => throw PlatformException(
     code: 'Unexpected security result code',
@@ -30,11 +26,8 @@ class _LockedKeychain extends FakeSecureStorage {
   );
 
   @override
-  Future<bool?> isCupertinoProtectedDataAvailable() async => !locked;
-
-  @override
-  Stream<bool>? get onCupertinoProtectedDataAvailabilityChanged =>
-      _availability.stream;
+  Future<bool?> isCupertinoProtectedDataAvailable() async =>
+      !(locked && reportsLock);
 
   @override
   Future<String?> read({
@@ -89,7 +82,7 @@ class _LockedKeychain extends FakeSecureStorage {
 void main() {
   test(
     'a launch while protected data is unavailable waits for unlock instead of signing out',
-    () async {
+    () => fakeAsync((async) {
       final secure = _LockedKeychain();
       final storage = CommunityStorage(secure: secure);
       final community = Community.create(
@@ -97,11 +90,12 @@ void main() {
         relayUrl: 'https://active.example',
         nsec: nostr.Keys.generate().nsec,
       );
-      await storage.save(community);
-      await storage.saveActiveId(community.id);
+      storage.save(community).then((_) => storage.saveActiveId(community.id));
+      async.flushMicrotasks();
       secure.locked = true;
       final snapshots = <List<Community>>[];
       final container = ProviderContainer(
+        retry: (_, _) => null,
         overrides: [
           communityStorageProvider.overrideWithValue(storage),
           communitySnapshotWriterProvider.overrideWithValue((
@@ -114,25 +108,41 @@ void main() {
       addTearDown(container.dispose);
       final auth = container.listen(authProvider, (_, _) {});
       final communities = container.listen(communityListProvider, (_, _) {});
+      const delay = CommunityStorage.protectedDataRetryDelay;
 
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      async.elapse(delay * 5);
 
-      expect(auth.read().hasError, isFalse);
-      expect(auth.read().hasValue, isFalse);
+      expect(auth.read().isLoading, isTrue);
       expect(communities.read().hasError, isFalse);
       expect(snapshots, isEmpty);
       expect(secure.mutationsWhileLocked, isEmpty);
 
-      secure.unlock();
-      final state = await container.read(authProvider.future);
+      secure.locked = false;
+      async.elapse(delay);
 
-      expect(state.status, AuthStatus.authenticated);
-      expect(state.community?.id, community.id);
-      expect((await storage.loadAll()).map((saved) => saved.id), [
-        community.id,
-      ]);
-      expect(await storage.loadActiveId(), community.id);
-    },
+      expect(auth.read().value?.status, AuthStatus.authenticated);
+      expect(auth.read().value?.community?.id, community.id);
+
+      secure
+        ..locked = true
+        ..reportsLock = false;
+      container.invalidate(authProvider);
+      async.elapse(delay * (CommunityStorage.protectedDataAttempts + 1));
+
+      expect(auth.read().error, isA<SecureStorageUnavailableException>());
+      expect(secure.mutationsWhileLocked, isEmpty);
+
+      secure.locked = false;
+      container.invalidate(authProvider);
+      async.flushMicrotasks();
+
+      expect(auth.read().value?.community?.id, community.id);
+      storage.loadAll().then(
+        (saved) => expect(saved.map((item) => item.nsec), [community.nsec]),
+      );
+      storage.loadActiveId().then((id) => expect(id, community.id));
+      async.flushMicrotasks();
+    }),
   );
 
   test('waits for transition teardown before replacing credentials', () async {

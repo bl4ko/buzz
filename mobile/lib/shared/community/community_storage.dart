@@ -71,6 +71,8 @@ class CommunityStorage {
   static const _legacyPubkey = 'buzz_pubkey';
   static const _legacyNsec = 'buzz_nsec';
   static const _interactionNotAllowed = -25308;
+  static const protectedDataRetryDelay = Duration(seconds: 1);
+  static const protectedDataAttempts = 20;
 
   final FlutterSecureStorage _secure;
   final SecureStorageWrite? _inPlaceWrite;
@@ -278,7 +280,7 @@ class CommunityStorage {
   Future<void> _delete(String key) => _unlocked(() => _secure.delete(key: key));
 
   Future<T> _unlocked<T>(Future<T> Function() operation) async {
-    while (true) {
+    for (var attempt = 0; ; attempt++) {
       if (await _secure.isCupertinoProtectedDataAvailable() != false) {
         try {
           return await operation();
@@ -286,26 +288,14 @@ class CommunityStorage {
           if (error.details != _interactionNotAllowed) rethrow;
         }
       }
-      await _protectedDataAvailable();
-    }
-  }
-
-  Future<void> _protectedDataAvailable() async {
-    final changes = _secure.onCupertinoProtectedDataAvailabilityChanged;
-    if (changes == null) {
-      await Future<void>.delayed(const Duration(seconds: 1));
-      return;
-    }
-    final available = Completer<void>();
-    final subscription = changes.listen((value) {
-      if (value && !available.isCompleted) available.complete();
-    });
-    try {
-      if (await _secure.isCupertinoProtectedDataAvailable() == false) {
-        await available.future;
+      if (attempt >= protectedDataAttempts) {
+        throw const SecureStorageUnavailableException();
       }
-    } finally {
-      await subscription.cancel();
+      await Future<void>.delayed(protectedDataRetryDelay);
     }
   }
+}
+
+class SecureStorageUnavailableException implements Exception {
+  const SecureStorageUnavailableException();
 }
