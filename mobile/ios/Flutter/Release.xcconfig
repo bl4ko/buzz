@@ -5,7 +5,7 @@
 // enterprise-signed distribution) override these without patching tracked
 // files by writing `mobile/ios/Flutter/AppOverrides.xcconfig` (gitignored).
 BUNDLE_IDENTIFIER = com.bl4ko.buzz
-APP_DISPLAY_NAME = Bl4uzz
+APP_DISPLAY_NAME = Olympus
 CODE_SIGN_STYLE = Automatic
 CODE_SIGN_IDENTITY = iPhone Developer
 BUZZ_DEVELOPMENT_TEAM = 55S37D9HA7

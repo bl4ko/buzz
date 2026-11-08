@@ -33,7 +33,7 @@ final class WatchApprovalActions: NSObject, UNUserNotificationCenterDelegate {
         _ = try await relay.request(["action": "react", "scope": credentials.scope, "eventId": target.eventID, "emoji": decision.emoji])
       },
       notifyFailure: {
-        UNUserNotificationCenter.current().add(BuzzApprovalFailureNotice.request(body: "Open Bl4uzz on your iPhone and try again."))
+        UNUserNotificationCenter.current().add(BuzzApprovalFailureNotice.request(body: "Open Olympus on your iPhone and try again."))
       }
     )
   }

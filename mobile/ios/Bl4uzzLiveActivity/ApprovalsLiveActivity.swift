@@ -101,7 +101,7 @@ struct ApprovalsLockScreenCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 8) {
-        ApprovalsHeader(title: "Bl4uzz · Needs you", iconSize: 26, font: 13)
+        ApprovalsHeader(title: "Olympus · Needs you", iconSize: 26, font: 13)
         Spacer(minLength: 4)
         ApprovalsMoreLink(model: model)
       }
@@ -153,9 +153,9 @@ struct ApprovalsHeader: View {
   var body: some View {
     HStack(spacing: 8) {
       RoundedRectangle(cornerRadius: iconSize * 0.27)
-        .fill(.black)
+        .fill(Color(red: 14 / 255, green: 22 / 255, blue: 48 / 255))
         .frame(width: iconSize, height: iconSize)
-        .overlay(Text("🐝").font(.system(size: iconSize * 0.58)))
+        .overlay(Text("⚡").font(.system(size: iconSize * 0.58)))
       Text(title)
         .font(.system(size: font))
         .foregroundStyle(ApprovalsPalette.secondary)
@@ -230,7 +230,7 @@ struct ApprovalsActions: View {
 
   var body: some View {
     if model.isStale {
-      ApprovalsStatusLine(text: "Open Bl4uzz to refresh", height: height, font: font)
+      ApprovalsStatusLine(text: "Open Olympus to refresh", height: height, font: font)
     } else if let pending = model.state.pendingDecision {
       ApprovalsStatusLine(text: pending == .approve ? "Approving…" : "Denying…", height: height, font: font)
     } else {

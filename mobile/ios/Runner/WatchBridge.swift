@@ -87,7 +87,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         if let response = result as? [String: Any] {
           replyHandler(response)
         } else {
-          replyHandler(["error": "Open Bl4uzz on your iPhone and try again."])
+          replyHandler(["error": "Open Olympus on your iPhone and try again."])
         }
       }
     }

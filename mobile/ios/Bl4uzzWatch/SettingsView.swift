@@ -43,7 +43,7 @@ struct SettingsView: View {
     let info = Bundle.main.infoDictionary
     let version = info?["CFBundleShortVersionString"] as? String ?? ""
     let build = info?["CFBundleVersion"] as? String ?? ""
-    return "Bl4uzz \(version) (\(build))"
+    return "Olympus \(version) (\(build))"
   }
 }
 
@@ -58,7 +58,7 @@ struct ConnectionCard: View {
       } else if reachable {
         ("iphone", .bee, "Via iPhone", "Your iPhone relays messages.")
       } else {
-        ("iphone.slash", WatchPalette.danger, "iPhone not reachable", "Open Bl4uzz on the iPhone.")
+        ("iphone.slash", WatchPalette.danger, "iPhone not reachable", "Open Olympus on the iPhone.")
       }
     HStack(spacing: 10) {
       SymbolBadge(systemName: symbol, color: color)
@@ -92,7 +92,7 @@ struct ConnectSheet: View {
         Text("Connect without iPhone?")
           .font(.headline)
         Text(
-          "Copy your current iPhone sign-in to this watch's Keychain. Then use Wi-Fi or cellular without the iPhone. Open Bl4uzz on your iPhone for this setup step."
+          "Copy your current iPhone sign-in to this watch's Keychain. Then use Wi-Fi or cellular without the iPhone. Open Olympus on your iPhone for this setup step."
         )
         .font(.footnote)
         .foregroundStyle(.secondary)
