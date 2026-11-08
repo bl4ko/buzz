@@ -1,6 +1,7 @@
 import type * as React from "react";
 
 import { cn } from "@/shared/lib/cn";
+import { OlympusPuffs } from "@/shared/ui/olympus/OlympusSpinner";
 
 type SpinnerProps = React.ComponentPropsWithoutRef<"span"> & {
   className?: string;
@@ -23,7 +24,7 @@ export function Spinner({
     <span
       aria-hidden={ariaHidden}
       className={cn(
-        "sprout-arc-spinner inline-block h-6 w-6 shrink-0 rounded-full border-4 border-current/10 border-t-current",
+        "olympus-puffs inline-flex h-6 w-6 shrink-0 items-center justify-center",
         className,
       )}
       role={isDecorative ? undefined : role}
@@ -33,6 +34,7 @@ export function Spinner({
       }}
       {...rest}
     >
+      <OlympusPuffs />
       {children}
       {isDecorative ? null : <span className="sr-only">{ariaLabel}</span>}
     </span>

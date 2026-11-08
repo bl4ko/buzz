@@ -2831,7 +2831,7 @@ test("pending avatar stays navigable, clears failures, and retries", async ({
   const avatar = page.getByTestId("community-avatar-circle");
   const pendingSpinner = page
     .getByTestId("community-avatar-circle-upload-pending")
-    .locator(".sprout-arc-spinner");
+    .locator(".olympus-puffs");
   const [avatarBox, spinnerBox] = await Promise.all([
     avatar.boundingBox(),
     pendingSpinner.boundingBox(),
