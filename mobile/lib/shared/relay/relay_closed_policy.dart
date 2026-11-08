@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../community/community_storage.dart';
 import 'relay_client.dart';
 
 // Shared constant so [isRelayDeadlineError] and [classifyRelayClosed] cannot
@@ -127,5 +128,6 @@ bool isSettledRelayDeadline(AsyncValue<Object?> value) =>
 /// Pass this to [ProviderScope.retry] at the root of the widget tree.
 Duration? relayProviderRetry(int retryCount, Object error) {
   if (isRelayDeadlineError(error)) return null;
+  if (error is SecureStorageUnavailableException) return null;
   return ProviderContainer.defaultRetry(retryCount, error);
 }

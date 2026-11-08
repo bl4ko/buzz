@@ -534,7 +534,9 @@ class _StorageUnavailableScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    void retry() => ref.invalidate(authProvider);
+    void retry() => ref
+      ..invalidate(communityListProvider)
+      ..invalidate(authProvider);
     useOnAppLifecycleStateChange((_, state) {
       if (state == AppLifecycleState.resumed) retry();
     });
