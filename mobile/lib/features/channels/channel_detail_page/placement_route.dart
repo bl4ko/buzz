@@ -47,7 +47,9 @@ class ChannelDetailPage extends ConsumerWidget {
         lookup.isLoading) {
       return FrostedScaffold(
         appBar: FrostedAppBar(title: Text(channel.name)),
-        body: const Center(child: BuzzLoadingIndicator()),
+        body: const Center(
+          child: BuzzLoadingIndicator(style: BuzzLoadingStyle.bolt),
+        ),
       );
     }
     return _ResolvedChannelDetailPage(

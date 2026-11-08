@@ -161,14 +161,18 @@ class MePage extends HookConsumerWidget {
           )
         : child;
     final inventory = groups.when(
-      loading: () =>
-          inventoryStatus(const Center(child: BuzzLoadingIndicator())),
+      loading: () => inventoryStatus(
+        const Center(child: BuzzLoadingIndicator(style: BuzzLoadingStyle.bolt)),
+      ),
       error: (_, _) => inventoryStatus(
         _MeRetry(onRetry: () => ref.invalidate(meGroupsProvider)),
       ),
       data: (organization) => channels.when(
-        loading: () =>
-            inventoryStatus(const Center(child: BuzzLoadingIndicator())),
+        loading: () => inventoryStatus(
+          const Center(
+            child: BuzzLoadingIndicator(style: BuzzLoadingStyle.bolt),
+          ),
+        ),
         error: (_, _) => inventoryStatus(
           _MeRetry(onRetry: () => ref.invalidate(channelsProvider)),
         ),

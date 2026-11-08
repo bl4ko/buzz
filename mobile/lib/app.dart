@@ -47,7 +47,7 @@ import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
 import 'shared/relay/relay.dart';
 import 'shared/theme/theme.dart';
-import 'shared/widgets/buzz_loading_indicator.dart';
+import 'shared/olympus/olympus_splash.dart';
 import 'shared/watch/watch_bridge.dart';
 import 'shared/widgets/buzz_toast_host.dart';
 
@@ -521,11 +521,7 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: BuzzLoadingIndicator(size: 56, semanticLabel: 'Starting Buzz'),
-      ),
-    );
+    return const OlympusSplash(semanticLabel: 'Starting Buzz');
   }
 }
 

@@ -184,6 +184,7 @@ class ProfileAvatarCropPage extends HookWidget {
               : preparedBytes.value == null || dimensions == null
               ? const Center(
                   child: BuzzLoadingIndicator(
+                    style: BuzzLoadingStyle.bolt,
                     color: Colors.white,
                     semanticLabel: 'Preparing photo',
                   ),

@@ -65,6 +65,7 @@ import 'package:buzz/shared/me/me_sync.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:buzz/shared/emoji/emoji_avatar.dart';
+import 'package:buzz/shared/olympus/olympus_cloud_spinner.dart';
 import 'package:buzz/shared/widgets/buzz_loading_indicator.dart';
 import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:buzz/shared/widgets/ios_navigation_bar.dart';
@@ -2386,14 +2387,17 @@ void main() {
           expect(tester.getSize(loader), const Size.square(18));
           final spinner = find.descendant(
             of: loader,
-            matching: find.byType(RotationTransition),
+            matching: find.byType(CustomPaint),
           );
-          final turns = tester.widget<RotationTransition>(spinner).turns;
-          final before = turns.value;
-          await tester.pump(const Duration(milliseconds: 125));
+          final pulse =
+              (tester.widget<CustomPaint>(spinner).painter!
+                      as OlympusCloudPainter)
+                  .progress;
+          final before = pulse.value;
+          await tester.pump(const Duration(milliseconds: 120));
           expect(
-            (turns.value - before + 1) % 1,
-            closeTo(reduceMotion ? 0 : 0.25, 0.001),
+            (pulse.value - before + 1) % 1,
+            closeTo(reduceMotion ? 0 : 0.1, 0.001),
           );
           final initial = tester.widget<RichText>(
             find.descendant(of: flyingAvatar, matching: find.byType(RichText)),
