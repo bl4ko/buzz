@@ -29,6 +29,7 @@ export default defineConfig({
         "**/search-scope-screenshots.spec.ts",
         "**/onboarding-docked-cta-screenshots.spec.ts",
         "**/identity-key-help.spec.ts",
+        "**/olympus-motion.spec.ts",
         "**/exact-key-profile.spec.ts",
         "**/key-import-reveal.spec.ts",
         "**/navigation.spec.ts",

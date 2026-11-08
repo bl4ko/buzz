@@ -17,13 +17,12 @@ test("normal first launch uses the already-persisted identity", async ({
 
   const gate = page.getByTestId("machine-onboarding-gate");
   await expect(gate).toBeVisible();
-  await expect(gate).toHaveCSS("background-color", "rgb(215, 215, 46)");
-  // Landing carries a subtle dot-grid pattern over the chartreuse fill.
-  await expect(gate).toHaveCSS("background-image", /radial-gradient/);
-  await expect(gate).toHaveCSS("color", "rgb(23, 23, 23)");
+  await expect(gate).toHaveCSS("background-color", "rgb(14, 22, 48)");
+  await expect(gate).toHaveCSS("background-image", "none");
+  await expect(gate).toHaveCSS("color", "rgb(245, 235, 209)");
   await expect(
     page.getByRole("button", { name: "Create a new identity key" }),
-  ).toHaveCSS("background-color", "rgb(23, 23, 23)");
+  ).toHaveCSS("background-color", "rgb(232, 186, 48)");
   await page.getByRole("button", { name: "Create a new identity key" }).click();
   await page.getByRole("button", { name: "Create my private key" }).click();
 
