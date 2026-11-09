@@ -16,6 +16,6 @@ class _OnboardingBackground extends StatelessWidget {
     key: const Key('pairing-onboarding-background'),
     animated: websiteWelcome,
     scannerProgress: scannerProgress,
-    child: Theme(data: olympusOnboardingTheme(), child: child),
+    child: Theme(data: olympusOnboardingTheme, child: child),
   );
 }

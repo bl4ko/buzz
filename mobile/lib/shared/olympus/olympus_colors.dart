@@ -13,7 +13,7 @@ abstract final class OlympusColors {
   static const navyHigh = Color(0xFF202D5C);
 }
 
-ThemeData olympusOnboardingTheme() => AppTheme.dark(
+final ThemeData olympusOnboardingTheme = AppTheme.dark(
   colorScheme: darkColorScheme.copyWith(
     primary: OlympusColors.gold,
     onPrimary: OlympusColors.navy,
