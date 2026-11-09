@@ -617,7 +617,6 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                       child: isPreparingFrames.value
                           ? Center(
                               child: BuzzLoadingIndicator(
-                                style: BuzzLoadingStyle.bolt,
                                 size: 44,
                                 color: context.colors.onSurface,
                                 semanticLabel: 'Preparing animated avatar',
@@ -628,7 +627,6 @@ class AnimatedAvatarCapture extends HookConsumerWidget {
                           : Center(
                               child: isInitializing.value
                                   ? const BuzzLoadingIndicator(
-                                      style: BuzzLoadingStyle.bolt,
                                       color: Colors.white,
                                       semanticLabel: 'Starting camera',
                                     )

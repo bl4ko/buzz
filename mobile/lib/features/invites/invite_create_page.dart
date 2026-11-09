@@ -42,7 +42,6 @@ class CommunityInvitePage extends ConsumerWidget {
       body: roleAsync.when(
         loading: () => const Center(
           child: BuzzLoadingIndicator(
-            style: BuzzLoadingStyle.bolt,
             size: 48,
             semanticLabel: 'Checking community permissions',
           ),

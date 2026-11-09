@@ -9,7 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 Widget _testable({
   required bool disableAnimations,
   required Brightness brightness,
-  required BuzzLoadingStyle style,
+  BuzzLoadingStyle? style,
+  double size = 40,
   Color? color,
 }) {
   return MaterialApp(
@@ -21,6 +22,7 @@ Widget _testable({
       child: Scaffold(
         body: BuzzLoadingIndicator(
           semanticLabel: 'Loading photos',
+          size: size,
           style: style,
           color: color,
         ),
@@ -89,5 +91,65 @@ void main() {
       expect(tester.binding.hasScheduledFrame, isFalse);
     }
     semantics.dispose();
+  });
+  testWidgets('picks the bolt for page-size loads and clouds inline', (
+    tester,
+  ) async {
+    for (final (size, painterType) in [
+      (40.0, OlympusBoltPainter),
+      (44.0, OlympusBoltPainter),
+      (36.0, OlympusCloudPainter),
+      (18.0, OlympusCloudPainter),
+    ]) {
+      await tester.pumpWidget(
+        _testable(
+          disableAnimations: false,
+          brightness: Brightness.light,
+          size: size,
+        ),
+      );
+      expect(
+        tester.widget<CustomPaint>(spinner).painter.runtimeType,
+        painterType,
+      );
+    }
+    await tester.pumpWidget(
+      _testable(
+        disableAnimations: false,
+        brightness: Brightness.light,
+        size: 18,
+        style: BuzzLoadingStyle.bolt,
+      ),
+    );
+    expect(
+      tester.widget<CustomPaint>(spinner).painter,
+      isA<OlympusBoltPainter>(),
+    );
+  });
+
+  testWidgets('stops both spinners for the iOS Reduce Motion setting', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(reduceMotion: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    for (final style in BuzzLoadingStyle.values) {
+      await tester.pumpWidget(
+        _testable(
+          disableAnimations: false,
+          brightness: Brightness.light,
+          style: style,
+        ),
+      );
+      await tester.pump();
+      final progress = switch (tester.widget<CustomPaint>(spinner).painter) {
+        OlympusBoltPainter(:final progress) => progress,
+        OlympusCloudPainter(:final progress) => progress,
+        final painter => throw StateError('Unexpected painter $painter'),
+      };
+      expect(progress.isAnimating, isFalse);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
   });
 }

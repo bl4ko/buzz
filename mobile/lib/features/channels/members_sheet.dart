@@ -168,7 +168,6 @@ class MembersSheet extends HookConsumerWidget {
           ),
           loading: () => const Center(
             child: BuzzLoadingIndicator(
-              style: BuzzLoadingStyle.bolt,
               size: 44,
               semanticLabel: 'Loading members',
             ),

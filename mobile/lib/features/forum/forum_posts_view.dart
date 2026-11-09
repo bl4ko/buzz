@@ -85,7 +85,6 @@ class ForumPostsView extends HookConsumerWidget {
                 padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
                 child: const Center(
                   child: BuzzLoadingIndicator(
-                    style: BuzzLoadingStyle.bolt,
                     size: 44,
                     semanticLabel: 'Loading posts',
                   ),

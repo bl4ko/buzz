@@ -26,7 +26,6 @@ class CommunityLoadingSurface extends StatelessWidget {
           right: 0,
           child: Center(
             child: BuzzLoadingIndicator(
-              style: BuzzLoadingStyle.bolt,
               size: 18,
               color: context.colors.onSecondaryContainer,
               semanticLabel: name == null ? 'Connecting' : 'Loading $name',

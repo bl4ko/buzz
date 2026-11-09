@@ -8,27 +8,29 @@ import '../theme/theme.dart';
 /// Page-level loads use [bolt]; inline and frequent loads use [clouds].
 enum BuzzLoadingStyle { clouds, bolt }
 
+/// The smallest size that defaults to [BuzzLoadingStyle.bolt].
+const double buzzLoadingBoltMinSize = 40;
+
 /// The shared mobile loading indicator.
 class BuzzLoadingIndicator extends StatelessWidget {
   /// The spinner's square extent.
   final double size;
 
-  /// An optional spinner color. Defaults to gold for [BuzzLoadingStyle.bolt]
-  /// and the theme's muted foreground for [BuzzLoadingStyle.clouds].
+  /// An optional spinner color; the default depends on [style].
   final Color? color;
 
   /// The accessibility announcement for this loading state.
   final String semanticLabel;
 
-  /// The spinner variant.
-  final BuzzLoadingStyle style;
+  /// The spinner variant; defaults by [size] (see [buzzLoadingBoltMinSize]).
+  final BuzzLoadingStyle? style;
 
   /// Creates a looping loading indicator.
   const BuzzLoadingIndicator({
     this.size = 40,
     this.color,
     this.semanticLabel = 'Loading',
-    this.style = BuzzLoadingStyle.clouds,
+    this.style,
     super.key,
   });
 
@@ -39,7 +41,10 @@ class BuzzLoadingIndicator extends StatelessWidget {
       liveRegion: true,
       label: semanticLabel,
       child: ExcludeSemantics(
-        child: switch (style) {
+        child: switch (style ??
+            (size >= buzzLoadingBoltMinSize
+                ? BuzzLoadingStyle.bolt
+                : BuzzLoadingStyle.clouds)) {
           BuzzLoadingStyle.bolt => OlympusBoltSpinner(
             key: spinnerKey,
             size: size,

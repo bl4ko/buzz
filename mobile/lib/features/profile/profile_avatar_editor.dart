@@ -331,7 +331,6 @@ class ProfileAvatarEditor extends HookConsumerWidget {
                   ),
                   child: const Center(
                     child: BuzzLoadingIndicator(
-                      style: BuzzLoadingStyle.bolt,
                       semanticLabel: 'Preparing photo',
                     ),
                   ),

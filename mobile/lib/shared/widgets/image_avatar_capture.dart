@@ -441,7 +441,6 @@ class ImageAvatarCapture extends HookConsumerWidget {
                           : Center(
                               child: isInitializing.value
                                   ? const BuzzLoadingIndicator(
-                                      style: BuzzLoadingStyle.bolt,
                                       semanticLabel: 'Starting camera',
                                     )
                                   : const Icon(BuzzIcons.cameraOff, size: 32),

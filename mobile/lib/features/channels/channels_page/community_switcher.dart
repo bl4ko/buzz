@@ -367,7 +367,6 @@ class CommunitySwitcherPage extends HookConsumerWidget {
               communitiesAsync.when(
                 loading: () => const Center(
                   child: BuzzLoadingIndicator(
-                    style: BuzzLoadingStyle.bolt,
                     size: 40,
                     semanticLabel: 'Loading communities',
                   ),

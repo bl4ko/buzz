@@ -76,7 +76,6 @@ class _HuddleCallParticipants extends StatelessWidget {
       return const Center(
         child: BuzzLoadingIndicator(
           key: ValueKey('huddle-loading-bee'),
-          style: BuzzLoadingStyle.bolt,
           semanticLabel: 'Joining Huddle',
         ),
       );
