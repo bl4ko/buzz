@@ -50,6 +50,8 @@ mod terminal_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod terminal_transport;
 #[cfg(target_os = "macos")]
+mod tray_icon_olympus;
+#[cfg(target_os = "macos")]
 mod tray_menu;
 mod unread_catch_up;
 mod util;
