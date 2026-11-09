@@ -355,22 +355,30 @@ class BeeRefreshIndicator extends HookConsumerWidget {
                               ),
                               if (showEyeEmoji)
                                 Positioned(
-                                  top: _beeHeight + 4,
+                                  top: 2,
                                   left: 0,
                                   right: 0,
                                   child: ExcludeSemantics(
                                     child: Transform.translate(
                                       key: const ValueKey(
-                                        'bee-refresh-eyes-emoji-shake',
+                                        'bee-refresh-eyes-emoji-offset',
                                       ),
-                                      offset: Offset(eyeShakeOffset, 0),
-                                      child: const Text(
-                                        '👀',
-                                        key: ValueKey('bee-refresh-eyes-emoji'),
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          height: 1,
+                                      offset: const Offset(0, _beeHeight + 2),
+                                      child: Transform.translate(
+                                        key: const ValueKey(
+                                          'bee-refresh-eyes-emoji-shake',
+                                        ),
+                                        offset: Offset(eyeShakeOffset, 0),
+                                        child: const Text(
+                                          '👀',
+                                          key: ValueKey(
+                                            'bee-refresh-eyes-emoji',
+                                          ),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            height: 1,
+                                          ),
                                         ),
                                       ),
                                     ),
