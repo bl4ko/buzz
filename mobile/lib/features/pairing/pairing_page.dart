@@ -11,8 +11,6 @@ import '../../shared/hosted/hosted_community_creation.dart';
 import '../../shared/hosted/hosted_environment.dart';
 import '../../shared/hosted/hosted_flow_problem_message.dart';
 
-import 'dart:math' show sqrt2;
-import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -24,7 +22,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:buzz/shared/theme/buzz_icons.dart';
 
@@ -35,6 +32,8 @@ import '../../shared/deeplink/community_link_input.dart';
 import '../../shared/deeplink/pending_deep_link_provider.dart';
 import '../../shared/community/community.dart';
 import '../../shared/community/community_loading_surface.dart';
+import '../../shared/olympus/olympus_colors.dart';
+import '../../shared/olympus/olympus_sky.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/ios_glass_navigation_button.dart';
@@ -45,9 +44,6 @@ import '../../shared/widgets/onboarding_step_page.dart';
 import 'pairing_qr_scanner.dart';
 
 part 'pairing_page/onboarding_background.dart';
-part 'pairing_page/website_welcome_background.dart';
-part 'pairing_page/website_bee_swarm.dart';
-part 'pairing_page/website_bee_motion.dart';
 part 'pairing_page/onboarding_colors.dart';
 part 'pairing_page/onboarding_glass_button.dart';
 part 'pairing_page/pairing_welcome_view.dart';
@@ -198,11 +194,9 @@ class PairingPage extends HookConsumerWidget {
         !creatingCommunity &&
         setupContent == null &&
         !isVerifyingSas;
-    final onboardingSystemOverlayStyle =
-        (context._onboardingIsDark && !websiteWelcome
-                ? SystemUiOverlayStyle.light
-                : SystemUiOverlayStyle.dark)
-            .copyWith(statusBarColor: Colors.transparent);
+    final onboardingSystemOverlayStyle = SystemUiOverlayStyle.light.copyWith(
+      statusBarColor: Colors.transparent,
+    );
     final pairingAppBar = addingCommunity
         ? defaultTargetPlatform == TargetPlatform.iOS
               ? PreferredSize(
@@ -215,7 +209,7 @@ class PairingPage extends HookConsumerWidget {
                             : '',
                         frosted: false,
 
-                        iconColor: context._onboardingInk,
+                        iconColor: OlympusColors.marble,
 
                         title: identityRecoveryOnly
                             ? const Text('Send to Desktop')
@@ -238,7 +232,7 @@ class PairingPage extends HookConsumerWidget {
                           icon: const Icon(BuzzIcons.arrowLeft),
                           onPressed: () => Navigator.of(context).maybePop(),
                         ),
-                        iconColor: context._onboardingInk,
+                        iconColor: OlympusColors.marble,
                         title: identityRecoveryOnly
                             ? const Text('Send to Desktop')
                             : null,

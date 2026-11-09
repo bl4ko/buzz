@@ -110,6 +110,7 @@ fn format_elapsed(elapsed: Duration) -> String {
 /// looks out of place beside the monochrome menu-bar icons. Keeping this
 /// vector-derived mask here also lets macOS tint it correctly in light and
 /// dark menu bars without a separate bitmap asset.
+#[allow(dead_code)]
 fn tray_bee_icon() -> Image<'static> {
     const WIDTH: u32 = 64;
     const HEIGHT: u32 = 43;
@@ -488,7 +489,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     });
     let tray = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .icon(tray_bee_icon())
+        .icon(crate::tray_icon_olympus::icon())
         .icon_as_template(true)
         .on_menu_event(|app, event| handle_menu_event(app, event.id.as_ref()))
         .build(app)?;

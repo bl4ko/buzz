@@ -4,14 +4,16 @@ part of '../pairing_page.dart';
 extension _OnboardingColors on BuildContext {
   bool get _onboardingIsDark => Theme.of(this).brightness == Brightness.dark;
   Color get _onboardingInk =>
-      _onboardingIsDark ? const Color(0xFFE6EDF0) : const Color(0xFF111111);
+      _onboardingIsDark ? OlympusColors.marble : const Color(0xFF111111);
   Color get _onboardingMutedInk =>
-      _onboardingIsDark ? const Color(0xFFAAB8C0) : const Color(0xB3111111);
+      _onboardingIsDark ? OlympusColors.cloudShadow : const Color(0xB3111111);
   Color get _onboardingCtaLabel =>
-      _onboardingIsDark ? const Color(0xFF172229) : Colors.white;
+      _onboardingIsDark ? OlympusColors.navy : Colors.white;
+  Color get _onboardingCta =>
+      _onboardingIsDark ? OlympusColors.gold : _onboardingInk;
   Color get _onboardingErrorInk => colors.error;
   Color get _onboardingInputSurface => _onboardingIsDark
-      ? const Color(0xFF233039)
+      ? OlympusColors.navyRaised
       : Colors.white.withValues(alpha: 0.7);
 
   OutlineInputBorder get _inputBorder => OutlineInputBorder(
@@ -25,9 +27,9 @@ extension _OnboardingColors on BuildContext {
       horizontal: Grid.lg,
       vertical: Grid.twelve,
     ),
-    backgroundColor: _onboardingInk,
+    backgroundColor: _onboardingCta,
     foregroundColor: _onboardingCtaLabel,
-    disabledBackgroundColor: _onboardingInk.withValues(alpha: 0.38),
+    disabledBackgroundColor: _onboardingCta.withValues(alpha: 0.38),
     disabledForegroundColor: _onboardingCtaLabel.withValues(alpha: 0.7),
     shape: const StadiumBorder(),
   );

@@ -82,7 +82,7 @@ class _PairingWelcomeView extends HookWidget {
         excludeFromSemantics: true,
         onDoubleTap: isBusy ? null : onAlreadyUseBuzz,
         child: FilledButton(
-          style: context._onboardingGlassButtonStyle,
+          style: context._onboardingButtonStyle,
           onPressed: isBusy ? null : onScan,
           child: const Text('Scan a QR code'),
         ),
@@ -346,25 +346,19 @@ class _PairingWelcomeView extends HookWidget {
                         children: [
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 320),
-                            child: AspectRatio(
-                              aspectRatio: 777 / 326,
-                              child: Semantics(
-                                // Hidden developer entry intentionally has no
-                                // keyboard shortcut. Keep its assistive action
-                                // on the existing labelled wordmark node.
-                                customSemanticsActions: canRevealOptions
-                                    ? {
-                                        const CustomSemanticsAction(
-                                          label: 'More connection options',
-                                        ): revealOptions,
-                                      }
-                                    : null,
-                                child: OnboardingWordmark(
-                                  key: const Key('pairing-buzz-wordmark'),
-                                  color: context._onboardingIsDark
-                                      ? context._onboardingInk
-                                      : null,
-                                ),
+                            child: Semantics(
+                              // Hidden developer entry intentionally has no
+                              // keyboard shortcut. Keep its assistive action
+                              // on the existing labelled wordmark node.
+                              customSemanticsActions: canRevealOptions
+                                  ? {
+                                      const CustomSemanticsAction(
+                                        label: 'More connection options',
+                                      ): revealOptions,
+                                    }
+                                  : null,
+                              child: const OnboardingWordmark(
+                                key: Key('pairing-buzz-wordmark'),
                               ),
                             ),
                           ),

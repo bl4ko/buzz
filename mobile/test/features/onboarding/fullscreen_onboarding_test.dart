@@ -220,13 +220,10 @@ void main() {
         tester.getBottomLeft(find.byType(BeeLoadingMark)).dy,
         lessThan(tester.getTopLeft(find.text('Joining your community')).dy),
       );
-      final bee = tester.widget<CustomPaint>(
-        find.descendant(
-          of: find.byType(BeeLoadingMark),
-          matching: find.byType(CustomPaint),
-        ),
+      expect(
+        tester.getSize(find.byType(BeeLoadingMark)),
+        const Size(80, 80 * 309 / 466),
       );
-      expect(bee.size.width, 80);
       final mark = tester.getRect(find.byType(BeeLoadingMark));
       expect(
         mark.center.dx,

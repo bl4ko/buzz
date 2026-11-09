@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
+  brandAppBundle,
   testflightConfig,
   validateDistributionProfile,
 } from "./release-bl4ko-macos-testflight.mjs";
@@ -96,4 +100,30 @@ test("Mac TestFlight build uses the sandbox and numeric Apple build number", () 
     entitlements,
     /disable-library-validation|temporary-exception/,
   );
+});
+
+test("Mac bundle keeps the Bl4uzz.app file and shows Olympus", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "bl4uzz-brand-"));
+  try {
+    const app = path.join(directory, "Bl4uzz.app");
+    const plist = path.join(app, "Contents/Info.plist");
+    mkdirSync(path.dirname(plist), { recursive: true });
+    execFileSync("plutil", ["-create", "xml1", plist]);
+    for (const field of ["CFBundleName", "CFBundleDisplayName"])
+      execFileSync("plutil", ["-insert", field, "-string", "Buzz", plist]);
+    brandAppBundle(app);
+    const read = (file) =>
+      JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", file]));
+    assert.deepEqual(read(plist), {
+      CFBundleName: "Olympus",
+      CFBundleDisplayName: "Bl4uzz",
+      LSHasLocalizedDisplayName: true,
+    });
+    assert.deepEqual(
+      read(path.join(app, "Contents/Resources/en.lproj/InfoPlist.strings")),
+      { CFBundleName: "Olympus", CFBundleDisplayName: "Olympus" },
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

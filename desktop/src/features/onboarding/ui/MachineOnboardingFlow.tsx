@@ -9,6 +9,7 @@ import {
 } from "@/shared/api/tauriIdentity";
 import type { IdentityStorage } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
+import { OlympusHero, OlympusSky } from "@/shared/ui/olympus/OlympusScene";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
 import { BackupStep } from "./BackupStep";
 import { DefaultConfigStep } from "./DefaultConfigStep";
@@ -24,7 +25,6 @@ import {
 } from "./IdentityKeyHelpDialog";
 import { IdentityKeyIntroduction } from "./IdentityKeyIntroduction";
 import { IdentityRecoveryPairing } from "./IdentityRecoveryPairing";
-import { LandingBees } from "./LandingBees";
 import {
   NostrKeyImportForm,
   type NostrKeyImportStage,
@@ -328,11 +328,11 @@ export function MachineOnboardingFlow({
   if (page === "identity") {
     return (
       <div
-        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
+        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome olympus-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
         data-testid="machine-onboarding-gate"
       >
         <StartupWindowDragRegion />
-        <LandingBees />
+        <OlympusSky />
         <OnboardingFooterProvider>
           <div className="relative my-auto flex w-full max-w-[1040px] flex-col items-center text-center">
             <OnboardingSlideTransition
@@ -340,11 +340,7 @@ export function MachineOnboardingFlow({
               direction={transitionDirection}
               transitionKey={`machine-identity-${transitionDirection}`}
             >
-              <img
-                alt="Buzz"
-                className="w-full max-w-[600px]"
-                src="/landing/buzz-wordmark.png"
-              />
+              <OlympusHero className="mb-4" />
               <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
                 Your people, your agents, your projects —<br />
                 all in one place.

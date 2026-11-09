@@ -188,7 +188,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
       return
     }
     guard WCSession.default.activationState == .activated, WCSession.default.isReachable else {
-      error = "Open Bl4uzz on your paired iPhone. Then tap Refresh."
+      error = "Open Olympus on your paired iPhone. Then tap Refresh."
       return
     }
     error = nil
@@ -260,7 +260,7 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
         self.messages = []
         self.messageChannelID = nil
         self.scope = newScope
-        self.error = "Open Bl4uzz on your paired iPhone. Then tap Refresh."
+        self.error = "Open Olympus on your paired iPhone. Then tap Refresh."
       }
     }
   }

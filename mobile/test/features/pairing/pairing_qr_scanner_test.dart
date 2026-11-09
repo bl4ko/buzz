@@ -434,24 +434,24 @@ void main() {
       await tester.pump();
       final opacity = find.byKey(const Key('scanner-welcome-opacity'));
       final scale = find.byKey(const Key('scanner-welcome-scale'));
-      void expectBeesMatchWelcome() {
+      void expectSceneMatchesWelcome() {
         if (adding) return;
         expect(
           tester
-              .widget<Opacity>(find.byKey(const Key('scanner-bees-opacity')))
+              .widget<Opacity>(find.byKey(const Key('scanner-scene-opacity')))
               .opacity,
           tester.widget<Opacity>(opacity).opacity,
         );
         expect(
           tester
-              .widget<Transform>(find.byKey(const Key('scanner-bees-scale')))
+              .widget<Transform>(find.byKey(const Key('scanner-scene-scale')))
               .transform
               .storage[0],
           tester.widget<Transform>(scale).transform.storage[0],
         );
       }
 
-      // The welcome swarm animates continuously. Wait for the scanner's
+      // The welcome sky animates continuously. Wait for the scanner's
       // observable transition endpoint rather than global frame idleness.
       Future<void> waitForOpacity(double target) async {
         for (
@@ -506,9 +506,9 @@ void main() {
           closeTo(1 - 0.04 * progress, 0.001),
         );
       }
-      expectBeesMatchWelcome();
+      expectSceneMatchesWelcome();
       await waitForOpacity(0);
-      expectBeesMatchWelcome();
+      expectSceneMatchesWelcome();
       expect(tester.widget<Opacity>(opacity).opacity, 0);
       expect(
         tester.widget<Transform>(scale).transform.storage[0],
@@ -526,7 +526,7 @@ void main() {
       await tester.tapAt(const Offset(196.5, 700));
       await tester.pump();
       await waitForOpacity(1);
-      expectBeesMatchWelcome();
+      expectSceneMatchesWelcome();
       expect(tester.widget<Opacity>(opacity).opacity, 1);
       expect(tester.widget<Transform>(scale).transform.storage[0], 1);
       expect(

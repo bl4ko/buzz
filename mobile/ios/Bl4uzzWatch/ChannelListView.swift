@@ -48,7 +48,7 @@ struct ChannelListView: View {
         }
       }
     }
-    .navigationTitle("Bl4uzz")
+    .navigationTitle("Olympus")
     .watchBackdrop()
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
@@ -100,8 +100,8 @@ struct WelcomeCard: View {
 
   var body: some View {
     VStack(spacing: 8) {
-      BeeMark().frame(height: 30)
-      Text("Welcome to Bl4uzz").font(.headline)
+      OlympusMark().frame(height: 36)
+      Text("Welcome to Olympus").font(.headline)
       Text(message)
         .font(.footnote)
         .foregroundStyle(.secondary)
@@ -126,7 +126,7 @@ struct WelcomeCard: View {
     if let error = store.error { return error }
     return store.reachable
       ? "Load your channels from your iPhone, or connect this watch directly."
-      : "Open Bl4uzz on your paired iPhone."
+      : "Open Olympus on your paired iPhone."
   }
 }
 

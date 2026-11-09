@@ -1,0 +1,313 @@
+:root {
+  --olympus-navy: #0e1630;
+  --olympus-marble: #f5ebd0;
+  --olympus-gold: #e8b931;
+  --olympus-cloud: #8fa3d9;
+}
+
+@layer components {
+  .olympus-bolt {
+    aspect-ratio: 250 / 510;
+    color: var(--olympus-gold);
+    display: inline-block;
+    flex-shrink: 0;
+    position: relative;
+  }
+}
+
+.olympus-bolt__clip {
+  clip-path: polygon(
+    60.8% 1.96%,
+    8% 52.94%,
+    40% 52.94%,
+    4% 98.04%,
+    96% 39.61%,
+    60% 39.61%,
+    96% 1.96%
+  );
+  inset: 0;
+  overflow: hidden;
+  position: absolute;
+}
+
+.olympus-bolt__fill {
+  animation: olympus-charge 1.4s ease-in infinite;
+  background: currentColor;
+  display: block;
+  height: 100%;
+  will-change: transform;
+}
+
+.olympus-bolt__outline {
+  fill: none;
+  height: 100%;
+  inset: 0;
+  overflow: visible;
+  position: absolute;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 18;
+  width: 100%;
+}
+
+.olympus-puffs {
+  border-radius: 0;
+  border-width: 0;
+}
+
+.olympus-puff {
+  animation: olympus-pulse 1.2s ease-in-out infinite;
+  aspect-ratio: 1;
+  background: currentColor;
+  border-radius: 9999px;
+  display: block;
+  flex: none;
+  opacity: 0.3;
+  width: 25%;
+}
+
+.olympus-puff:nth-child(2) {
+  animation-delay: 0.2s;
+  margin-inline: 11%;
+}
+
+.olympus-puff:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.olympus-welcome {
+  color-scheme: dark;
+  --buzz-welcome-chartreuse: var(--olympus-navy);
+  --buzz-onboarding-shell-bottom: transparent;
+  --background: 226 55% 12%;
+  --foreground: 44 65% 89%;
+  --primary: 45 80% 55%;
+  --primary-foreground: 226 55% 12%;
+  --secondary: 227 48% 24%;
+  --secondary-foreground: 44 65% 89%;
+  --muted: 227 48% 24%;
+  --muted-foreground: 224 49% 71%;
+  --accent: 227 48% 24%;
+  --accent-foreground: 44 65% 89%;
+  --border: 227 48% 24%;
+  --input: 227 48% 24%;
+  --ring: 45 80% 55%;
+  background-color: var(--olympus-navy);
+  background-image: none;
+}
+
+.olympus-sky__cloud {
+  height: auto;
+  position: absolute;
+  will-change: transform;
+}
+
+.olympus-sky__cloud--a {
+  animation: olympus-drift 22s ease-in-out infinite alternate;
+  left: 10%;
+  opacity: 0.3;
+  top: 12%;
+  width: clamp(8rem, 24vh, 16rem);
+}
+
+.olympus-sky__cloud--b {
+  animation: olympus-drift-reverse 18s ease-in-out -7s infinite alternate;
+  left: 74%;
+  opacity: 0.22;
+  top: 24%;
+  width: clamp(6rem, 17vh, 11rem);
+}
+
+.olympus-flash {
+  animation: olympus-flash 6s linear -3s infinite;
+  opacity: 0;
+}
+
+.olympus-sky__flash {
+  background: rgb(255 255 255 / 0.6);
+  inset: 0;
+  position: absolute;
+}
+
+.olympus-hero {
+  aspect-ratio: 1024 / 920;
+  height: clamp(9rem, 30vh, 19rem);
+  position: relative;
+}
+
+.olympus-hero__mountain {
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.olympus-hero__bolt {
+  animation: olympus-strike 6s ease-out -3s infinite;
+  height: 53.26%;
+  left: 58.59%;
+  position: absolute;
+  top: 3.26%;
+  width: 22.46%;
+}
+
+.olympus-hero__cloud {
+  height: auto;
+  position: absolute;
+  will-change: transform;
+}
+
+.olympus-hero__cloud--a {
+  animation: olympus-drift-front 14s ease-in-out infinite alternate;
+  left: 14.45%;
+  top: 68.33%;
+  width: 35.55%;
+}
+
+.olympus-hero__cloud--b {
+  animation: olympus-drift-front-reverse 18s ease-in-out infinite alternate;
+  left: 64.16%;
+  top: 58.52%;
+  width: 25.98%;
+}
+
+.olympus-wordmark {
+  color: var(--olympus-marble);
+  font-family: Georgia, ui-serif, "Times New Roman", serif;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  line-height: 1.2;
+  padding-left: 0.32em;
+}
+
+@keyframes olympus-charge {
+  0% {
+    transform: translateY(100%);
+  }
+
+  70%,
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes olympus-pulse {
+  0%,
+  60% {
+    opacity: 0.3;
+  }
+
+  75% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes olympus-drift {
+  from {
+    transform: translateX(-55%);
+  }
+
+  to {
+    transform: translateX(55%);
+  }
+}
+
+@keyframes olympus-drift-reverse {
+  from {
+    transform: translateX(55%);
+  }
+
+  to {
+    transform: translateX(-55%);
+  }
+}
+
+@keyframes olympus-drift-front {
+  from {
+    transform: translateX(-38%);
+  }
+
+  to {
+    transform: translateX(38%);
+  }
+}
+
+@keyframes olympus-drift-front-reverse {
+  from {
+    transform: translateX(41%);
+  }
+
+  to {
+    transform: translateX(-41%);
+  }
+}
+
+@keyframes olympus-strike {
+  0%,
+  86% {
+    opacity: 0;
+    transform: translateY(-12%) scale(0.96);
+  }
+
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+
+  92% {
+    opacity: 0.35;
+  }
+
+  94%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes olympus-flash {
+  0%,
+  87% {
+    opacity: 0;
+  }
+
+  88% {
+    opacity: 0.35;
+  }
+
+  90% {
+    opacity: 0;
+  }
+
+  93% {
+    opacity: 0.18;
+  }
+
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .olympus-bolt__fill,
+  .olympus-puff,
+  .olympus-sky__cloud,
+  .olympus-flash,
+  .olympus-hero__bolt,
+  .olympus-hero__cloud {
+    animation: none;
+    will-change: auto;
+  }
+
+  .olympus-puff:nth-child(1) {
+    opacity: 1;
+  }
+
+  .olympus-puff:nth-child(2) {
+    opacity: 0.6;
+  }
+}

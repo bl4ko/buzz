@@ -1,5 +1,5 @@
 import { cn } from "@/shared/lib/cn";
-import BuzzLogoAnimation from "@/shared/ui/buzz-logo/BuzzLogoAnimation";
+import { OlympusBoltSpinner } from "@/shared/ui/olympus/OlympusSpinner";
 
 /** Centered, low-emphasis loading state for page and panel fetches. */
 export function BuzzLoadingState({
@@ -21,14 +21,7 @@ export function BuzzLoadingState({
       data-testid="buzz-loading-state"
       role="status"
     >
-      <BuzzLogoAnimation
-        ariaLabel={label}
-        className="buzz-logo--scale-pulse"
-        fullScreen={false}
-        showBackground={false}
-        style={{ width: "2rem" }}
-        textured={false}
-      />
+      <OlympusBoltSpinner className="h-10" label={label} />
     </div>
   );
 }

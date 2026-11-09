@@ -73,7 +73,12 @@ class _HuddleCallParticipants extends StatelessWidget {
     }
 
     if (!connected) {
-      return const Center(child: _HuddleLoadingBee());
+      return const Center(
+        child: BuzzLoadingIndicator(
+          key: ValueKey('huddle-loading-bee'),
+          semanticLabel: 'Joining Huddle',
+        ),
+      );
     }
 
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
@@ -96,45 +101,6 @@ class _HuddleCallParticipants extends StatelessWidget {
         entryDuration: entryDuration,
         onParticipantTap: onParticipantTap,
         onOverflowTap: onOverflowTap,
-      ),
-    );
-  }
-}
-
-class _HuddleLoadingBee extends HookWidget {
-  const _HuddleLoadingBee();
-
-  @override
-  Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final flapController = useAnimationController(
-      duration: const Duration(milliseconds: 480),
-    );
-    final flapProgress = useAnimation(flapController);
-    useEffect(() {
-      if (reducedMotion) {
-        flapController
-          ..stop()
-          ..reset();
-      } else {
-        flapController.repeat();
-      }
-      return null;
-    }, [flapController, reducedMotion]);
-    final flapAmount = reducedMotion
-        ? 0.0
-        : 0.5 - (0.5 * cos(flapProgress * 4 * pi));
-
-    return Semantics(
-      label: 'Joining Huddle',
-      liveRegion: true,
-      child: ExcludeSemantics(
-        child: FlappingBee(
-          key: const ValueKey('huddle-loading-bee'),
-          width: 60,
-          color: context.colors.primary,
-          flapAmount: flapAmount,
-        ),
       ),
     );
   }

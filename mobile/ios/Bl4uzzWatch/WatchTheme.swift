@@ -56,28 +56,33 @@ struct WatchGlassGroup<Content: View>: View {
   }
 }
 
-struct BeeMark: View {
-  var color: Color = .bee
+struct OlympusMark: View {
+  private static let layers: [(Color, [(CGFloat, CGFloat)])] = [
+    (Color(red: 46 / 255, green: 63 / 255, blue: 120 / 255), [(110, 860), (512, 230), (914, 860)]),
+    (Color(red: 59 / 255, green: 79 / 255, blue: 146 / 255), [(512, 230), (914, 860), (600, 860)]),
+    (
+      Color(red: 245 / 255, green: 235 / 255, blue: 208 / 255),
+      [(512, 230), (610, 372), (566, 350), (532, 392), (494, 352), (452, 382), (414, 372)]
+    ),
+    (
+      Color(red: 232 / 255, green: 185 / 255, blue: 49 / 255),
+      [(742, 70), (610, 330), (690, 330), (600, 560), (830, 262), (740, 262), (830, 70)]
+    ),
+  ]
 
   var body: some View {
     Canvas { context, size in
-      let scale = min(size.width / 806, size.height / 535)
-      let x0 = (size.width - 806 * scale) / 2
-      let y0 = (size.height - 535 * scale) / 2
-      func box(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
-        CGRect(x: x0 + (x - 111) * scale, y: y0 + (y - 233) * scale, width: width * scale, height: height * scale)
+      let scale = min(size.width / 804, size.height / 790)
+      let dx = (size.width - 804 * scale) / 2 - 110 * scale
+      let dy = (size.height - 790 * scale) / 2 - 70 * scale
+      for (color, points) in Self.layers {
+        var path = Path()
+        path.addLines(points.map { CGPoint(x: dx + $0.0 * scale, y: dy + $0.1 * scale) })
+        path.closeSubpath()
+        context.fill(path, with: .color(color))
       }
-      let fill = GraphicsContext.Shading.color(color)
-      context.fill(Path(ellipseIn: box(110, 342, 316, 316)), with: fill)
-      context.fill(Path(ellipseIn: box(602, 342, 316, 316)), with: fill)
-      context.fill(Path(roundedRect: box(331, 233, 365, 535), cornerRadius: 84 * scale), with: fill)
-      context.blendMode = .clear
-      context.fill(Path(ellipseIn: box(398, 333, 92, 92)), with: fill)
-      context.fill(Path(ellipseIn: box(540, 333, 92, 92)), with: fill)
-      context.fill(Path(roundedRect: box(398, 507, 235, 64), cornerRadius: 10 * scale), with: fill)
-      context.fill(Path(roundedRect: box(400, 640, 235, 65), cornerRadius: 10 * scale), with: fill)
     }
-    .aspectRatio(806 / 535, contentMode: .fit)
+    .aspectRatio(804 / 790, contentMode: .fit)
     .accessibilityHidden(true)
   }
 }
@@ -313,7 +318,7 @@ struct EmptyStateView: View {
   #Preview("Components") {
     ScrollView {
       VStack(spacing: 8) {
-        BeeMark().frame(height: 36)
+        OlympusMark().frame(height: 36)
         HStack { AvatarView(name: "Mia Novak"); AvatarView(name: "Zeus"); ChannelTile() }
         Button("Connect") {}.buttonStyle(BeeButtonStyle())
         Button("Refresh", systemImage: "arrow.clockwise") {}.buttonStyle(GlassPillStyle())

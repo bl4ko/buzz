@@ -66,7 +66,7 @@ final watchBridgeProvider = Provider<void>((ref) {
   Future<Map<String, Object?>> request(MethodCall call) async {
     if (call.method != 'request') throw MissingPluginException();
     if (!available()) {
-      return {'error': 'Sign in to Bl4uzz on your iPhone.'};
+      return {'error': 'Sign in to Olympus on your iPhone.'};
     }
     if (requests >= 4) return {'error': 'Wait for the current request.'};
     requests++;
@@ -266,7 +266,7 @@ final watchBridgeProvider = Provider<void>((ref) {
     } catch (_) {
       return {
         'error':
-            'The request failed. Open Bl4uzz on your iPhone. '
+            'The request failed. Open Olympus on your iPhone. '
             'Check the channel before you send again.',
       };
     } finally {

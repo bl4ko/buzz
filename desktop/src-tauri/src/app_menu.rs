@@ -45,9 +45,10 @@ pub fn install<R: Runtime>(builder: Builder<R>) -> Builder<R> {
 #[cfg(target_os = "macos")]
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let pkg_info = app.package_info();
+    let app_name = bundle_name().unwrap_or_else(|| pkg_info.name.clone());
     let config = app.config();
     let about_metadata = AboutMetadata {
-        name: Some(pkg_info.name.clone()),
+        name: Some(app_name.clone()),
         version: Some(pkg_info.version.to_string()),
         copyright: config.bundle.copyright.clone(),
         authors: config.bundle.publisher.clone().map(|p| vec![p]),
@@ -59,7 +60,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         &[
             &Submenu::with_items(
                 app,
-                pkg_info.name.clone(),
+                app_name,
                 true,
                 &[
                     &PredefinedMenuItem::about(app, None, Some(about_metadata))?,
@@ -108,4 +109,16 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &Submenu::with_id_and_items(app, HELP_SUBMENU_ID, "Help", true, &[])?,
         ],
     )
+}
+
+#[cfg(target_os = "macos")]
+fn bundle_name() -> Option<String> {
+    use objc2_foundation::{NSBundle, NSString};
+
+    let name = NSBundle::mainBundle()
+        .objectForInfoDictionaryKey(&NSString::from_str("CFBundleName"))?
+        .downcast::<NSString>()
+        .ok()?
+        .to_string();
+    (!name.is_empty()).then_some(name)
 }
