@@ -100,7 +100,7 @@ struct WelcomeCard: View {
 
   var body: some View {
     VStack(spacing: 8) {
-      BeeMark().frame(height: 30)
+      OlympusMark().frame(height: 36)
       Text("Welcome to Olympus").font(.headline)
       Text(message)
         .font(.footnote)
