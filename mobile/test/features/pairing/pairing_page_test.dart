@@ -912,8 +912,7 @@ void main() {
             .getRect(errorFinder)
             .shift(-tester.getTopLeft(backgroundFinder));
 
-        // Render the production sky without foreground content, so sampled
-        // pixels are the actual surface behind the error.
+        // Sample the bare production sky behind the error.
         const captureKey = Key('sas-error-background-capture');
         await tester.pumpWidget(
           Directionality(

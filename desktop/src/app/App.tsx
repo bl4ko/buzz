@@ -137,9 +137,7 @@ function useBootSplashHold(): BootSplashPhase {
   return phase;
 }
 
-// Cold boot gate: the theme-adaptive grainient background with the Olympus
-// bolt charging over it. The old "Setting up your community" text stays as an
-// sr-only caption.
+// Cold boot gate: the Olympus bolt over the grainient; the loading text stays sr-only.
 function AppLoadingGate() {
   return (
     <div
