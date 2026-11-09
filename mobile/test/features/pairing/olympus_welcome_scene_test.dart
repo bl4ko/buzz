@@ -97,4 +97,26 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  for (final size in const [Size(320, 568), Size(375, 667)]) {
+    testWidgets('welcome hero keeps actions on a ${size.width}x${size.height} '
+        'screen', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        WidgetHelpers.testable(child: const PairingPage()),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      final wordmark = find.byKey(const Key('pairing-buzz-wordmark'));
+      expect(
+        tester.getSize(wordmark).height,
+        closeTo(tester.getSize(wordmark).width * 326 / 777, 0.5),
+      );
+      for (final label in ['Scan a QR code', 'Use pairing code']) {
+        expect(find.text(label).hitTestable(), findsOneWidget);
+        expect(tester.getRect(find.text(label)).bottom, lessThan(size.height));
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 }
