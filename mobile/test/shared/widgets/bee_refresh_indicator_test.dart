@@ -196,15 +196,12 @@ void main() {
     );
     expect(hapticCalls, hasLength(2));
     expect(hapticCalls.last.arguments, 'HapticFeedbackType.heavyImpact');
-    expect(
-      tester
-          .widget<Transform>(
-            find.byKey(const ValueKey('bee-refresh-eyes-emoji-offset')),
-          )
-          .transform
-          .storage[12],
-      2,
+    final eyes = tester.getRect(
+      find.byKey(const ValueKey('bee-refresh-eyes-emoji')),
     );
+    final bolt = tester.getRect(find.byType(OlympusPullBolt));
+    expect(eyes.top, greaterThan(bolt.bottom));
+    expect(eyes.center.dx, closeTo(bolt.center.dx, 1));
     final initialShake = tester
         .widget<Transform>(
           find.byKey(const ValueKey('bee-refresh-eyes-emoji-shake')),
@@ -321,33 +318,45 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('keeps the bolt static when motion is disabled', (tester) async {
-    final refresh = Completer<void>();
-    await tester.pumpWidget(
-      WidgetHelpers.testable(
-        disableAnimations: true,
-        child: BeeRefreshIndicator(
-          onRefresh: () => refresh.future,
-          child: ListView(children: const [SizedBox(height: 800)]),
+  for (final platformFlag in [false, true]) {
+    testWidgets('keeps the bolt static when motion is disabled '
+        '${platformFlag ? 'by iOS Reduce Motion' : 'by MediaQuery'}', (
+      tester,
+    ) async {
+      if (platformFlag) {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(reduceMotion: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+      }
+      final refresh = Completer<void>();
+      await tester.pumpWidget(
+        WidgetHelpers.testable(
+          disableAnimations: !platformFlag,
+          child: BeeRefreshIndicator(
+            onRefresh: () => refresh.future,
+            child: ListView(children: const [SizedBox(height: 800)]),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.timedDrag(
-      find.byType(ListView),
-      const Offset(0, 320),
-      const Duration(milliseconds: 400),
-    );
-    await tester.pumpAndSettle();
+      await tester.timedDrag(
+        find.byType(ListView),
+        const Offset(0, 320),
+        const Duration(milliseconds: 400),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      tester.widget<OlympusPullBolt>(find.byType(OlympusPullBolt)).loading,
-      isTrue,
-    );
-    expect(tester.binding.hasScheduledFrame, isFalse);
-    refresh.complete();
-    await tester.pumpAndSettle();
-  });
+      expect(
+        tester.widget<OlympusPullBolt>(find.byType(OlympusPullBolt)).loading,
+        isTrue,
+      );
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      refresh.complete();
+      await tester.pumpAndSettle();
+    });
+  }
 
   testWidgets('provides elastic always-scrollable physics', (tester) async {
     late ScrollPhysics physics;

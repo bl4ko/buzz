@@ -355,30 +355,22 @@ class BeeRefreshIndicator extends HookConsumerWidget {
                               ),
                               if (showEyeEmoji)
                                 Positioned(
-                                  top: 2,
+                                  top: _beeHeight + 4,
                                   left: 0,
                                   right: 0,
                                   child: ExcludeSemantics(
                                     child: Transform.translate(
                                       key: const ValueKey(
-                                        'bee-refresh-eyes-emoji-offset',
+                                        'bee-refresh-eyes-emoji-shake',
                                       ),
-                                      offset: const Offset(2, 0),
-                                      child: Transform.translate(
-                                        key: const ValueKey(
-                                          'bee-refresh-eyes-emoji-shake',
-                                        ),
-                                        offset: Offset(eyeShakeOffset, 0),
-                                        child: const Text(
-                                          '👀',
-                                          key: ValueKey(
-                                            'bee-refresh-eyes-emoji',
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            height: 1,
-                                          ),
+                                      offset: Offset(eyeShakeOffset, 0),
+                                      child: const Text(
+                                        '👀',
+                                        key: ValueKey('bee-refresh-eyes-emoji'),
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          height: 1,
                                         ),
                                       ),
                                     ),
