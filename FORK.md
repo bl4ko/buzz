@@ -51,7 +51,7 @@ Install the current Bl4uzz build through TestFlight, connect to `buzz.bl4ko.com`
 
 The visible brand is Olympus. Keep these overrides when you rebase onto upstream:
 
-- Icons come from `branding/olympus/` (G2 SVGs); regenerate all app, launch, and tray assets with `branding/olympus/export.sh`.
+- Icons come from `branding/olympus/` (G3 SVGs; `g3-small.svg` below 64 px); regenerate all app, launch, and tray assets with `branding/olympus/export.sh`.
 - Mobile: the welcome bee files (`website_bee_*.dart`, `website_welcome_background.dart`) and `flapping_bee.dart` are deleted. `onboarding_wordmark.dart`, `onboarding_background.dart`, `buzz_loading_indicator.dart`, `bee_loading_mark.dart`, and `bee_refresh_indicator.dart` are rewritten on `lib/shared/olympus/`. `BuzzLoadingIndicator` picks the bolt or cloud spinner by size, so call sites stay upstream.
 - Desktop: `LandingBees.tsx` is deleted. `spinner.tsx`, `BuzzLoadingState.tsx`, and the loading gates in `App.tsx` use `src/shared/ui/olympus/`. The tray icon is in `tray_icon_olympus.rs`.
 - Keep upstream bee assets that are now unused (`FlappingBee.tsx`, `FuzzyLogo.tsx`, `BuzzLogoAnimation.tsx`, the bee and wordmark assets in `pubspec.yaml`, `tray_bee_icon`) to avoid modify/delete conflicts.
