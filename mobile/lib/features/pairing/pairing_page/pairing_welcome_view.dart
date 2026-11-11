@@ -344,30 +344,36 @@ class _PairingWelcomeView extends HookWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 320),
-                            child: Semantics(
-                              // Hidden developer entry intentionally has no
-                              // keyboard shortcut. Keep its assistive action
-                              // on the existing labelled wordmark node.
-                              customSemanticsActions: canRevealOptions
-                                  ? {
-                                      const CustomSemanticsAction(
-                                        label: 'More connection options',
-                                      ): revealOptions,
-                                    }
-                                  : null,
-                              child: const OnboardingWordmark(
-                                key: Key('pairing-buzz-wordmark'),
+                          Flexible(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 320),
+                              child: Semantics(
+                                // Hidden developer entry intentionally has no
+                                // keyboard shortcut. Keep its assistive action
+                                // on the existing labelled wordmark node.
+                                customSemanticsActions: canRevealOptions
+                                    ? {
+                                        const CustomSemanticsAction(
+                                          label: 'More connection options',
+                                        ): revealOptions,
+                                      }
+                                    : null,
+                                child: const OnboardingWordmark(
+                                  key: Key('pairing-buzz-wordmark'),
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(height: Grid.xxs),
-                          Text(
-                            'Your people, your agents, your projects —\nall in one place.',
-                            textAlign: TextAlign.center,
-                            style: context.textTheme.bodyLarge?.copyWith(
-                              color: context._onboardingInk,
+                          OlympusIntro(
+                            delay: 1.5,
+                            duration: 0.5,
+                            child: Text(
+                              'Your people, your agents, your projects —\nall in one place.',
+                              textAlign: TextAlign.center,
+                              style: context.textTheme.bodyLarge?.copyWith(
+                                color: context._onboardingInk,
+                              ),
                             ),
                           ),
                         ],
@@ -376,50 +382,56 @@ class _PairingWelcomeView extends HookWidget {
                   ),
                 ),
                 const SizedBox(height: Grid.md),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: setupContent != null
-                        ? setupContent!
-                        : !connectionLanding
-                        ? actions(2)
-                        : ClipRect(
-                            child: Stack(
-                              alignment: Alignment.bottomCenter,
-                              children: [
-                                for (var page = 1; page < 5; page++)
-                                  ExcludeFocus(
-                                    excluding: page != selectedPage,
-                                    child: ExcludeSemantics(
+                OlympusIntro(
+                  delay: 1.7,
+                  duration: 0.4,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: setupContent != null
+                          ? setupContent!
+                          : !connectionLanding
+                          ? actions(2)
+                          : ClipRect(
+                              child: Stack(
+                                alignment: Alignment.bottomCenter,
+                                children: [
+                                  for (var page = 1; page < 5; page++)
+                                    ExcludeFocus(
                                       excluding: page != selectedPage,
-                                      child: IgnorePointer(
-                                        ignoring: page != selectedPage,
-                                        child: AnimatedSlide(
-                                          key: ValueKey('welcome-panel-$page'),
-                                          offset: Offset(
-                                            page == selectedPage
-                                                ? 0
-                                                : page == 1
-                                                ? -1
-                                                : 1,
-                                            0,
-                                          ),
-                                          duration: revealDuration,
-                                          curve: page == selectedPage
-                                              ? Curves.easeOutQuad
-                                              : Curves.easeOutCubic.flipped,
-                                          child: SizedBox(
-                                            width: double.infinity,
-                                            child: actions(page),
+                                      child: ExcludeSemantics(
+                                        excluding: page != selectedPage,
+                                        child: IgnorePointer(
+                                          ignoring: page != selectedPage,
+                                          child: AnimatedSlide(
+                                            key: ValueKey(
+                                              'welcome-panel-$page',
+                                            ),
+                                            offset: Offset(
+                                              page == selectedPage
+                                                  ? 0
+                                                  : page == 1
+                                                  ? -1
+                                                  : 1,
+                                              0,
+                                            ),
+                                            duration: revealDuration,
+                                            curve: page == selectedPage
+                                                ? Curves.easeOutQuad
+                                                : Curves.easeOutCubic.flipped,
+                                            child: SizedBox(
+                                              width: double.infinity,
+                                              child: actions(page),
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                    ),
                   ),
                 ),
               ],

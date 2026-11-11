@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:buzz/app.dart';
 import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/shared/auth/auth.dart';
-import 'package:buzz/shared/olympus/olympus_bolt_spinner.dart';
+import 'package:buzz/shared/olympus/olympus_art.dart';
 import 'package:buzz/shared/olympus/olympus_colors.dart';
 import 'package:buzz/shared/olympus/olympus_splash.dart';
 import 'package:buzz/shared/relay/app_lifecycle_provider.dart';
@@ -136,14 +136,14 @@ void main() {
       tester.widget<ColoredBox>(find.byKey(const Key('olympus-splash'))).color,
       OlympusColors.navy,
     );
-    expect(
-      tester.widget<OlympusBoltSpinner>(find.byType(OlympusBoltSpinner)).color,
-      OlympusColors.gold,
+    final mark = find.descendant(
+      of: find.byType(OlympusSplash),
+      matching: find.byType(CustomPaint),
     );
-    expect(
-      tester.getCenter(find.byType(OlympusSplash)),
-      tester.getCenter(find.byType(App)),
-    );
+    expect(tester.widget<CustomPaint>(mark).painter, isA<OlympusMarkPainter>());
+    expect(tester.getSize(mark), const Size.square(OlympusArt.launchExtent));
+    expect(tester.getCenter(mark), tester.getCenter(find.byType(App)));
+    expect(tester.binding.hasScheduledFrame, isFalse);
     expect(find.bySemanticsLabel('Starting Buzz'), findsOneWidget);
 
     auth.complete(const AuthState(status: AuthStatus.unauthenticated));

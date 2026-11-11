@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../olympus/olympus_bolt_spinner.dart';
-import '../olympus/olympus_colors.dart';
+import '../theme/theme.dart';
 
-/// The full-page loading mark: the Olympus bolt charging.
+/// The full-page loading mark: the Olympus comet ring around the bolt.
 class BeeLoadingMark extends StatelessWidget {
   const BeeLoadingMark({super.key});
 
@@ -14,12 +14,15 @@ class BeeLoadingMark extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     label: 'Loading',
     liveRegion: true,
-    child: const ExcludeSemantics(
+    child: ExcludeSemantics(
       child: SizedBox(
         width: _width,
         height: _height,
         child: Center(
-          child: OlympusBoltSpinner(size: _height, color: OlympusColors.gold),
+          child: OlympusBoltSpinner(
+            size: _height,
+            light: context.colors.brightness == Brightness.light,
+          ),
         ),
       ),
     ),

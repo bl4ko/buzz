@@ -17,9 +17,12 @@ done
 opaque g3-watch.svg 1024 "$root/mobile/ios/Bl4uzzWatch/Assets.xcassets/AppIcon.appiconset/Icon.png"
 
 launch="$root/mobile/ios/Runner/Assets.xcassets/LaunchImage.imageset"
-rgba g3-mark.svg 168 "$launch/LaunchImage.png"
-rgba g3-mark.svg 336 "$launch/LaunchImage@2x.png"
-rgba g3-mark.svg 504 "$launch/LaunchImage@3x.png"
+for scale in 1 2 3; do
+  suffix="@${scale}x"
+  sed 's/viewBox="92 31 840 840"/viewBox="-13 -74 1050 1050"/' "$here/g3-mark.svg" |
+    rsvg-convert -w $((210 * scale)) -h $((210 * scale)) |
+    magick png:- -strip "PNG32:$launch/LaunchImage${suffix/@1x/}.png"
+done
 
 icons="$root/desktop/src-tauri/icons"
 opaque g3.svg 1024 "$icons/buzz-source.png"
