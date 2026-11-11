@@ -27,101 +27,101 @@ async function openWelcome(page: Page) {
   await expect(page.getByTestId("olympus-hero")).toBeVisible();
 }
 
-test("welcome scene plays the intro, loops, and strikes", async ({ page }) => {
-  await openWelcome(page);
-
-  await expect
-    .poll(() => olympusAnimations(page))
-    .toEqual(
-      expect.arrayContaining([
-        "olympus-cross",
-        "olympus-drift",
-        "olympus-float",
-        "olympus-glow",
-        "olympus-halo",
-        "olympus-hero-in",
-        "olympus-letter-in",
-        "olympus-spin",
-        "olympus-twinkle",
-      ]),
-    );
-
-  await expect(page.locator(".olympus-lockup")).toHaveAttribute(
-    "data-strike",
-    "i",
-  );
-  await expect
-    .poll(() => olympusAnimations(page))
-    .toEqual(
-      expect.arrayContaining([
-        "olympus-branch",
-        "olympus-branch-draw",
-        "olympus-flash",
-        "olympus-punch",
-      ]),
-    );
-  await expect(page.getByTestId("olympus-sky")).toHaveAttribute(
-    "data-strike",
-    "a",
-    { timeout: 10_000 },
-  );
-});
-
-for (const [width, height] of [
-  [900, 600],
-  [1280, 800],
-  [1600, 1000],
-]) {
-  test(`ridges stay below the buttons at ${width}x${height}`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height });
-    await openWelcome(page);
-
-    const peak = await page
-      .locator(".olympus-ridge--far polygon")
-      .evaluate((ridge) => {
-        for (const animation of document.getAnimations()) {
-          if (animation.effect?.getComputedTiming().iterations !== Infinity) {
-            animation.finish();
-          }
-        }
-        return ridge.getBoundingClientRect().top;
-      });
-    const button = await page
-      .getByRole("button", { name: "Use an existing key" })
-      .boundingBox();
-
-    expect(peak).toBeLessThan(height);
-    expect(peak).toBeGreaterThanOrEqual(
-      (button?.y ?? height) + (button?.height ?? 0) + 16,
-    );
-  });
-}
-
-test("launch frame holds the medallion at the window centre", async ({
+test("welcome scene plays the intro, loops, and lightning", async ({
   page,
 }) => {
   await openWelcome(page);
 
-  const offset = await page.locator(".olympus-hero__art").evaluate((art) => {
-    const intro = art
+  await expect
+    .poll(() => olympusAnimations(page))
+    .toEqual(
+      expect.arrayContaining([
+        "olympus-cloud-back",
+        "olympus-cloud-front",
+        "olympus-cloud-mid",
+        "olympus-drift-back",
+        "olympus-drift-front",
+        "olympus-drift-ridge",
+        "olympus-halo",
+        "olympus-letter-in",
+        "olympus-rise-in",
+        "olympus-seal-in",
+        "olympus-spin",
+        "olympus-twinkle",
+        "olympus-twinkle-disc",
+        "olympus-wisp",
+      ]),
+    );
+
+  for (const names of [
+    ["olympus-draw", "olympus-flash", "olympus-strike"],
+    ["olympus-sheet"],
+    ["olympus-flicker"],
+  ]) {
+    await expect
+      .poll(() => olympusAnimations(page), {
+        intervals: [50],
+        timeout: 10_000,
+      })
+      .toEqual(expect.arrayContaining(names));
+  }
+});
+
+test("launch frame holds the seal at the window centre", async ({ page }) => {
+  await openWelcome(page);
+
+  const offset = await page.locator(".olympus-seal").evaluate((seal) => {
+    const intro = seal
       .getAnimations()
       .find(
         (animation) =>
           animation instanceof CSSAnimation &&
-          animation.animationName === "olympus-hero-in",
+          animation.animationName === "olympus-seal-in",
       );
     if (!intro) return null;
     intro.pause();
     intro.currentTime = 0;
-    const { height, top } = art.getBoundingClientRect();
+    const { height, top } = seal.getBoundingClientRect();
     return top + height / 2 - window.innerHeight / 2;
   });
 
   expect(offset).not.toBeNull();
   expect(Math.abs(offset ?? 0)).toBeLessThanOrEqual(1);
 });
+
+for (const [width, height] of [
+  [900, 650],
+  [1280, 800],
+  [1600, 1000],
+]) {
+  test(`text and buttons stay clear of the clouds at ${width}x${height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await openWelcome(page);
+
+    await page.evaluate(() => {
+      for (const animation of document.getAnimations()) {
+        if (animation.effect?.getComputedTiming().iterations !== Infinity) {
+          animation.finish();
+        }
+      }
+    });
+    const ground = await page.locator(".olympus-sky__ground").boundingBox();
+    const footer = await page
+      .getByTestId("onboarding-footer-slot")
+      .boundingBox();
+    const button = await page
+      .getByRole("button", { name: "Use an existing key" })
+      .boundingBox();
+    const bottom = (button?.y ?? height) + (button?.height ?? 0);
+
+    expect(bottom).toBeLessThanOrEqual(footer?.y ?? 0);
+    expect(bottom).toBeLessThanOrEqual(
+      (ground?.y ?? 0) + ((ground?.height ?? 0) * 800) / 900 + 0.5,
+    );
+  });
+}
 
 test("returning to the welcome page skips the intro", async ({ page }) => {
   await openWelcome(page);
@@ -130,41 +130,35 @@ test("returning to the welcome page skips the intro", async ({ page }) => {
   await expect(page.getByTestId("olympus-hero")).toBeVisible();
 
   const animations = await olympusAnimations(page);
-  expect(animations).toContain("olympus-float");
-  expect(animations).not.toContain("olympus-hero-in");
+  expect(animations).toContain("olympus-halo");
+  expect(animations).not.toContain("olympus-seal-in");
   expect(animations).not.toContain("olympus-letter-in");
   expect(animations).not.toContain("olympus-fade-up");
 });
 
-test("reduced motion stills the welcome scene and spinners", async ({
+test("reduced motion stills the welcome scene and loaders", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openWelcome(page);
 
-  await expect.poll(() => olympusAnimations(page)).toEqual(["olympus-pulse"]);
-  await page.waitForTimeout(1_200);
-  await expect(page.locator(".olympus-lockup")).not.toHaveAttribute(
-    "data-strike",
-  );
+  await expect
+    .poll(() => olympusAnimations(page))
+    .toEqual(["olympus-halo-calm"]);
+  await expect(page.locator(".olympus-strike").first()).toBeHidden();
 
   await page.evaluate(() => {
     const host = document.createElement("div");
     host.innerHTML =
-      '<span class="olympus-bolt"><svg class="olympus-bolt__comet"></svg><span class="olympus-bolt__punch"></span></span>' +
-      '<span class="olympus-puffs"><svg class="olympus-inline"><polygon></polygon></svg></span>';
+      '<span class="olympus-bolt"><svg><path class="olympus-bolt__tile"></path></svg></span>' +
+      '<span class="olympus-puffs"><svg class="olympus-inline olympus-inline--16"><path class="olympus-inline__tile"></path></svg></span>';
     document.body.append(host);
   });
   expect(await olympusAnimations(page)).toEqual([
+    "olympus-halo-calm",
     "olympus-pulse",
     "olympus-pulse-inline",
   ]);
-  await expect(page.locator(".olympus-bolt__comet")).toHaveCSS(
-    "display",
-    "none",
-  );
-  await expect(page.locator(".olympus-inline polygon")).toHaveCSS(
-    "opacity",
-    "1",
-  );
+  await expect(page.locator(".olympus-bolt__tile")).toHaveCSS("opacity", "1");
+  await expect(page.locator(".olympus-inline__tile")).toHaveCSS("opacity", "1");
 });

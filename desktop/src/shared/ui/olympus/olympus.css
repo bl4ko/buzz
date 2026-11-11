@@ -3,96 +3,107 @@
   --olympus-marble: #f5ebd0;
 }
 
+:root,
+.buzz-onboarding-neutral-theme.buzz-startup-shell,
+.buzz-onboarding-neutral-theme[data-system-color-scheme="light"] {
+  --olympus-gold: #b8730f;
+  --olympus-hot: #e9a81c;
+  --olympus-ink-hot: #d9930f;
+}
+
+.dark,
+.buzz-onboarding-neutral-theme[data-system-color-scheme="dark"]:not(
+  .buzz-startup-shell
+),
+.buzz-onboarding-neutral-theme.buzz-startup-shell.buzz-onboarding-security-theme {
+  --olympus-gold: #f7c234;
+  --olympus-hot: #fff6c8;
+  --olympus-ink-hot: #fff3c4;
+}
+
 @layer components {
   .olympus-bolt {
-    --olympus-ring-1: #f2b824;
-    --olympus-ring-2: #e3a218;
-    --olympus-ring-3: #d9930f;
-    --olympus-ring-4: #d0890e;
-    --olympus-ring-5: #b46a0c;
-    --olympus-left-1: #f9cc45;
-    --olympus-left-2: #f3b72b;
-    --olympus-left-3: #efa91a;
-    --olympus-right-1: #e39a16;
-    --olympus-right-2: #ce8210;
-    --olympus-right-3: #b8690a;
-    --olympus-track: #c07a0a;
-    --olympus-flash: rgb(255 246 196 / 0.632);
-    --olympus-glow: none;
     aspect-ratio: 1;
+    color: var(--olympus-gold);
     display: inline-block;
     flex-shrink: 0;
-    position: relative;
-  }
-
-  .dark
-    .olympus-bolt:not(
-      .buzz-onboarding-neutral-theme.buzz-startup-shell *,
-      .buzz-onboarding-neutral-theme[data-system-color-scheme="light"] *
-    ),
-  .buzz-onboarding-neutral-theme[data-system-color-scheme="dark"]:not(
-      .buzz-startup-shell
-    )
-    .olympus-bolt,
-  .buzz-onboarding-security-theme .olympus-bolt {
-    --olympus-ring-1: #ffefa6;
-    --olympus-ring-2: #f7c234;
-    --olympus-ring-3: #e9a51f;
-    --olympus-ring-4: #e39a16;
-    --olympus-ring-5: #b46a0c;
-    --olympus-left-1: #fffdf0;
-    --olympus-left-2: #fff0b8;
-    --olympus-left-3: #ffd866;
-    --olympus-right-1: #ffdc5c;
-    --olympus-right-2: #f6b21e;
-    --olympus-right-3: #dc7c0c;
-    --olympus-track: #f7c234;
-    --olympus-flash: #fff;
-    --olympus-glow: block;
   }
 }
 
-.olympus-bolt svg,
-.olympus-bolt__punch {
+.olympus-bolt svg {
+  display: block;
   height: 100%;
-  inset: 0;
-  position: absolute;
+  overflow: visible;
   width: 100%;
 }
 
-.olympus-bolt__track circle {
-  opacity: 0.22;
-  stroke: var(--olympus-track);
+.olympus-bolt path,
+.olympus-inline path {
+  animation-delay: inherit;
+  fill: none;
 }
 
-.olympus-bolt__punch {
-  transform-origin: 50.19% 50%;
+.olympus-bolt path {
+  stroke-linecap: square;
 }
 
-.olympus-bolt svg.olympus-bolt__glow {
-  display: var(--olympus-glow);
-  opacity: 0.45;
+.olympus-bolt__tile {
+  opacity: 0.2;
+  stroke: currentColor;
+  stroke-width: 2;
 }
 
-.olympus-bolt__flash {
-  fill: var(--olympus-flash);
+.olympus-bolt__glow {
   opacity: 0;
+  stroke: var(--olympus-hot);
+  stroke-width: 3;
 }
 
 .olympus-puffs {
   border-radius: 0;
   border-width: 0;
+  container-type: inline-size;
 }
 
 .olympus-inline {
-  fill: currentColor;
+  display: none;
   flex: none;
   height: 100%;
-  width: auto;
+  stroke: currentColor;
+  width: 100%;
 }
 
-.olympus-inline polygon {
-  opacity: 0.28;
+.olympus-inline--16 {
+  display: block;
+}
+
+@container (11.5px <= width < 12.5px) or (23.5px <= width < 24.5px) {
+  .olympus-inline--12 {
+    display: block;
+  }
+
+  .olympus-inline--16 {
+    display: none;
+  }
+}
+
+@container (19.5px <= width < 20.5px) {
+  .olympus-inline--20 {
+    display: block;
+  }
+
+  .olympus-inline--16 {
+    display: none;
+  }
+}
+
+.olympus-inline__tile {
+  opacity: 0.26;
+}
+
+.olympus-inline__hot {
+  opacity: 0;
+  stroke: var(--olympus-ink-hot);
 }
 
 .olympus-mark {
@@ -101,7 +112,7 @@
 
 .olympus-welcome {
   color-scheme: dark;
-  --olympus-hero: clamp(11rem, 34vh, 21rem);
+  --olympus-r: clamp(110px, min(21vh, 50vh - 13.0625rem), 200px);
   --buzz-welcome-chartreuse: var(--olympus-navy);
   --buzz-onboarding-shell-bottom: transparent;
   --background: 226 55% 12%;
@@ -122,251 +133,196 @@
   isolation: isolate;
 }
 
-.olympus-flash {
-  opacity: 0;
-}
-
 .olympus-sky {
-  container-type: size;
   z-index: -2;
 }
 
-.olympus-sky__gradient,
-.olympus-sky__far,
-.olympus-sky__flash {
+.olympus-sky__gradient {
+  background: linear-gradient(#03041a, #0b0f38 50%, #171c58);
   inset: 0;
   position: absolute;
 }
 
-.olympus-sky__gradient {
-  background: linear-gradient(#050818, #0e1640 55%, #1f2970);
-}
-
-.olympus-sky__flash {
-  background: radial-gradient(
-    circle at calc(50% + var(--olympus-hero) * 0.2) 27%,
-    rgb(214 218 255 / 0.34),
-    rgb(120 130 255 / 0.13) 40%,
-    transparent 72%
-  );
-}
-
-.olympus-star {
-  aspect-ratio: 1;
-  background: #eef2ff;
-  border-radius: 50%;
-  position: absolute;
-}
-
-.olympus-ghost {
-  left: 0;
-  overflow: visible;
-  position: absolute;
-}
-
-.olympus-ghost--1 {
-  animation-delay: -30s;
-  animation-duration: 110s;
-  opacity: 0.16;
-  top: 12%;
-  width: 26%;
-}
-
-.olympus-ghost--2 {
-  animation-delay: -95s;
-  animation-duration: 150s;
-  opacity: 0.11;
-  top: 31%;
-  width: 18%;
-}
-
-.olympus-ghost--3 {
-  animation-delay: -70s;
-  animation-duration: 140s;
-  opacity: 0.09;
-  top: 5%;
-  width: 34%;
-}
-
-.olympus-ridges {
-  aspect-ratio: 4;
-  bottom: 0;
+.olympus-sky__art {
+  aspect-ratio: 1440 / 900;
+  height: 100%;
   left: 50%;
   position: absolute;
-  /* tan(atan2()) divides lengths: room below the buttons by far peak height. */
-  scale: 1
-    clamp(
-      0,
-      tan(
-        atan2(
-          50cqh -
-          var(--olympus-hero) /
-          2 -
-          10.25rem,
-          0.201 *
-          max(100cqw, 136cqh)
-        )
-      ),
-      1
-    );
+  top: 0;
   transform: translateX(-50%);
-  transform-origin: bottom;
-  width: max(100cqw, 136cqh);
 }
 
-.olympus-ridges :where(div, svg),
-.olympus-hero__art,
-.olympus-hero__art :where(div, svg),
-.olympus-hero__puffs,
-.olympus-puff .olympus-flash {
+.olympus-sky__art :where(div, svg),
+.olympus-wisp,
+.olympus-seal :where(div, svg) {
   height: 100%;
   inset: 0;
   position: absolute;
   width: 100%;
 }
 
-.olympus-ridges svg,
-.olympus-puff svg {
+.olympus-sky__art svg {
   overflow: visible;
 }
 
-.olympus-drift--far {
-  --olympus-drift: 0.75%;
-  --olympus-drift-time: 30s;
+.olympus-sky__ground {
+  top: max(0px, calc(var(--olympus-r) + 8.8125rem - 38.889vh));
 }
 
-.olympus-drift--mid {
-  --olympus-drift: -1.5%;
-  --olympus-drift-time: 24s;
+.olympus-sky__shade {
+  background: linear-gradient(
+    rgb(10 14 46 / 0),
+    rgb(10 14 46 / 0.92) 11.195%,
+    #070a22 31.987%
+  );
+  height: 66%;
+  left: -28%;
+  top: 78.889%;
+  width: 156%;
 }
 
-.olympus-drift--near {
-  --olympus-drift: 2.5%;
-  --olympus-drift-time: 18s;
+.olympus-star {
+  background: #eef2ff;
+  border-radius: 50%;
+  position: absolute;
 }
 
-.olympus-fog {
-  background: linear-gradient(transparent, rgb(90 107 208 / 0.16), transparent);
-  height: 42.5%;
-  inset: 57.5% 0 auto;
+.olympus-star--disc {
+  opacity: 0.8;
 }
 
-.olympus-fog--low {
-  top: 75%;
+.olympus-sheet {
+  background: radial-gradient(
+    closest-side,
+    rgb(233 230 255 / 0.95),
+    rgb(169 164 255 / 0.5) 35%,
+    rgb(124 120 240 / 0)
+  );
+}
+
+.olympus-flicker {
+  background: radial-gradient(
+    closest-side,
+    rgb(244 240 255 / 0.675),
+    rgb(184 174 255 / 0.3375) 40%,
+    rgb(138 128 240 / 0)
+  );
+}
+
+.olympus-sheet,
+.olympus-flicker,
+.olympus-distant,
+.olympus-strike,
+.olympus-flash {
+  fill: none;
+  opacity: 0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.olympus-draw {
+  stroke-dasharray: 1 9;
+  stroke-dashoffset: 1;
 }
 
 .olympus-hero {
   aspect-ratio: 1;
   pointer-events: none;
   position: relative;
-  width: var(--olympus-hero);
+  width: calc(2 * var(--olympus-r));
 }
 
 .olympus-hero__aurora {
   background: radial-gradient(
     closest-side,
-    rgb(110 98 230 / 0.36),
-    rgb(62 64 176 / 0.13) 55%,
-    transparent
+    rgb(122 112 240 / 0.55),
+    rgb(74 76 200 / 0.22) 45%,
+    rgb(48 56 160 / 0)
   );
-  inset: -90%;
+  inset: -60%;
+  opacity: 0.8;
   position: absolute;
   z-index: -1;
 }
 
-.olympus-hero__art .olympus-hero__wide {
-  height: 130%;
-  inset: -15%;
-  width: 130%;
-}
-
-.olympus-hero__halo {
-  opacity: 0.5;
-}
-
-.olympus-hero__art .olympus-hero__disc {
-  border-radius: 50%;
-  height: 81.905%;
-  inset: 11.071% auto auto 9.048%;
-  isolation: isolate;
+.olympus-hero__wisps {
+  inset-block: 0;
+  left: 50%;
+  margin-left: -50vw;
   overflow: hidden;
-  width: 81.905%;
+  position: absolute;
+  width: 100vw;
 }
 
-.olympus-drift--ridge {
-  --olympus-drift: 1.453%;
-  --olympus-drift-time: 22s;
-}
-
-.olympus-drift--back {
-  --olympus-drift: 2.326%;
-  --olympus-drift-time: 18s;
-}
-
-.olympus-drift--front {
-  --olympus-drift: -2.907%;
-  --olympus-drift-time: 14s;
-}
-
-.olympus-hero__meander {
-  transform-origin: 50% 52.024%;
-}
-
-.olympus-hero__punch {
-  transform-origin: 74.286% 37.024%;
-}
-
-.olympus-hero__glow {
-  opacity: 0.85;
-}
-
-.olympus-branch {
-  opacity: 0;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.olympus-branch__core {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-}
-
-.olympus-puff {
+.olympus-wisp i {
+  background: radial-gradient(
+    closest-side,
+    rgb(220 226 255 / 0.55),
+    rgb(183 194 248 / 0.2) 60%,
+    rgb(183 194 248 / 0)
+  );
   position: absolute;
 }
 
-.olympus-puff svg {
-  display: block;
-  width: 100%;
+.olympus-wisp--a {
+  animation-delay: -9s;
+  animation-duration: 26s;
 }
 
-.olympus-puff--a {
-  --olympus-drift: 9%;
-  --olympus-drift-time: 20s;
-  left: -16%;
-  top: 60%;
-  width: 44%;
+.olympus-wisp--b {
+  animation-delay: -4s;
+  animation-duration: 19s;
 }
 
-.olympus-puff--b {
-  --olympus-drift: -12%;
-  --olympus-drift-time: 16s;
-  right: -13%;
-  top: 39%;
-  width: 30%;
+.olympus-wisp--c {
+  animation-delay: -15s;
+  animation-duration: 24s;
+}
+
+.olympus-seal {
+  inset: -29.365%;
+  position: absolute;
+}
+
+.olympus-seal__halo {
+  opacity: 0.5;
+}
+
+.olympus-seal__face {
+  height: 66.667%;
+  inset: 16.667%;
+  width: 66.667%;
+}
+
+.olympus-seal__disc,
+.olympus-seal__storm {
+  border-radius: 50%;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.olympus-seal__disc {
+  height: 86%;
+  inset: 7%;
+  width: 86%;
+}
+
+.olympus-seal__storm {
+  height: 90.698%;
+  inset: 4.651%;
+  width: 90.698%;
 }
 
 .olympus-wordmark {
   color: var(--olympus-marble);
   font:
-    700 2.125rem / 1 "Iowan Old Style",
+    700 2.5rem / 1 "Iowan Old Style",
     "Palatino Linotype",
     Palatino,
     Georgia,
     serif;
   letter-spacing: 0.42em;
   margin: 1.5rem -0.42em 0 0;
-  position: relative;
   white-space: nowrap;
 }
 
@@ -374,113 +330,132 @@
   display: inline-block;
 }
 
-.olympus-wordmark__flash {
-  color: #fff;
-  inset: 0;
-  position: absolute;
-  text-shadow: 0 0 18px #ffe7a0;
-}
-
-.olympus-wordmark__flash::before {
-  content: "OLYMPUS";
-  opacity: 0.7;
-}
-
 .olympus-rule {
   height: auto;
   margin-top: 0.875rem;
-  width: 9.375rem;
+  width: 6.25rem;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .olympus-bolt__comet {
-    animation: olympus-spin 1.4s linear infinite;
-  }
-
-  .olympus-bolt__punch {
-    animation: olympus-loader-punch 1.4s linear infinite;
+  .olympus-bolt__tile {
+    animation: olympus-tile 1.6s linear infinite;
   }
 
   .olympus-bolt__glow {
-    animation: olympus-loader-glow 1.4s linear infinite;
+    animation: olympus-tile-glow 1.6s linear infinite;
   }
 
-  .olympus-bolt__flash {
-    animation: olympus-loader-flash 1.4s linear infinite;
+  .olympus-inline__tile {
+    animation: olympus-key 1.2s linear infinite;
   }
 
-  .olympus-inline polygon {
-    animation: olympus-segment 0.9s linear infinite;
+  .olympus-inline__hot {
+    animation: olympus-key-hot 1.2s linear infinite;
   }
 
-  .olympus-inline polygon:nth-child(2) {
-    animation-delay: 0.13s;
+  .olympus-star {
+    animation: olympus-twinkle 3s ease-in-out infinite alternate;
   }
 
-  .olympus-inline polygon:nth-child(3) {
-    animation-delay: 0.26s;
+  .olympus-star--disc {
+    animation: olympus-twinkle-disc 6s ease-in-out infinite;
   }
 
-  .olympus-star,
-  .olympus-fog {
-    animation: olympus-twinkle 9s ease-in-out infinite alternate;
+  .olympus-cloud--back {
+    animation: olympus-cloud-back 50s ease-in-out infinite alternate;
   }
 
-  .olympus-ghost {
-    animation-name: olympus-cross;
+  .olympus-cloud--mid {
+    animation: olympus-cloud-mid 40s ease-in-out infinite alternate;
+  }
+
+  .olympus-cloud--front {
+    animation: olympus-cloud-front 30s ease-in-out infinite alternate;
+  }
+
+  .olympus-wisp {
     animation-iteration-count: infinite;
+    animation-name: olympus-wisp;
     animation-timing-function: linear;
   }
 
-  .olympus-drift,
-  .olympus-puff {
-    animation: olympus-drift var(--olympus-drift-time) ease-in-out infinite
-      alternate;
+  .olympus-seal__halo {
+    animation: olympus-halo 12s ease-in-out infinite;
   }
 
-  .olympus-hero__halo {
-    animation: olympus-halo 6s ease-in-out infinite alternate;
+  .olympus-drift--ridge {
+    animation: olympus-drift-ridge 44s ease-in-out infinite;
   }
 
-  .olympus-hero__meander {
+  .olympus-drift--back {
+    animation: olympus-drift-back 40s ease-in-out infinite;
+  }
+
+  .olympus-drift--front {
+    animation: olympus-drift-front 30s ease-in-out infinite;
+  }
+
+  .olympus-seal__meander {
     animation: olympus-spin 120s linear infinite;
   }
 
-  .olympus-hero__float {
-    animation: olympus-float 5s ease-in-out infinite alternate;
+  .olympus-sheet {
+    animation: olympus-sheet 900ms linear both paused;
   }
 
-  .olympus-hero__glow {
-    animation: olympus-glow 3.2s ease-in-out infinite alternate;
+  .olympus-flicker {
+    animation: olympus-flicker 520ms linear both paused;
+  }
+
+  .olympus-distant {
+    animation: olympus-distant 420ms linear both paused;
+  }
+
+  .olympus-strike {
+    animation: olympus-strike 760ms linear both paused;
+  }
+
+  .olympus-flash {
+    animation: olympus-flash 820ms linear both paused;
+  }
+
+  .olympus-draw {
+    animation: olympus-draw linear both paused;
   }
 
   .olympus-sky__gradient {
     animation: olympus-fade-in 700ms ease-out 300ms both;
   }
 
-  .olympus-sky__far,
+  .olympus-sky__stars,
   .olympus-hero__aurora {
     animation: olympus-fade-in 1200ms ease-out 500ms both;
   }
 
-  .olympus-ridge {
+  .olympus-hero__wisps {
+    animation: olympus-fade-in 1200ms ease-out 1100ms both;
+  }
+
+  .olympus-rise {
     animation: olympus-rise-in 900ms cubic-bezier(0.22, 1, 0.36, 1) 600ms both;
   }
 
-  .olympus-ridge--mid {
-    animation-delay: 720ms;
+  .olympus-rise--mid {
+    animation-delay: 700ms;
   }
 
-  .olympus-ridge--near {
+  .olympus-rise--front {
+    animation-delay: 800ms;
+  }
+
+  .olympus-rise--base {
     animation-delay: 840ms;
   }
 
-  .olympus-hero__art.olympus-in {
-    animation: olympus-hero-in 700ms cubic-bezier(0.22, 1, 0.36, 1) 400ms both;
-  }
-
-  .olympus-hero__puffs {
-    animation: olympus-fade-in 700ms ease-out 1100ms both;
+  .olympus-seal {
+    animation:
+      olympus-seal-in 700ms cubic-bezier(0.22, 1, 0.36, 1) 400ms both,
+      olympus-fade-in 300ms ease-out both;
   }
 
   .olympus-wordmark .olympus-in {
@@ -507,80 +482,37 @@
     :is(.olympus-in, .olympus-lockup ~ *) {
     animation: none;
   }
-
-  :is([data-strike="a"], [data-strike="i"]) .olympus-flash {
-    animation: olympus-flash 900ms linear;
-  }
-
-  [data-strike="b"] .olympus-flash {
-    animation: olympus-flash-b 780ms linear;
-  }
-
-  [data-strike="b"] .olympus-sky__flash {
-    animation-name: olympus-flash-b-sky;
-  }
-
-  :is([data-strike="b"], [data-strike="i"]) .olympus-wordmark__flash {
-    animation: none;
-  }
-
-  :is([data-strike="a"], [data-strike="i"]) .olympus-hero__punch {
-    animation: olympus-punch 900ms linear;
-  }
-
-  [data-strike="b"] .olympus-hero__punch {
-    animation: olympus-punch-b 780ms linear;
-  }
-
-  :is([data-strike="a"], [data-strike="i"]) .olympus-branch--a {
-    animation: olympus-branch 900ms linear;
-  }
-
-  [data-strike="b"] .olympus-branch--b {
-    animation: olympus-branch-b 780ms linear;
-  }
-
-  :is([data-strike="a"], [data-strike="i"])
-    .olympus-branch--a
-    .olympus-branch__core {
-    animation: olympus-branch-draw 900ms linear;
-  }
-
-  [data-strike="b"] .olympus-branch--b .olympus-branch__core {
-    animation: olympus-branch-draw 780ms linear;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .olympus-bolt__comet {
-    display: none;
-  }
-
-  .olympus-bolt__punch,
-  .olympus-hero__halo {
+  .olympus-bolt svg {
     animation: olympus-pulse 1.6s ease-in-out infinite alternate;
-  }
-
-  .olympus-hero__halo {
-    animation-duration: 8s;
   }
 
   .olympus-inline {
     animation: olympus-pulse-inline 1.2s ease-in-out infinite alternate;
   }
 
-  .olympus-inline polygon {
+  .olympus-bolt__tile,
+  .olympus-inline__tile {
     opacity: 1;
   }
 
-  .olympus-ghost {
-    animation-name: olympus-cross;
-    animation-play-state: paused;
-    animation-timing-function: linear;
+  .olympus-seal__halo {
+    animation: olympus-halo-calm 8s ease-in-out infinite alternate;
   }
 
-  .olympus-sky__far,
-  .olympus-ridges,
+  .olympus-wisp--b,
+  .olympus-wisp--c,
+  .olympus-sheet,
+  .olympus-flicker,
+  .olympus-distant,
+  .olympus-strike,
+  .olympus-flash {
+    display: none;
+  }
+
+  .olympus-sky,
   .olympus-welcome
     [data-onboarding-direction]
     > .buzz-onboarding-transition-content {
@@ -588,71 +520,81 @@
   }
 }
 
-@keyframes olympus-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes olympus-loader-punch {
-  0%,
-  70% {
-    transform: scale(1);
-  }
-
-  76% {
-    transform: scale(1.1);
-  }
-
-  90%,
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes olympus-loader-glow {
-  0%,
-  68% {
-    opacity: 0.45;
-  }
-
-  76% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0.45;
-  }
-}
-
-@keyframes olympus-loader-flash {
-  0%,
-  69% {
-    opacity: 0;
-  }
-
-  75% {
-    opacity: 0.95;
-  }
-
-  90%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes olympus-segment {
+@keyframes olympus-tile {
   0% {
-    opacity: 0.28;
+    opacity: 0.2;
   }
 
-  18% {
+  4%,
+  12.5% {
     opacity: 1;
   }
 
-  55%,
+  25% {
+    opacity: 0.6;
+  }
+
+  37.5% {
+    opacity: 0.34;
+  }
+
+  50%,
   100% {
-    opacity: 0.28;
+    opacity: 0.2;
+  }
+}
+
+@keyframes olympus-tile-glow {
+  0% {
+    opacity: 0;
+  }
+
+  4% {
+    opacity: 0.85;
+  }
+
+  12.5% {
+    opacity: 0.5;
+  }
+
+  25%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes olympus-key {
+  0% {
+    opacity: 0.26;
+  }
+
+  6%,
+  25% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.52;
+  }
+
+  75%,
+  100% {
+    opacity: 0.26;
+  }
+}
+
+@keyframes olympus-key-hot {
+  0% {
+    opacity: 0;
+  }
+
+  6% {
+    opacity: 0.9;
+  }
+
+  25%,
+  100% {
+    opacity: 0;
   }
 }
 
@@ -678,53 +620,260 @@
 
 @keyframes olympus-twinkle {
   from {
-    opacity: 0.2;
-  }
-}
-
-@keyframes olympus-cross {
-  from {
-    transform: translateX(-130%);
-  }
-
-  to {
-    transform: translateX(400%);
-  }
-}
-
-@keyframes olympus-drift {
-  from {
-    transform: translateX(calc(var(--olympus-drift) * -1));
-  }
-
-  to {
-    transform: translateX(var(--olympus-drift));
-  }
-}
-
-@keyframes olympus-halo {
-  from {
-    opacity: 0.42;
-  }
-
-  to {
-    opacity: 0.64;
-  }
-}
-
-@keyframes olympus-float {
-  to {
-    transform: translateY(-0.952%);
-  }
-}
-
-@keyframes olympus-glow {
-  from {
-    opacity: 0.7;
+    opacity: 0.22;
   }
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes olympus-twinkle-disc {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 0.22;
+  }
+}
+
+@keyframes olympus-cloud-back {
+  from {
+    transform: translateX(3.111vh);
+  }
+
+  to {
+    transform: translateX(-3.111vh);
+  }
+}
+
+@keyframes olympus-cloud-mid {
+  from {
+    transform: translateX(-4vh);
+  }
+
+  to {
+    transform: translateX(4vh);
+  }
+}
+
+@keyframes olympus-cloud-front {
+  from {
+    transform: translateX(5.333vh);
+  }
+
+  to {
+    transform: translateX(-5.333vh);
+  }
+}
+
+@keyframes olympus-wisp {
+  from {
+    transform: translateX(-45%);
+  }
+
+  to {
+    transform: translateX(145%);
+  }
+}
+
+@keyframes olympus-halo {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  25% {
+    opacity: 0.62;
+  }
+
+  75% {
+    opacity: 0.38;
+  }
+}
+
+@keyframes olympus-halo-calm {
+  from {
+    opacity: 0.38;
+  }
+
+  to {
+    opacity: 0.62;
+  }
+}
+
+@keyframes olympus-drift-ridge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(1.453%);
+  }
+
+  75% {
+    transform: translateX(-1.453%);
+  }
+}
+
+@keyframes olympus-drift-back {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(2.035%);
+  }
+
+  75% {
+    transform: translateX(-2.035%);
+  }
+}
+
+@keyframes olympus-drift-front {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-2.616%);
+  }
+
+  75% {
+    transform: translateX(2.616%);
+  }
+}
+
+@keyframes olympus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes olympus-sheet {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  6.667% {
+    opacity: 0.9;
+  }
+
+  15.556% {
+    opacity: 0.2;
+  }
+
+  24.444% {
+    opacity: 0.7;
+  }
+
+  35.556% {
+    opacity: 0.1;
+  }
+
+  44.444% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes olympus-flicker {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  9.615% {
+    opacity: 0.8;
+  }
+
+  23.077% {
+    opacity: 0.2;
+  }
+
+  36.538% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes olympus-distant {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  2.381% {
+    opacity: 1;
+  }
+
+  23.81% {
+    opacity: 0.3;
+  }
+
+  38.095% {
+    opacity: 1;
+  }
+}
+
+@keyframes olympus-strike {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  1.053%,
+  12.5% {
+    opacity: 1;
+  }
+
+  17.763% {
+    opacity: 0.22;
+  }
+
+  26.316% {
+    opacity: 0.95;
+  }
+
+  39.474% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes olympus-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  6.707% {
+    opacity: 1;
+  }
+
+  15.854% {
+    opacity: 0.2;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  40.244% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes olympus-draw {
+  to {
+    stroke-dashoffset: 0;
   }
 }
 
@@ -744,20 +893,20 @@
 @keyframes olympus-rise-in {
   from {
     opacity: 0;
-    transform: translateY(3rem);
+    transform: translateY(4.889vh);
   }
 }
 
-@keyframes olympus-hero-in {
+@keyframes olympus-seal-in {
   from {
-    transform: translateY(var(--olympus-rise)) scale(0.8);
+    transform: translateY(8.8125rem) scale(0.8);
   }
 }
 
 @keyframes olympus-letter-in {
   from {
     opacity: 0;
-    transform: translateY(0.875rem) scale(0.96);
+    transform: translateY(0.35em) scale(0.96);
   }
 }
 
@@ -765,131 +914,5 @@
   from {
     opacity: 0;
     transform: scaleX(0);
-  }
-}
-
-@keyframes olympus-flash {
-  0% {
-    opacity: 0;
-  }
-
-  4% {
-    opacity: 1;
-  }
-
-  12% {
-    opacity: 0.25;
-  }
-
-  20% {
-    opacity: 1;
-  }
-
-  32% {
-    animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1);
-    opacity: 0.7;
-  }
-
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes olympus-flash-b {
-  0% {
-    opacity: 0;
-  }
-
-  5% {
-    opacity: 0.6;
-  }
-
-  15% {
-    opacity: 0.15;
-  }
-
-  25% {
-    animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1);
-    opacity: 0.6;
-  }
-
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes olympus-flash-b-sky {
-  0% {
-    opacity: 0;
-  }
-
-  5% {
-    opacity: 0.36;
-  }
-
-  15% {
-    opacity: 0.09;
-  }
-
-  25% {
-    animation-timing-function: cubic-bezier(0.2, 0.6, 0.3, 1);
-    opacity: 0.36;
-  }
-
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes olympus-punch {
-  6% {
-    transform: scale(1.07);
-  }
-
-  30% {
-    transform: scale(0.99);
-  }
-
-  60% {
-    transform: scale(1);
-  }
-}
-
-@keyframes olympus-punch-b {
-  6.67% {
-    transform: scale(1.04);
-  }
-
-  33.3% {
-    transform: scale(1);
-  }
-}
-
-@keyframes olympus-branch {
-  1%,
-  25% {
-    opacity: 1;
-  }
-
-  40% {
-    opacity: 0;
-  }
-}
-
-@keyframes olympus-branch-b {
-  1.7%,
-  30% {
-    opacity: 0.8;
-  }
-
-  50% {
-    opacity: 0;
-  }
-}
-
-@keyframes olympus-branch-draw {
-  9%,
-  100% {
-    stroke-dashoffset: 0;
   }
 }

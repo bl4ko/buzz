@@ -3,12 +3,12 @@ import { installMockBridge } from "../helpers/bridge";
 
 // Cold-boot splash hold: on a real boot the community resolves in well under
 // 100ms — before the hidden Tauri window ever puts a frame on screen — so the
-// loading gate keeps the Olympus bolt up as an overlay above the already
+// loading gate keeps the Olympus loader up as an overlay above the already
 // mounted app for a minimum visible duration, then fades out. E2E runs skip
 // the hold by default (it would slow every spec's boot and block pointer
 // actionability); this spec opts back in via __BUZZ_E2E__.bootSplashHoldMs.
 
-test("boot splash overlay holds with a spinning loader, then dismisses", async ({
+test("boot splash overlay holds with the key loader, then dismisses", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -28,13 +28,14 @@ test("boot splash overlay holds with a spinning loader, then dismisses", async (
   const overlay = page.getByTestId("boot-splash-overlay");
   await expect(overlay).toBeVisible();
 
-  const cometState = await overlay
-    .locator(".olympus-bolt__comet")
-    .evaluate((comet) => ({
-      name: getComputedStyle(comet).animationName,
-      state: comet.getAnimations()[0]?.playState,
+  const tileState = await overlay
+    .locator(".olympus-bolt__tile")
+    .first()
+    .evaluate((tile) => ({
+      name: getComputedStyle(tile).animationName,
+      state: tile.getAnimations()[0]?.playState,
     }));
-  expect(cometState).toEqual({ name: "olympus-spin", state: "running" });
+  expect(tileState).toEqual({ name: "olympus-tile", state: "running" });
   await expect(page.locator("#root")).toHaveCSS("background-image", "none");
 
   // The app mounts and loads beneath the overlay — boot is not delayed.
@@ -55,7 +56,7 @@ test("boot splash overlay is skipped when the hold is zero (e2e default)", async
   await expect(page.getByTestId("boot-splash-overlay")).toHaveCount(0);
 });
 
-test("first paint shows the static Olympus mark before the app mounts", async ({
+test("first paint shows the static key loader before the app mounts", async ({
   page,
 }) => {
   await page.route("**/*.js", (route) => route.abort());
