@@ -16,3 +16,13 @@
 html {
   background-color: #000;
 }
+
+#root:empty {
+  background: url("/olympus-boot-dark.svg") center / 4rem no-repeat;
+  inset: 0;
+  position: fixed;
+}
+
+.light #root:empty {
+  background-image: url("/olympus-boot-light.svg");
+}

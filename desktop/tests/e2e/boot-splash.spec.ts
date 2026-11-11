@@ -8,7 +8,7 @@ import { installMockBridge } from "../helpers/bridge";
 // the hold by default (it would slow every spec's boot and block pointer
 // actionability); this spec opts back in via __BUZZ_E2E__.bootSplashHoldMs.
 
-test("boot splash overlay holds with a charging bolt, then dismisses", async ({
+test("boot splash overlay holds with a spinning loader, then dismisses", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -28,13 +28,14 @@ test("boot splash overlay holds with a charging bolt, then dismisses", async ({
   const overlay = page.getByTestId("boot-splash-overlay");
   await expect(overlay).toBeVisible();
 
-  const fillState = await overlay
-    .locator(".olympus-bolt__fill")
-    .evaluate((fill) => ({
-      name: getComputedStyle(fill).animationName,
-      state: fill.getAnimations()[0]?.playState,
+  const cometState = await overlay
+    .locator(".olympus-bolt__comet")
+    .evaluate((comet) => ({
+      name: getComputedStyle(comet).animationName,
+      state: comet.getAnimations()[0]?.playState,
     }));
-  expect(fillState).toEqual({ name: "olympus-charge", state: "running" });
+  expect(cometState).toEqual({ name: "olympus-spin", state: "running" });
+  await expect(page.locator("#root")).toHaveCSS("background-image", "none");
 
   // The app mounts and loads beneath the overlay — boot is not delayed.
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -52,4 +53,16 @@ test("boot splash overlay is skipped when the hold is zero (e2e default)", async
 
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
   await expect(page.getByTestId("boot-splash-overlay")).toHaveCount(0);
+});
+
+test("first paint shows the static Olympus mark before the app mounts", async ({
+  page,
+}) => {
+  await page.route("**/*.js", (route) => route.abort());
+  await page.goto("/");
+
+  await expect(page.locator("#root")).toHaveCSS(
+    "background-image",
+    /olympus-boot-(dark|light)\.svg/,
+  );
 });

@@ -1,22 +1,22 @@
 use tauri::image::Image;
 
 pub(crate) fn icon() -> Image<'static> {
-    const WIDTH: u32 = 45;
-    const HEIGHT: u32 = 44;
+    const SIZE: u32 = 44;
     const SAMPLES_PER_AXIS: u32 = 4;
-    const UNITS_PER_PIXEL: f32 = 834.0 / HEIGHT as f32;
-    const LEFT: f32 = 512.0 - WIDTH as f32 * UNITS_PER_PIXEL / 2.0;
-    const TOP: f32 = 48.0;
-    const BOLT_GAP: f32 = 48.0;
-    const MOUNTAIN: [(f32, f32); 3] = [(110.0, 860.0), (512.0, 230.0), (914.0, 860.0)];
+    const UNITS_PER_PIXEL: f32 = 840.0 / SIZE as f32;
+    const LEFT: f32 = 92.0;
+    const TOP: f32 = 31.0;
+    const CENTER: (f32, f32) = (512.0, 468.0);
+    const BOLT_GAP: f32 = 30.0;
+    const MOUNTAIN: [(f32, f32); 3] = [(130.0, 940.0), (512.0, 236.0), (894.0, 940.0)];
     const BOLT: [(f32, f32); 7] = [
-        (742.0, 70.0),
-        (610.0, 330.0),
-        (690.0, 330.0),
-        (600.0, 560.0),
-        (830.0, 262.0),
-        (740.0, 262.0),
-        (830.0, 70.0),
+        (706.0, 56.0),
+        (846.0, 56.0),
+        (772.0, 256.0),
+        (862.0, 256.0),
+        (572.0, 628.0),
+        (654.0, 346.0),
+        (566.0, 346.0),
     ];
 
     fn edges(polygon: &[(f32, f32)]) -> impl Iterator<Item = ((f32, f32), (f32, f32))> + '_ {
@@ -50,14 +50,17 @@ pub(crate) fn icon() -> Image<'static> {
         if polygon_contains(&BOLT, x, y) {
             return true;
         }
-        polygon_contains(&MOUNTAIN, x, y) && distance_to_edges(&BOLT, x, y) > BOLT_GAP
+        let radius = (x - CENTER.0).hypot(y - CENTER.1);
+        let ring = (310.0..=378.0).contains(&radius);
+        let mountain = radius <= 284.0 && polygon_contains(&MOUNTAIN, x, y);
+        (ring || mountain) && distance_to_edges(&BOLT, x, y) > BOLT_GAP
     }
 
-    let mut rgba = vec![0; (WIDTH * HEIGHT * 4) as usize];
+    let mut rgba = vec![0; (SIZE * SIZE * 4) as usize];
     let samples = SAMPLES_PER_AXIS * SAMPLES_PER_AXIS;
 
-    for pixel_y in 0..HEIGHT {
-        for pixel_x in 0..WIDTH {
+    for pixel_y in 0..SIZE {
+        for pixel_x in 0..SIZE {
             let mut covered_samples = 0;
             for sample_y in 0..SAMPLES_PER_AXIS {
                 for sample_x in 0..SAMPLES_PER_AXIS {
@@ -73,12 +76,12 @@ pub(crate) fn icon() -> Image<'static> {
                 }
             }
 
-            let index = ((pixel_y * WIDTH + pixel_x) * 4) as usize;
+            let index = ((pixel_y * SIZE + pixel_x) * 4) as usize;
             rgba[index + 3] = (covered_samples * u8::MAX as u32 / samples) as u8;
         }
     }
 
-    Image::new_owned(rgba, WIDTH, HEIGHT)
+    Image::new_owned(rgba, SIZE, SIZE)
 }
 
 #[cfg(test)]
@@ -90,9 +93,12 @@ mod tests {
         let icon = icon();
         let alpha = |x: u32, y: u32| icon.rgba()[((y * icon.width() + x) * 4 + 3) as usize];
 
-        assert_eq!((icon.width(), icon.height()), (45, 44));
+        assert_eq!((icon.width(), icon.height()), (44, 44));
         assert_eq!(alpha(0, 0), 0);
-        assert_eq!(alpha(22, 40), u8::MAX);
-        assert_eq!(alpha(36, 2), u8::MAX);
+        assert_eq!(alpha(3, 22), u8::MAX);
+        assert_eq!(alpha(10, 20), 0);
+        assert_eq!(alpha(20, 29), u8::MAX);
+        assert_eq!(alpha(27, 20), 0);
+        assert_eq!(alpha(34, 6), u8::MAX);
     }
 }

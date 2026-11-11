@@ -264,9 +264,9 @@ test("repository pages show a centered Buzz loader while fetching", async ({
   await expect(
     loader.getByRole("img", { name: "Loading repository" }),
   ).toBeVisible();
-  await expect(loader.locator(".olympus-bolt__fill")).toHaveCSS(
+  await expect(loader.locator(".olympus-bolt__comet")).toHaveCSS(
     "animation-name",
-    "olympus-charge",
+    "olympus-spin",
   );
   await expect(loader).toHaveCSS("justify-content", "center");
   await expect(loader).toBeHidden({ timeout: 5_000 });
