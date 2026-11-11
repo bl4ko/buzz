@@ -2397,7 +2397,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 120));
           expect(
             (pulse.value - before + 1) % 1,
-            closeTo(reduceMotion ? 0 : 120 / 900, 0.001),
+            closeTo(reduceMotion ? 0 : 0.1, 0.001),
           );
           final initial = tester.widget<RichText>(
             find.descendant(of: flyingAvatar, matching: find.byType(RichText)),

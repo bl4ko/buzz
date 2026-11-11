@@ -6,18 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../olympus/olympus_pull_bolt.dart';
+import '../olympus/olympus_pull_key.dart';
 import '../olympus/use_olympus_reduced_motion.dart';
 
-/// Replaces the standard pull-to-refresh spinner with the Olympus bolt.
+/// Replaces the standard pull-to-refresh spinner with the Olympus key tiles.
 ///
 /// Flutter continues to own the gesture, refresh lifecycle, and accessibility
 /// semantics. This widget maps those states into the elastic pull, retained
-/// loading gap, and bolt animation.
+/// loading gap, and tile animation.
 class BeeRefreshIndicator extends HookConsumerWidget {
   /// Called when the user completes a pull, to load fresh data.
   ///
-  /// The bolt keeps spinning until this future settles, so it should complete
+  /// The tiles keep running until this future settles, so it should complete
   /// only once the refresh is done.
   final Future<void> Function() onRefresh;
 
@@ -38,7 +38,7 @@ class BeeRefreshIndicator extends HookConsumerWidget {
   });
 
   static const _beeWidth = 60.0;
-  static const _beeHeight = _beeWidth * 309 / 466;
+  static const _beeHeight = 44.0;
   static const _triggerDistance = 100.0;
   static const _loadingGap = 72.0;
   static const _beeVerticalAlignment = 0.75;
@@ -64,7 +64,7 @@ class BeeRefreshIndicator extends HookConsumerWidget {
     final eyeShakeHapticTimer = useRef<Timer?>(null);
     final fadeOnly = useOlympusReducedMotion(context);
     final completionController = useAnimationController(
-      duration: Duration(milliseconds: fadeOnly ? 200 : 220),
+      duration: Duration(milliseconds: fadeOnly ? 200 : 240),
     );
     final gapController = useAnimationController(
       duration: _settleDuration,
@@ -276,7 +276,7 @@ class BeeRefreshIndicator extends HookConsumerWidget {
     final visibleGap = pullDistance.value + retainedGap;
     final top = edgeOffset + (visibleGap - _beeHeight) * _beeVerticalAlignment;
     final opacity = isLoading ? 1 - done : 1.0;
-    final beeScale = isLoading && !fadeOnly ? 1 + 0.25 * done : 1.0;
+    final beeScale = isLoading && !fadeOnly ? 1 + 0.2 * done : 1.0;
     final showEyeEmoji = !isLoading && didTriggerEmojiHaptic.value;
     final eyeShakeOffset = showEyeEmoji && !reducedMotion
         ? sin(eyeShakeProgress * 2 * pi) * 0.75
@@ -340,7 +340,7 @@ class BeeRefreshIndicator extends HookConsumerWidget {
                             alignment: Alignment.topCenter,
                             children: [
                               Positioned.fill(
-                                child: OlympusPullBolt(
+                                child: OlympusPullKey(
                                   height: _beeHeight,
                                   charge: pullProgress.value,
                                   loading: isLoading,

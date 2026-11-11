@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../olympus/olympus_bolt_spinner.dart';
+import '../olympus/olympus_key_loader.dart';
 import '../theme/theme.dart';
 
-/// The full-page loading mark: the Olympus comet ring around the bolt.
+/// The full-page loading mark: the Olympus key tiles.
 class BeeLoadingMark extends StatelessWidget {
   const BeeLoadingMark({super.key});
 
@@ -19,8 +19,8 @@ class BeeLoadingMark extends StatelessWidget {
         width: _width,
         height: _height,
         child: Center(
-          child: OlympusBoltSpinner(
-            size: _height,
+          child: OlympusKeyLoader(
+            size: 48,
             light: context.colors.brightness == Brightness.light,
           ),
         ),

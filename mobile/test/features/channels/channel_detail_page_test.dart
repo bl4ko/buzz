@@ -98,7 +98,7 @@ import 'package:buzz/shared/widgets/app_list_card.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:buzz/shared/widgets/frosted_scaffold.dart';
-import 'package:buzz/shared/olympus/olympus_bolt_spinner.dart';
+import 'package:buzz/shared/olympus/olympus_key_loader.dart';
 import 'package:buzz/shared/widgets/keyboard_dismiss_on_drag.dart';
 import 'package:buzz/shared/widgets/tabler_star_icon.dart';
 import 'package:buzz/shared/widgets/skeleton.dart';
@@ -7861,7 +7861,7 @@ void main() {
       expect(
         find.descendant(
           of: loadingBee,
-          matching: find.byType(OlympusBoltSpinner),
+          matching: find.byType(OlympusKeyLoader),
         ),
         findsOneWidget,
       );
@@ -7879,7 +7879,7 @@ void main() {
                         ),
                       )
                       .painter!
-                  as OlympusBoltPainter)
+                  as OlympusKeyPainter)
               .progress;
       final initialCharge = charge.value;
       await tester.pump(const Duration(milliseconds: 120));

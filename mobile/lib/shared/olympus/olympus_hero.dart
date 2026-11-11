@@ -10,11 +10,8 @@ import 'olympus_scene_clock.dart';
 
 typedef OlympusWordmark = ({
   double extent,
-  double ratio,
   List<TextPainter> letters,
   List<Offset> offsets,
-  ui.Image flare,
-  Rect flareBounds,
 });
 
 class OlympusHero extends HookWidget {
@@ -23,41 +20,31 @@ class OlympusHero extends HookWidget {
   final double extent;
 
   static const minExtent = 96.0;
-  static const _wordmarkTop = 1.12;
-  static const _fontSize = 0.125;
-  static const _ruleTop = 1.315;
-  static const _ruleWidth = 0.75;
+  static const _wordmarkTop = 1.159;
+  static const _fontSize = 0.128;
+  static const _ruleTop = 1.353;
+  static const _ruleWidth = 0.389;
   static const heightFactor = _ruleTop + _ruleWidth * 14 / 224;
 
-  static List<TextPainter> _letters(double fontSize, Color color, bool glow) =>
-      [
-        for (final letter in 'OLYMPUS'.split(''))
-          TextPainter(
-            text: TextSpan(
-              text: letter,
-              style: TextStyle(
-                fontFamily: 'Iowan Old Style',
-                fontFamilyFallback: const ['Palatino', 'Georgia', 'serif'],
-                fontSize: fontSize,
-                fontWeight: FontWeight.w700,
-                height: 1,
-                color: color,
-                shadows: [
-                  if (glow)
-                    Shadow(
-                      color: const Color(0xFFFFE7A0),
-                      blurRadius: fontSize * 0.6,
-                    ),
-                ],
-              ),
-            ),
-            textDirection: TextDirection.ltr,
-          )..layout(),
-      ];
-
-  static OlympusWordmark _wordmark(double extent, double ratio) {
+  static OlympusWordmark _wordmark(double extent) {
     final fontSize = extent * _fontSize;
-    final letters = _letters(fontSize, OlympusColors.marble, false);
+    final letters = [
+      for (final letter in 'OLYMPUS'.split(''))
+        TextPainter(
+          text: TextSpan(
+            text: letter,
+            style: TextStyle(
+              fontFamily: 'Iowan Old Style',
+              fontFamilyFallback: const ['Palatino', 'Georgia', 'serif'],
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              height: 1,
+              color: OlympusColors.marble,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout(),
+    ];
     final spacing = fontSize * 0.42;
     final width = letters.fold(
       -spacing,
@@ -69,29 +56,7 @@ class OlympusHero extends HookWidget {
       offsets.add(Offset(x, extent * _wordmarkTop));
       x += letter.width + spacing;
     }
-    final flareBounds = Rect.fromLTWH(
-      0,
-      extent * _wordmarkTop,
-      extent,
-      fontSize,
-    ).inflate(fontSize);
-    final lit = _letters(fontSize, OlympusColors.white, true);
-    final flare = OlympusArt.raster(flareBounds, ratio, (canvas) {
-      for (final (index, letter) in lit.indexed) {
-        letter.paint(canvas, offsets[index]);
-      }
-    });
-    for (final letter in lit) {
-      letter.dispose();
-    }
-    return (
-      extent: extent,
-      ratio: ratio,
-      letters: letters,
-      offsets: offsets,
-      flare: flare,
-      flareBounds: flareBounds,
-    );
+    return (extent: extent, letters: letters, offsets: offsets);
   }
 
   static Rect markRect(Size size) {
@@ -103,13 +68,11 @@ class OlympusHero extends HookWidget {
   Widget build(BuildContext context) {
     final scene = OlympusSceneClock.of(context);
     final screen = MediaQuery.sizeOf(context);
-    final ratio = MediaQuery.devicePixelRatioOf(context);
     final held = useRef<OlympusWordmark?>(null);
     void release() {
       for (final letter in held.value?.letters ?? const <TextPainter>[]) {
         letter.dispose();
       }
-      held.value?.flare.dispose();
       held.value = null;
     }
 
@@ -130,9 +93,9 @@ class OlympusHero extends HookWidget {
             clock: scene?.clock,
             reduced: scene?.reduced ?? false,
             wordmark: (extent) {
-              if (held.value?.extent != extent || held.value?.ratio != ratio) {
+              if (held.value?.extent != extent) {
                 release();
-                held.value = _wordmark(extent, ratio);
+                held.value = _wordmark(extent);
               }
               return held.value!;
             },
@@ -187,8 +150,6 @@ class OlympusHeroPainter extends CustomPainter {
     final clock = this.clock;
     final seconds = clock == null ? null : OlympusSceneClock.seconds(clock);
     final live = seconds != null && !reduced;
-    final strike = live ? OlympusMotion.strike(seconds) : null;
-    final light = strike?.light ?? 0;
 
     canvas
       ..translate(mark.left, 0)
@@ -210,63 +171,15 @@ class OlympusHeroPainter extends CustomPainter {
       );
     }
     OlympusArt.fit(canvas, OlympusArt.markView, Size.square(extent));
-    OlympusArt.paintMedallion(
+    OlympusArt.paintSeal(
       canvas,
       live ? seconds : null,
       pulse: seconds == null || !reduced
           ? null
-          : 0.45 + 0.55 * OlympusMotion.wave(seconds, 8),
+          : 0.38 + 0.24 * OlympusMotion.wave(seconds, 8),
       engraving: extent * 0.9 >= 120,
     );
     canvas.restore();
-
-    final puffs = live ? OlympusMotion.span(seconds, 1.1, 0.7) : 1.0;
-    if (puffs > 0) {
-      if (puffs < 1) {
-        canvas.saveLayer(
-          Rect.fromLTRB(
-            -0.25 * extent,
-            0.35 * extent,
-            1.2 * extent,
-            0.9 * extent,
-          ),
-          Paint()..color = OlympusColors.white.withValues(alpha: puffs),
-        );
-      }
-      void puff(
-        double left,
-        double top,
-        double width,
-        double sway,
-        double period,
-      ) {
-        canvas
-          ..save()
-          ..translate(
-            (left +
-                    (live
-                        ? sway * width * OlympusMotion.drift(seconds, period)
-                        : 0)) *
-                extent,
-            top * extent,
-          )
-          ..scale(width * extent / OlympusArt.puffView.width)
-          ..translate(-OlympusArt.puffView.left, -OlympusArt.puffView.top)
-          ..drawPicture(OlympusArt.puff);
-        if (light > 0) {
-          canvas.drawPath(
-            OlympusArt.puffPath,
-            Paint()
-              ..color = const Color(0xFFFFF3C8).withValues(alpha: 0.6 * light),
-          );
-        }
-        canvas.restore();
-      }
-
-      puff(-0.16, 0.6, 0.44, 0.09, 20);
-      puff(0.83, 0.39, 0.3, -0.12, 16);
-      if (puffs < 1) canvas.restore();
-    }
 
     final fontSize = extent * OlympusHero._fontSize;
     for (final (index, letter) in wordmark.letters.indexed) {
@@ -282,21 +195,11 @@ class OlympusHeroPainter extends CustomPainter {
             box.inflate(fontSize),
             Paint()..color = OlympusColors.white.withValues(alpha: shown),
           )
-          ..translate(0, fontSize * 0.56 * (1 - shown));
+          ..translate(0, fontSize * 0.35 * (1 - shown));
         OlympusArt.scaleAbout(canvas, box.center, 0.96 + 0.04 * shown);
       }
       letter.paint(canvas, offset);
       if (shown < 1) canvas.restore();
-    }
-    final word = strike?.word ?? 0;
-    if (word > 0) {
-      final flare = wordmark.flare;
-      canvas.drawImageRect(
-        flare,
-        Rect.fromLTWH(0, 0, flare.width.toDouble(), flare.height.toDouble()),
-        wordmark.flareBounds,
-        Paint()..color = OlympusColors.white.withValues(alpha: word),
-      );
     }
 
     final ruled = live

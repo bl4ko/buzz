@@ -24,7 +24,7 @@ class OlympusSplash extends StatelessWidget {
           child: const RepaintBoundary(
             child: CustomPaint(
               size: Size.square(OlympusArt.launchExtent),
-              painter: OlympusMarkPainter(),
+              painter: OlympusSealPainter(),
             ),
           ),
         ),
@@ -33,15 +33,15 @@ class OlympusSplash extends StatelessWidget {
   );
 }
 
-class OlympusMarkPainter extends CustomPainter {
-  const OlympusMarkPainter();
+class OlympusSealPainter extends CustomPainter {
+  const OlympusSealPainter();
 
   @override
   void paint(Canvas canvas, Size size) {
     OlympusArt.fit(canvas, OlympusArt.markView, size);
-    OlympusArt.paintMedallion(canvas, null);
+    OlympusArt.paintSeal(canvas, null);
   }
 
   @override
-  bool shouldRepaint(OlympusMarkPainter oldDelegate) => false;
+  bool shouldRepaint(OlympusSealPainter oldDelegate) => false;
 }

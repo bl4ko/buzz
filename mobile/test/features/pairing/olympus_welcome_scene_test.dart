@@ -13,7 +13,7 @@ import '../../helpers/widget_helpers.dart';
 
 void main() {
   testWidgets(
-    'welcome scene strikes, keeps a halo pulse for Reduce Motion, stops '
+    'welcome scene flashes, keeps a halo pulse for Reduce Motion, stops '
     'without animations, and keeps actions',
     (tester) async {
       tester.view.physicalSize = const Size(375, 667);
@@ -63,7 +63,12 @@ void main() {
       var flashed = false;
       for (var frame = 0; frame < 130; frame++) {
         await tester.pump(const Duration(milliseconds: 50));
-        flashed |= OlympusMotion.flash(OlympusSceneClock.seconds(clock()!)) > 0;
+        flashed |=
+            OlympusMotion.frames(
+              OlympusMotion.since(OlympusSceneClock.seconds(clock()!), 1.7, 21),
+              OlympusMotion.flash,
+            ) >
+            0;
       }
       expect(clock()!.value, greaterThan(start));
       expect(flashed, isTrue);

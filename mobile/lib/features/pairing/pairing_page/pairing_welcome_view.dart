@@ -340,7 +340,8 @@ class _PairingWelcomeView extends HookWidget {
                 Expanded(
                   child: _TwoFingerDoubleTapSurface(
                     onDoubleTap: canRevealOptions ? revealOptions : null,
-                    child: Center(
+                    child: Align(
+                      alignment: const Alignment(0, -0.8),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [

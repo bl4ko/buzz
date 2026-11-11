@@ -9,9 +9,10 @@ abstract final class OlympusColors {
   static const ridge = Color(0xFF303C8C);
   static const marble = Color(0xFFF5EBD0);
   static const gold = Color(0xFFF7C234);
-  static const lightGoldDeep = Color(0xFFC07A0A);
+  static const goldHot = Color(0xFFFFF6C8);
+  static const goldInk = Color(0xFFB8730F);
+  static const goldInkHot = Color(0xFFE9A81C);
   static const glow = Color(0xFFFFAE1A);
-  static const boltGlow = Color(0xFFFFB21C);
   static const cloudShadow = Color(0xFF8FA3D9);
   static const star = Color(0xFFEEF2FF);
   static const white = Color(0xFFFFFFFF);

@@ -1,4 +1,4 @@
-import 'package:buzz/shared/olympus/olympus_bolt_spinner.dart';
+import 'package:buzz/shared/olympus/olympus_key_loader.dart';
 import 'package:buzz/shared/olympus/olympus_inline_spinner.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/buzz_loading_indicator.dart';
@@ -37,7 +37,7 @@ void main() {
   );
   (Animation<double>, bool, Object) read(WidgetTester tester) =>
       switch (tester.widget<CustomPaint>(spinner).painter) {
-        OlympusBoltPainter(:final progress, :final reduced, :final light) => (
+        OlympusKeyPainter(:final progress, :final reduced, :final light) => (
           progress,
           reduced,
           light,
@@ -102,42 +102,41 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets(
-    'picks the comet loader for page-size loads and the bolt inline',
-    (tester) async {
-      for (final (size, painterType) in [
-        (40.0, OlympusBoltPainter),
-        (44.0, OlympusBoltPainter),
-        (36.0, OlympusInlinePainter),
-        (18.0, OlympusInlinePainter),
-      ]) {
-        await tester.pumpWidget(
-          _testable(
-            disableAnimations: false,
-            brightness: Brightness.light,
-            size: size,
-          ),
-        );
-        expect(
-          tester.widget<CustomPaint>(spinner).painter.runtimeType,
-          painterType,
-        );
-      }
+  testWidgets('picks the key loader for page-size loads and the tiles inline', (
+    tester,
+  ) async {
+    for (final (size, painterType) in [
+      (40.0, OlympusKeyPainter),
+      (44.0, OlympusKeyPainter),
+      (36.0, OlympusInlinePainter),
+      (18.0, OlympusInlinePainter),
+    ]) {
       await tester.pumpWidget(
         _testable(
           disableAnimations: false,
           brightness: Brightness.light,
-          size: 18,
-          style: BuzzLoadingStyle.page,
+          size: size,
         ),
       );
       expect(
-        tester.widget<CustomPaint>(spinner).painter,
-        isA<OlympusBoltPainter>(),
+        tester.widget<CustomPaint>(spinner).painter.runtimeType,
+        painterType,
       );
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
+    }
+    await tester.pumpWidget(
+      _testable(
+        disableAnimations: false,
+        brightness: Brightness.light,
+        size: 18,
+        style: BuzzLoadingStyle.page,
+      ),
+    );
+    expect(
+      tester.widget<CustomPaint>(spinner).painter,
+      isA<OlympusKeyPainter>(),
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('pulses both spinners for the iOS Reduce Motion setting', (
     tester,

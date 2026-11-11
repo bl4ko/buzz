@@ -1,4 +1,4 @@
-import 'dart:math' show max;
+import 'dart:math' show max, min;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +8,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'olympus_art.dart';
 import 'olympus_colors.dart';
 import 'olympus_hero.dart';
+import 'olympus_scene_art.dart';
 import 'olympus_scene_clock.dart';
 import 'use_olympus_reduced_motion.dart';
 
@@ -48,6 +49,45 @@ class OlympusSky extends HookWidget {
           ? OlympusMotion.span(OlympusSceneClock.seconds(clock), 0, 0.3)
           : 1.0,
     );
+    // Cloud bitmaps are capped at 2x: three full-width layers at 3x cost 30 MB.
+    final ratio = min(MediaQuery.devicePixelRatioOf(context), 2.0);
+    final clouds = useRef(<int, OlympusSprite>{});
+    final cloudsFor = useRef<(Size, double)?>(null);
+    void release() {
+      for (final cloud in clouds.value.values) {
+        cloud.image.dispose();
+      }
+      clouds.value.clear();
+    }
+
+    useEffect(() => release, const []);
+    OlympusSprite cloud(int index, Size size) {
+      if (cloudsFor.value != (size, ratio)) {
+        release();
+        cloudsFor.value = (size, ratio);
+      }
+      return clouds.value[index] ??= _SkyPainter.rasterCloud(
+        index,
+        size,
+        ratio,
+      );
+    }
+
+    Widget layer({required bool front}) => IgnorePointer(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _SkyPainter(
+            clock: clock,
+            reduced: reduced,
+            hero: hero,
+            sky: context,
+            cloud: cloud,
+            front: front,
+          ),
+        ),
+      ),
+    );
+
     return OlympusSceneClock(
       clock: clock,
       reduced: reduced,
@@ -58,29 +98,19 @@ class OlympusSky extends HookWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            IgnorePointer(
-              child: ExcludeSemantics(
-                child: Opacity(
-                  key: const Key('scanner-scene-opacity'),
-                  opacity: 1 - progress,
-                  child: Transform.scale(
-                    key: const Key('scanner-scene-scale'),
-                    scale: reduced ? 1 : 1 - 0.04 * progress,
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: _SkyPainter(
-                          clock: clock,
-                          reduced: reduced,
-                          hero: hero,
-                          sky: context,
-                        ),
-                      ),
-                    ),
-                  ),
+            ExcludeSemantics(
+              child: Opacity(
+                key: const Key('scanner-scene-opacity'),
+                opacity: 1 - progress,
+                child: Transform.scale(
+                  key: const Key('scanner-scene-scale'),
+                  scale: reduced ? 1 : 1 - 0.04 * progress,
+                  child: layer(front: false),
                 ),
               ),
             ),
             Opacity(opacity: shown, alwaysIncludeSemantics: true, child: child),
+            if (clock != null && !reduced) layer(front: true),
           ],
         ),
       ),
@@ -94,121 +124,111 @@ class _SkyPainter extends CustomPainter {
     required this.reduced,
     required this.hero,
     required this.sky,
+    required this.cloud,
+    required this.front,
   }) : super(repaint: clock);
 
   final Animation<double>? clock;
   final bool reduced;
   final GlobalKey hero;
   final BuildContext sky;
+  final OlympusSprite Function(int index, Size size) cloud;
+  final bool front;
 
-  static const _unit = Rect.fromLTRB(-1, -1, 1, 1);
+  static const _drift = [(-28.0, 50.0), (36.0, 40.0), (-48.0, 30.0)];
+  static const _rise = [0.6, 0.7, 0.8];
+  static const List<
+    (double, double, List<(double?, double, double, double, double)>)
+  >
+  _wisps = [
+    (26.0, 9.0, [(-1.5, -0.2, 1.5, 0.068, 0.34), (1.7, 0.5, 1.4, 0.063, 0.3)]),
+    (19.0, 4.0, [(null, 0.62, 1.7, 0.079, 0.7)]),
+    (24.0, 15.0, [(null, -0.5, 1.2, 0.058, 0.5)]),
+  ];
   static final _gradient = ui.Gradient.linear(
     Offset.zero,
     const Offset(0, 1),
-    const [Color(0xFF050818), Color(0xFF0E1640), Color(0xFF1F2970)],
-    const [0, 0.55, 1],
-  );
-  static final _aurora = ui.Gradient.radial(
-    Offset.zero,
-    1,
-    const [Color(0x5C6E62E6), Color(0x213E40B0), Color(0x003E40B0)],
-    const [0, 0.55, 1],
-  );
-  static final _flash = ui.Gradient.radial(
-    Offset.zero,
-    1,
-    const [Color(0x57D6DAFF), Color(0x217882FF), Color(0x007882FF)],
-    const [0, 0.4, 0.72],
-  );
-  static final _fog = ui.Gradient.linear(
-    Offset.zero,
-    const Offset(0, 170),
-    const [Color(0x005A6BD0), Color(0x295A6BD0), Color(0x005A6BD0)],
+    const [Color(0xFF03041A), Color(0xFF0B0F38), Color(0xFF171C58)],
     const [0, 0.5, 1],
   );
-  static final _stars = OlympusArt.table(
-    '.178,.437,2.5,3.2,4.22 .97,.31,2,2.9,2.64 .777,.038,2,3.6,.72 '
-    '.741,.574,2.5,2.5,4.99 .729,.546,2,3.6,4.78 .539,.439,2.5,5.1,1.84 '
-    '.169,.512,1,4.7,.1 .175,.46,1.5,3.8,.93 .056,.541,1,2.6,.99 '
-    '.667,.504,2.5,4.5,3.81 .578,.461,1,4,2.79 .392,.231,1,4.9,2.05 '
-    '.371,.296,1.5,3.3,2.42 .275,.522,1,4.4,4.96 .496,.32,2,4.1,2.61 '
-    '.569,.218,2,2.7,3.35 .621,.522,1.5,3.4,2.99 .314,.091,1,5,.87 '
-    '.432,.124,1,4.3,4.49 .94,.27,1,5.1,2.95 .868,.32,1.5,4.3,4.68 '
-    '.256,.361,1.5,4.7,3.87 .484,.524,1,4.8,3.29 .053,.177,1.5,2.6,1.69 '
-    '.883,.61,2.5,4.4,.25 .154,.414,2.5,3.7,4.76 .883,.246,1,4.9,3.01 '
-    '.429,.373,1.5,3.3,2.67 .285,.483,1,3.5,.63 .707,.186,1.5,4.2,4.26 '
-    '.581,.182,1.5,4.5,4.06 .153,.114,1.5,2.7,.13 .449,.113,1,4.2,.63 '
-    '.537,.221,1.5,4.9,3.11 .194,.536,1,4.4,2.75 .064,.449,2.5,4.6,3.95 '
-    '.028,.304,1,3.5,2.83 .84,.168,2.5,4.1,3.73 .255,.122,2.5,4.9,1.48 '
-    '.503,.354,2,2.7,3.01 .508,.463,2,3.3,3.5 .525,.361,1,4.1,1.63 '
-    '.213,.069,2.5,5.2,.54 .093,.073,1.5,3.8,4.74',
+  static final _aurora = OlympusArt.radial(
+    [0x8C7A70F0, 0x384A4CC8, 0x003038A0],
+    [0, 0.45, 1],
   );
-  static const _ghosts = [
-    (0.12, 0.26, 0.16, 110.0, 30.0),
-    (0.31, 0.18, 0.11, 150.0, 95.0),
-    (0.05, 0.34, 0.09, 140.0, 70.0),
+  static final _sheet = OlympusArt.radial(
+    [0xF2E9E6FF, 0x80A9A4FF, 0x007C78F0],
+    [0, 0.35, 1],
+  );
+  static final _mist = OlympusArt.radial(
+    [0x8CDCE2FF, 0x33B7C2F8, 0x00B7C2F8],
+    [0, 0.6, 1],
+  );
+  static final _base = ui.Gradient.linear(
+    const Offset(0, OlympusSceneArt.baseShade),
+    Offset(0, OlympusSceneArt.size.height),
+    const [Color(0x000A0E2E), Color(0xEB0A0E2E), Color(0xFF070A22)],
+    const [0, 0.35, 1],
+  );
+  static final _strikes = [
+    for (final strike in OlympusSceneArt.distantStrikes)
+      () {
+        final strokes = [
+          for (final (points, width) in strike.strokes)
+            (OlympusArt.polygon(points, close: false), width),
+        ];
+        final bounds = strokes
+            .map((stroke) => stroke.$1.getBounds())
+            .reduce((all, next) => all.expandToInclude(next))
+            .inflate(16);
+        return (
+          period: strike.period,
+          first: strike.first,
+          strokes: strokes,
+          glow: OlympusArt.raster(bounds, 1, (canvas) {
+            for (final (path, width) in strokes) {
+              canvas.drawPath(
+                path,
+                OlympusArt.line(0xFFB9C2FF, width * 3.6, 0.5)
+                  ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+              );
+            }
+          }),
+        );
+      }(),
   ];
-  static const _far =
-      '-120,400 -120,80 -73,108 -16,201 22,222 53,177 89,143 114,110 186,181 '
-      '236,200 297,251 345,192 381,144 434,92 493,124 525,178 587,227 617,185 '
-      '653,123 686,81 739,136 769,179 813,257 863,212 904,197 955,151 '
-      '1008,174 1082,195 1129,224 1157,192 1205,163 1236,133 1286,161 '
-      '1340,205 1405,253 1443,219 1510,151 1549,79 1608,165 1643,166 1708,245 '
-      '1713,238 1716,234 1720,223 1720,400';
-  static final _farRim = Path()
-    ..addPolygon(
-      OlympusArt.points(_far).sublist(1, OlympusArt.points(_far).length - 1),
-      false,
+
+  static (double, Offset) _fit(Size size) {
+    const art = OlympusSceneArt.size;
+    final unit = max(size.height / art.height, size.width / 1100);
+    return (
+      unit,
+      Offset(
+        (size.width - art.width * unit) / 2,
+        size.height - art.height * unit,
+      ),
     );
-  static final _ridges = [
-    (
-      OlympusArt.polygon(_far),
-      _ridgeFill(80, 0xFF303C8C, 0xFF1A2360),
-      0.6,
-      12.0,
-      30.0,
-      230.0,
-    ),
-    (
-      OlympusArt.polygon(
-        '-120,400 -120,234 -69,249 -6,268 67,295 101,257 134,226 164,213 '
-        '205,253 259,279 311,318 364,287 409,248 462,230 527,273 593,296 '
-        '638,313 671,279 713,252 746,218 783,237 833,285 882,322 920,293 '
-        '941,285 983,246 1024,269 1062,287 1110,314 1149,291 1184,256 1233,215 '
-        '1291,241 1354,255 1437,291 1468,281 1497,268 1538,254 1587,262 '
-        '1651,286 1709,293 1713,307 1716,316 1720,323 1720,400',
-      ),
-      _ridgeFill(190, 0xFF1E2866, 0xFF111846),
-      0.72,
-      -24.0,
-      24.0,
-      300.0,
-    ),
-    (
-      OlympusArt.polygon(
-        '-120,400 -120,291 -65,306 11,344 73,367 127,344 158,311 205,291 '
-        '273,333 309,343 381,369 433,353 464,344 514,322 596,331 667,341 '
-        '737,353 780,339 844,322 904,307 974,339 1049,368 1099,375 1152,347 '
-        '1181,309 1227,286 1317,313 1403,328 1481,360 1520,351 1575,324 '
-        '1618,302 1646,319 1693,358 1720,374 1720,400',
-      ),
-      _ridgeFill(290, 0xFF121A46, 0xFF0A0F2C),
-      0.84,
-      40.0,
-      18.0,
-      null,
-    ),
-  ];
+  }
 
-  static ui.Gradient _ridgeFill(double top, int from, int to) =>
-      ui.Gradient.linear(Offset(0, top), const Offset(0, 400), [
-        Color(from),
-        Color(to),
-      ]);
-
-  static Paint _faded(ui.Gradient shader, double opacity) => Paint()
-    ..shader = shader
-    ..color = OlympusColors.white.withValues(alpha: opacity);
+  static OlympusSprite rasterCloud(int index, Size size, double ratio) {
+    final (unit, origin) = _fit(size);
+    final art = OlympusSceneArt.clouds[index];
+    final reach = _drift[index].$1.abs() * unit;
+    return OlympusArt.raster(
+      Rect.fromLTRB(
+        -reach,
+        max(0, origin.dy + (art.top - 8) * unit),
+        size.width + reach,
+        size.height,
+      ),
+      ratio,
+      (canvas) {
+        canvas
+          ..translate(origin.dx, origin.dy)
+          ..scale(unit);
+        OlympusArt.paintCloud(canvas, art);
+      },
+    );
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -216,7 +236,6 @@ class _SkyPainter extends CustomPainter {
     final clock = this.clock;
     final seconds = clock == null ? null : OlympusSceneClock.seconds(clock);
     final live = seconds != null && !reduced;
-    final light = live ? OlympusMotion.flash(seconds) : 0.0;
     double enter(
       double delay,
       double duration, [
@@ -226,125 +245,160 @@ class _SkyPainter extends CustomPainter {
         : reduced
         ? OlympusMotion.span(seconds, 0, 0.3)
         : OlympusMotion.span(seconds, delay, duration, curve);
-    final backdrop = enter(0.5, 1.2);
     final box = hero.currentContext?.findRenderObject();
-    final frame = box is RenderBox && box.hasSize
-        ? box.localToGlobal(Offset.zero, ancestor: sky.findRenderObject()) &
-              box.size
+    final mark = box is RenderBox && box.hasSize
+        ? OlympusHero.markRect(box.size).shift(
+            box.localToGlobal(Offset.zero, ancestor: sky.findRenderObject()),
+          )
         : null;
-    final mark = frame == null
+    final seal = mark == null
         ? null
-        : OlympusHero.markRect(frame.size).shift(frame.topLeft);
+        : mark.topLeft + Offset(0.5, 437 / 840) * mark.width;
+    final radius = mark == null ? 0.0 : mark.width * 0.45;
+    final (unit, origin) = _fit(size);
+    void inArt(void Function() paint) {
+      canvas
+        ..save()
+        ..translate(origin.dx, origin.dy)
+        ..scale(unit);
+      paint();
+      canvas.restore();
+    }
+
+    void wisp(int index) {
+      final (travel, phase, bands) = _wisps[index];
+      final shift = live
+          ? (1.9 * ((seconds + phase) / travel % 1) - 0.45) * size.width
+          : 0.0;
+      for (final (dx, dy, rx, ry, opacity) in bands) {
+        OlympusArt.spot(
+          canvas,
+          Offset(
+            (dx == null ? 0 : seal!.dx + dx * radius) + shift,
+            seal!.dy + dy * radius,
+          ),
+          rx * radius,
+          ry * radius,
+          OlympusArt.faded(_mist, opacity * enter(1.1, 1.2)),
+        );
+      }
+    }
+
+    if (front) {
+      if (seal != null) {
+        wisp(1);
+        wisp(2);
+      }
+      return;
+    }
+
+    void cloudLayer(int index) {
+      final risen = enter(_rise[index], 0.9, OlympusMotion.settle);
+      final (reach, period) = _drift[index];
+      OlympusArt.sprite(
+        canvas,
+        cloud(index, size),
+        opacity: risen,
+        offset: live
+            ? Offset(
+                reach * unit * OlympusMotion.drift(seconds, period),
+                44 * unit * (1 - risen),
+              )
+            : Offset.zero,
+      );
+    }
 
     canvas
       ..save()
       ..scale(size.width, size.height)
       ..drawRect(
         const Rect.fromLTWH(0, 0, 1, 1),
-        _faded(_gradient, live ? OlympusMotion.span(seconds, 0.3, 0.7) : 1),
+        OlympusArt.faded(_gradient, enter(0.3, 0.7)),
       )
       ..restore();
-    if (mark != null) {
-      canvas
-        ..save()
-        ..translate(mark.center.dx, mark.center.dy)
-        ..scale(mark.width * 1.4)
-        ..drawRect(_unit, _faded(_aurora, backdrop))
-        ..restore();
-    }
-    if (mark != null) {
-      final text = Rect.fromLTRB(
-        0,
-        mark.top + mark.width * 1.05,
-        size.width,
-        frame!.bottom + 64,
-      );
-      for (final star in _stars) {
-        final center = Offset(star[0] * size.width, star[1] * size.height);
-        if (text.contains(center)) continue;
-        final twinkle = live
-            ? 0.2 + 0.8 * OlympusMotion.wave(seconds + star[4], star[3])
-            : 1.0;
-        canvas.drawCircle(
-          center,
-          star[2],
-          Paint()
-            ..color = OlympusColors.star.withValues(alpha: twinkle * backdrop),
-        );
+    if (seal != null) {
+      final backdrop = enter(0.5, 1.2);
+      inArt(() {
+        for (final star in OlympusSceneArt.stars) {
+          final twinkle = live && star.length > 4
+              ? 0.22 + 0.78 * OlympusMotion.wave(seconds + star[5], star[4])
+              : star[3];
+          canvas.drawCircle(
+            Offset(star[0], star[1]),
+            star[2],
+            Paint()
+              ..color = OlympusColors.star.withValues(
+                alpha: twinkle * backdrop,
+              ),
+          );
+        }
+      });
+      cloudLayer(0);
+      if (live) {
+        inArt(() {
+          for (final glow in OlympusSceneArt.sheetGlows) {
+            final light = OlympusMotion.frames(
+              OlympusMotion.since(seconds, glow[4], glow[3]),
+              OlympusMotion.sheet,
+            );
+            if (light > 0) {
+              OlympusArt.spot(
+                canvas,
+                Offset(glow[0], glow[1]),
+                glow[2],
+                glow[2],
+                OlympusArt.faded(_sheet, light),
+              );
+            }
+          }
+        });
       }
-    }
-    for (final (top, width, opacity, period, phase) in _ghosts) {
-      final across = ((live ? seconds : 0) + phase) / period % 1;
-      final extent = width * size.width;
-      canvas
-        ..save()
-        ..translate((5.3 * across - 1.3) * extent, top * size.height)
-        ..scale(extent / OlympusArt.puffView.width)
-        ..translate(-OlympusArt.puffView.left, -OlympusArt.puffView.top);
-      OlympusArt.glow(
+      cloudLayer(1);
+      if (live) {
+        inArt(() {
+          for (final strike in _strikes) {
+            final elapsed = OlympusMotion.since(
+              seconds,
+              strike.first,
+              strike.period,
+            );
+            final light = OlympusMotion.frames(elapsed, OlympusMotion.distant);
+            if (light <= 0) continue;
+            OlympusArt.sprite(canvas, strike.glow, opacity: light);
+            for (final (path, width) in strike.strokes) {
+              final metric = path.computeMetrics().first;
+              canvas.drawPath(
+                metric.extractPath(0, metric.length * min(1, elapsed / 70)),
+                OlympusArt.line(0xFFFFFFFF, width, light),
+              );
+            }
+          }
+        });
+      }
+      OlympusArt.spot(
         canvas,
-        OlympusArt.ghost,
-        OlympusColors.cloudShadow,
-        opacity * backdrop,
+        seal,
+        radius * 2.2,
+        radius * 2.2,
+        OlympusArt.faded(_aurora, 0.8 * backdrop),
       );
-      canvas.restore();
+      wisp(0);
     }
-
-    final scale = max(size.width / 1600, size.height * 0.34 / 400);
-    canvas
-      ..save()
-      ..translate((size.width - 1600 * scale) / 2, size.height - 400 * scale)
-      ..scale(scale);
-    for (final (ridge, fill, delay, sway, period, fog) in _ridges) {
-      final risen = enter(delay, 0.9, OlympusMotion.settle);
-      canvas
-        ..save()
-        ..translate(
-          live ? sway * OlympusMotion.drift(seconds, period) : 0,
-          live ? 48 * (1 - risen) : 0,
-        )
-        ..drawPath(ridge, _faded(fill, risen));
-      if (ridge == _ridges.first.$1 && light > 0) {
-        canvas.drawPath(
-          _farRim,
-          Paint()
-            ..color = const Color(0xFFC9D3FF).withValues(alpha: 0.8 * light)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 3
-            ..strokeJoin = StrokeJoin.round,
-        );
-      }
-      canvas.restore();
-      if (fog != null) {
-        final haze = live ? 0.2 + 0.8 * OlympusMotion.wave(seconds, 9) : 1.0;
-        canvas
-          ..save()
-          ..translate(0, fog)
-          ..drawRect(
-            const Rect.fromLTWH(0, 0, 1600, 170),
-            _faded(_fog, haze * risen),
-          )
-          ..restore();
-      }
-    }
-    canvas.restore();
-
-    if (mark != null && light > 0) {
-      final strike = mark.topLeft + Offset(0.743, 0.37) * mark.width;
-      final reach = max(
-        max(strike.distance, (strike - size.topRight(Offset.zero)).distance),
-        max(
-          (strike - size.bottomLeft(Offset.zero)).distance,
-          (strike - size.bottomRight(Offset.zero)).distance,
+    cloudLayer(2);
+    final shade = enter(0.84, 0.9, OlympusMotion.settle);
+    inArt(
+      () => canvas
+        ..translate(0, live ? 44 * (1 - shade) : 0)
+        ..drawRect(
+          Rect.fromLTRB(
+            -2000,
+            OlympusSceneArt.baseShade,
+            2600,
+            OlympusSceneArt.size.height + 400,
+          ),
+          OlympusArt.faded(_base, shade),
         ),
-      );
-      canvas
-        ..save()
-        ..translate(strike.dx, strike.dy)
-        ..scale(reach)
-        ..drawRect(_unit, _faded(_flash, light))
-        ..restore();
-    }
+    );
   }
 
   @override

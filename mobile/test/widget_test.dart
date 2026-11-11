@@ -140,7 +140,7 @@ void main() {
       of: find.byType(OlympusSplash),
       matching: find.byType(CustomPaint),
     );
-    expect(tester.widget<CustomPaint>(mark).painter, isA<OlympusMarkPainter>());
+    expect(tester.widget<CustomPaint>(mark).painter, isA<OlympusSealPainter>());
     expect(tester.getSize(mark), const Size.square(OlympusArt.launchExtent));
     expect(tester.getCenter(mark), tester.getCenter(find.byType(App)));
     expect(tester.binding.hasScheduledFrame, isFalse);

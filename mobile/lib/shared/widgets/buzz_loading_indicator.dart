@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../olympus/olympus_bolt_spinner.dart';
+import '../olympus/olympus_key_loader.dart';
 import '../olympus/olympus_inline_spinner.dart';
 import '../theme/theme.dart';
 
@@ -46,7 +46,7 @@ class BuzzLoadingIndicator extends StatelessWidget {
             (size >= buzzLoadingPageMinSize
                 ? BuzzLoadingStyle.page
                 : BuzzLoadingStyle.inline)) {
-          BuzzLoadingStyle.page => OlympusBoltSpinner(
+          BuzzLoadingStyle.page => OlympusKeyLoader(
             key: spinnerKey,
             size: size,
             light: color == null
