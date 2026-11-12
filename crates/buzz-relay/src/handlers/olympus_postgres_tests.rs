@@ -323,6 +323,11 @@ async fn live_ids(rx: &mut Receiver<axum::extract::ws::Message>) -> Vec<String> 
 }
 
 async fn req(f: &Fixture, reader: &Keys, filter: Value) -> Vec<String> {
+    req_reply(f, reader, filter).await.unwrap_or_default()
+}
+
+/// The event IDs of one historical REQ, or `None` when the relay closes it.
+async fn req_reply(f: &Fixture, reader: &Keys, filter: Value) -> Option<Vec<String>> {
     let (conn, mut rx) = test_conn(&f.tenant, reader);
     let filters: Vec<nostr::Filter> = serde_json::from_value(json!([filter])).expect("filters");
     crate::handlers::req::handle_req("s".into(), filters, vec![None], conn, f.state.clone()).await;
@@ -334,7 +339,8 @@ async fn req(f: &Fixture, reader: &Keys, filter: Value) -> Vec<String> {
         let message: Value = serde_json::from_str(&text).expect("relay frame");
         match message[0].as_str() {
             Some("EVENT") => ids.push(message[2]["id"].as_str().expect("id").to_owned()),
-            Some("EOSE") | Some("CLOSED") => return sorted(ids),
+            Some("EOSE") => return Some(sorted(ids)),
+            Some("CLOSED") => return None,
             other => panic!("unexpected frame {other:?}: {text}"),
         }
     }
@@ -500,6 +506,18 @@ async fn olympus_reads_reach_only_p_tagged_readers() {
             http_count(&f, outsider, filter.clone()).await,
             0,
             "/count {filter}"
+        );
+    }
+    for filter in [&foreign[0], &foreign[2], &foreign[4], &foreign[5]] {
+        assert!(
+            req_reply(&f, outsider, filter.clone()).await.is_none(),
+            "REQ not closed: {filter}"
+        );
+        assert!(
+            bridge(&f, outsider, "/query", filter.clone())
+                .await
+                .is_none(),
+            "/query not refused: {filter}"
         );
     }
 
