@@ -27,9 +27,10 @@ use buzz_core::kind::{
     KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST, KIND_NIP29_CREATE_GROUP, KIND_NIP29_DELETE_EVENT,
     KIND_NIP29_DELETE_GROUP, KIND_NIP29_EDIT_METADATA, KIND_NIP29_JOIN_REQUEST,
     KIND_NIP29_LEAVE_REQUEST, KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER,
-    KIND_NIP43_LEAVE_REQUEST, KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST,
-    KIND_PRESENCE_UPDATE, KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE,
-    KIND_PROJECT, KIND_REACTION, KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE,
+    KIND_NIP43_LEAVE_REQUEST, KIND_NIP65_RELAY_LIST_METADATA, KIND_OLYMPUS_AGENT,
+    KIND_OLYMPUS_CHANGE_REQUEST, KIND_OLYMPUS_CHANGE_RESULT, KIND_OLYMPUS_WORKSPACE, KIND_PERSONA,
+    KIND_PIN_LIST, KIND_PRESENCE_UPDATE, KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK,
+    KIND_PROFILE, KIND_PROJECT, KIND_REACTION, KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE,
     KIND_STREAM_MESSAGE_BOOKMARKED, KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT,
     KIND_STREAM_MESSAGE_PINNED, KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2,
     KIND_STREAM_REMINDER, KIND_TEAM, KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_THREAD_STATUS,
@@ -560,6 +561,10 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         }
         // NIP-AM: agent turn metrics are agent-authored global events (encrypted to owner).
         KIND_AGENT_TURN_METRIC => Ok(Scope::MessagesWrite),
+        KIND_OLYMPUS_AGENT
+        | KIND_OLYMPUS_WORKSPACE
+        | KIND_OLYMPUS_CHANGE_REQUEST
+        | KIND_OLYMPUS_CHANGE_RESULT => Ok(Scope::AdminUsers),
         // NIP-56 reports are ordinary member writes into the mod-only queue.
         // Ingest persists them to `moderation_reports` and suppresses public
         // storage/fanout; reports are signals, never enforcement triggers.
@@ -828,6 +833,10 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             // NIP-AM: agent turn metrics are owner-scoped global events.
             // Channel identity is encrypted inside the payload — no `h` tag.
             | KIND_AGENT_TURN_METRIC
+            | KIND_OLYMPUS_AGENT
+            | KIND_OLYMPUS_WORKSPACE
+            | KIND_OLYMPUS_CHANGE_REQUEST
+            | KIND_OLYMPUS_CHANGE_RESULT
             // NIP-PL leases are author-owned, addressable global state.
             | super::push_lease::KIND_PUSH_LEASE
     )
@@ -2817,6 +2826,11 @@ async fn ingest_event_inner(
             )));
         }
     }
+    if kind_u32 == KIND_DELETION && super::olympus::deletion_names_olympus_kind(&event) {
+        return Err(IngestError::Rejected(
+            "invalid: Olympus events cannot be deleted; publish a deleted tombstone".into(),
+        ));
+    }
 
     // A reaction, or a kind 5 targeting an event, derives its channel from
     // that target, so every channel gate below would reveal the target's
@@ -3266,6 +3280,12 @@ async fn ingest_event_inner(
                     .into(),
             ));
         }
+    }
+
+    if buzz_core::kind::OLYMPUS_KINDS.contains(&kind_u32) {
+        super::olympus::validate_envelope(&event)
+            .map_err(|e| IngestError::Rejected(format!("invalid: {e}")))?;
+        super::olympus::authorize_author(tenant, state, &event).await?;
     }
 
     if kind_u32 == KIND_EVENT_REMINDER {

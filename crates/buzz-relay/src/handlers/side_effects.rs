@@ -525,6 +525,7 @@ pub async fn validate_standard_deletion_event(
             if target_kind == KIND_VERIFIED_PROFILE {
                 anyhow::bail!(DELETION_TARGET_DENIED);
             }
+            refuse_olympus_target(target_kind)?;
             check_deletion_privacy_k_tag(event, target_kind)?;
         }
         let target_pubkey_bytes =
@@ -559,9 +560,17 @@ pub async fn validate_standard_deletion_event(
         {
             anyhow::bail!("cannot delete a private deletion request");
         }
+        refuse_olympus_target(event_kind_u32(&target_event.event))?;
         check_deletion_privacy_k_tag(event, event_kind_u32(&target_event.event))?;
     }
 
+    Ok(())
+}
+
+fn refuse_olympus_target(target_kind: u32) -> anyhow::Result<()> {
+    if buzz_core::kind::OLYMPUS_KINDS.contains(&target_kind) {
+        anyhow::bail!("Olympus events cannot be deleted; publish a deleted tombstone");
+    }
     Ok(())
 }
 

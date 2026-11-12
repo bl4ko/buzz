@@ -297,6 +297,12 @@ pub struct Config {
     /// skipped — a typo must not silently disable an operator.
     pub relay_operator_pubkeys: Vec<String>,
 
+    /// NIP-OL: keys that may publish Olympus state and results (30190, 30191, 44311), and
+    /// the only valid `p` of a change request (44310). Empty refuses all four kinds.
+    ///
+    /// Set via `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` as comma-separated 64-char hex pubkeys.
+    pub olympus_operator_pubkeys: Vec<String>,
+
     /// Configured operator-listener identities and their HTTP(S) delivery URLs.
     pub operator_listener_delivery_urls: HashMap<String, url::Url>,
 
@@ -521,6 +527,25 @@ fn rate_limit_config_from_env() -> Result<buzz_auth::RateLimitConfig, ConfigErro
             defaults.agent_platform_messages_per_min,
         )?,
     })
+}
+
+fn parse_pubkey_list(name: &str) -> Result<Vec<String>, ConfigError> {
+    let mut pubkeys = Vec::new();
+    for entry in std::env::var(name).unwrap_or_default().split(',') {
+        let entry = entry.trim().to_lowercase();
+        if entry.is_empty() {
+            continue;
+        }
+        if entry.len() != 64 || !entry.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(ConfigError::InvalidValue(format!(
+                "{name} entry is not a valid 64-char hex pubkey: {entry:?}"
+            )));
+        }
+        if !pubkeys.contains(&entry) {
+            pubkeys.push(entry);
+        }
+    }
+    Ok(pubkeys)
 }
 
 fn parse_operator_api_origin(raw: &str) -> Result<String, ConfigError> {
@@ -925,6 +950,7 @@ impl Config {
             .map(|raw| parse_operator_api_origin(&raw))
             .transpose()?;
 
+        let olympus_operator_pubkeys = parse_pubkey_list("BUZZ_OLYMPUS_OPERATOR_PUBKEYS")?;
         let relay_operator_pubkeys = match std::env::var("RELAY_OPERATOR_PUBKEYS") {
             Ok(raw) => {
                 let mut pubkeys = Vec::new();
@@ -1528,6 +1554,7 @@ impl Config {
             relay_owner_pubkey,
             relay_operator_api_origin,
             relay_operator_pubkeys,
+            olympus_operator_pubkeys,
             operator_listener_delivery_urls,
             storage_usage_delivery_url,
             allow_nip_oa_auth,
@@ -2748,6 +2775,28 @@ mod tests {
                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn olympus_operator_pubkeys_parse_and_fail_on_a_bad_entry() {
+        let _guards = env_guards();
+        std::env::remove_var("BUZZ_OLYMPUS_OPERATOR_PUBKEYS");
+        let unset = Config::from_env().expect("config").olympus_operator_pubkeys;
+        std::env::set_var(
+            "BUZZ_OLYMPUS_OPERATOR_PUBKEYS",
+            " AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA,,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ",
+        );
+        let listed = Config::from_env().expect("config").olympus_operator_pubkeys;
+        std::env::set_var("BUZZ_OLYMPUS_OPERATOR_PUBKEYS", "not-a-pubkey");
+        let bad = Config::from_env();
+        std::env::remove_var("BUZZ_OLYMPUS_OPERATOR_PUBKEYS");
+
+        assert!(unset.is_empty());
+        assert_eq!(listed, vec!["a".repeat(64)]);
+        assert!(matches!(
+            bad,
+            Err(ConfigError::InvalidValue(ref msg)) if msg.contains("BUZZ_OLYMPUS_OPERATOR_PUBKEYS")
+        ));
     }
 
     #[test]
