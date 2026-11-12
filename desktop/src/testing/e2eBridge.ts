@@ -100,6 +100,13 @@ import {
   isValidLinkPreviewSnapshotCanonicalUrl,
   parseLinkPreviewSnapshots,
 } from "@/shared/lib/linkPreviewSnapshot";
+import {
+  isMockOlympusFilter,
+  MOCK_OLYMPUS_KINDS,
+  resetMockOlympusEvents,
+  selectMockOlympusEvents,
+  storeMockOlympusEvent,
+} from "./e2eBridgeOlympus";
 
 type TestIdentity = {
   privateKey: string;
@@ -350,6 +357,8 @@ type E2eConfig = {
     teams?: MockTeamSeed[];
     /** Community team-catalog (kind:30178) heads returned by relay queries. */
     teamCatalogEvents?: RelayEvent[];
+    /** Olympus agent, workspace, and result events (kinds 30190, 30191, 44311). */
+    olympusEvents?: RelayEvent[];
     /** Outcomes for successive explicit team share publications. */
     teamSharePublicationStatuses?: Array<"published" | "queued">;
     relayAgents?: MockRelayAgentSeed[];
@@ -1372,6 +1381,8 @@ declare global {
      * catalog dialog sat open holding the superseded event id.
      */
     __BUZZ_E2E_REPLACE_MOCK_TEAM_CATALOG_HEAD__?: (event: RelayEvent) => void;
+    __BUZZ_E2E_EMIT_MOCK_OLYMPUS_EVENT__?: (event: RelayEvent) => void;
+    __BUZZ_E2E_OLYMPUS_REQUESTS__?: RelayEvent[];
     __BUZZ_E2E_PUSH_MOCK_FEED_ITEM__?: (item: RawFeedItem) => RawFeedItem;
     /** Replace an existing feed item by id (or push if not found) and fire the updated event. */
     __BUZZ_E2E_REPLACE_MOCK_FEED_ITEM__?: (
@@ -5637,6 +5648,7 @@ const P_GATED_KINDS = new Set([
   KIND_MEMBER_REMOVED_NOTIFICATION,
   KIND_GIFT_WRAP,
   KIND_DM_VISIBILITY,
+  ...MOCK_OLYMPUS_KINDS,
 ]);
 const P_GATED_REJECTION_MESSAGE =
   "restricted: p-gated kinds require #p tag matching your pubkey";
@@ -11090,6 +11102,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (isMockOlympusFilter(filter)) {
+      for (const event of selectMockOlympusEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_TEAM_CATALOG)) {
       const authors = filter.authors?.map((author) => author.toLowerCase());
       const teamDTags = filter["#d"];
@@ -11262,6 +11282,13 @@ function sendToMockSocket(args: {
     }
 
     if (event.kind === 30078) {
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (event.kind === 44310) {
+      storeMockOlympusEvent(event);
+      window.__BUZZ_E2E_OLYMPUS_REQUESTS__?.push(event);
       sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }
@@ -11535,6 +11562,7 @@ export function maybeInstallE2eTauriMocks() {
   resetMockPersonaCatalogEvents(config);
   resetMockObservedUnread();
   resetMockTeamCatalogEvents(config);
+  resetMockOlympusEvents(config?.mock?.olympusEvents);
   resetMockSaveSubscriptions(config);
   resetMockCanvasRevisions(config);
   resetMockPendingCommunityDeepLinks(config);
@@ -11647,6 +11675,11 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_EMIT_MOCK_HUDDLE_TTS_SPEAKER__ = (payload) =>
     emit("huddle-tts-speaker-level", payload);
   window.__BUZZ_E2E_SIGNED_EVENTS__ = [];
+  window.__BUZZ_E2E_OLYMPUS_REQUESTS__ = [];
+  window.__BUZZ_E2E_EMIT_MOCK_OLYMPUS_EVENT__ = (event) => {
+    storeMockOlympusEvent(event);
+    emitMockGlobalEvent(event);
+  };
   window.__BUZZ_E2E_WEBVIEW_ZOOM__ = 1;
   window.__BUZZ_E2E_EMIT_MEDIA_UPLOAD_PHASE__ = async (input) => {
     await emit("media-upload-phase", input);

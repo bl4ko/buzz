@@ -262,6 +262,8 @@ type MockBridgeOptions = {
   teams?: MockTeamSeed[];
   /** Community team-catalog (kind:30178) heads returned by relay queries. */
   teamCatalogEvents?: RelayEvent[];
+  /** Olympus agent, workspace, and result events (kinds 30190, 30191, 44311). */
+  olympusEvents?: RelayEvent[];
   /** Outcomes for successive explicit team share publications. */
   teamSharePublicationStatuses?: Array<"published" | "queued">;
   relayAgents?: MockRelayAgentSeed[];
