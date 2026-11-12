@@ -132,7 +132,7 @@ fn agent_error_from_json(error: &serde_json::Value) -> AcpError {
 
 fn build_initialize_params() -> serde_json::Value {
     serde_json::json!({
-        "protocolVersion": 2,
+        "protocolVersion": 1,
         "clientCapabilities": build_client_capabilities(),
         "clientInfo": {
             "name": "buzz-acp",
@@ -680,8 +680,9 @@ impl AcpClient {
     /// arm can choose [`ACP_STEER_METHOD`] for adapters that implement it.
     /// Parsed here rather than at each call site so no caller can forget it.
     pub async fn initialize(&mut self) -> Result<serde_json::Value, AcpError> {
-        // Requesting version 2 is an intentional temporary pin — we are squatting
-        // on ACP v2 ahead of the upstream ACP RFD. Revisit when that RFD merges.
+        // ACP v1: `clientInfo`, `session/prompt` ending in `stopReason`, and the
+        // permission reply are v1 shapes. An adapter that also serves draft v2
+        // validates a v2 request against a different schema and rejects this one.
         let params = build_initialize_params();
         let result = self.send_request("initialize", params).await?;
         self.steering_supported = result
@@ -2663,22 +2664,32 @@ mod tests {
         assert_eq!(msg["method"].as_str(), Some("session/cancel"));
     }
 
-    #[test]
-    fn initialize_request_format() {
-        let msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 0u64,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": 2,
-                "clientCapabilities": build_client_capabilities(),
-                "clientInfo": {
-                    "name": "buzz-acp",
-                    "version": "0.1.0"
-                }
-            }
-        });
-        assert_eq!(msg["params"]["protocolVersion"].as_u64(), Some(2));
+    #[tokio::test]
+    async fn initialize_sends_an_acp_v1_request_on_the_wire() {
+        let script = r#"
+            read -t 2 REQ
+            echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{},"_receivedRequest":'"$REQ"'}}'
+            sleep 1
+        "#;
+        let mut client = spawn_script(script).await;
+        let result = client
+            .initialize()
+            .await
+            .expect("initialize should succeed");
+        let msg = &result["_receivedRequest"];
+        assert_eq!(msg["method"].as_str(), Some("initialize"));
+        assert_eq!(
+            msg["params"]["protocolVersion"].as_u64(),
+            Some(1),
+            "the harness speaks ACP v1; a v2 request selects the draft v2 schema in claude-agent-acp"
+        );
+        for v2_only in ["info", "capabilities"] {
+            assert!(
+                msg["params"].get(v2_only).is_none(),
+                "{v2_only} is a draft v2 field"
+            );
+        }
+        assert!(msg["params"]["clientInfo"]["version"].is_string());
         assert_eq!(
             msg["params"]["clientInfo"]["name"].as_str(),
             Some("buzz-acp")

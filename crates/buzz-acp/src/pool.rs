@@ -313,6 +313,10 @@ pub struct OwnedAgent {
 /// rename, so the new name is a reliable capability gate.
 const CLAUDE_AGENT_ACP_NAME: &str = "@agentclientprotocol/claude-agent-acp";
 
+/// Name reported by `buzz-agent`. It takes the bare `systemPrompt` field on
+/// `session/new` while negotiating ACP v1, so the name is its capability gate.
+const BUZZ_AGENT_NAME: &str = "buzz-agent";
+
 fn has_system_prompt_support(
     protocol_version: u32,
     agent_name: &str,
@@ -320,7 +324,10 @@ fn has_system_prompt_support(
 ) -> bool {
     if agent_name == "goose" {
         goose_system_prompt_supported == Some(true)
-    } else if agent_name == BUZZ_PI_ACP_NAME || agent_name == CLAUDE_AGENT_ACP_NAME {
+    } else if agent_name == BUZZ_PI_ACP_NAME
+        || agent_name == CLAUDE_AGENT_ACP_NAME
+        || agent_name == BUZZ_AGENT_NAME
+    {
         true
     } else {
         protocol_version >= 2
@@ -337,7 +344,10 @@ fn session_new_system_prompt<'a>(
         None
     } else if agent_name == BUZZ_PI_ACP_NAME {
         prompt.map(SystemPromptTransport::PiMeta)
-    } else if protocol_version < 2 && agent_name != CLAUDE_AGENT_ACP_NAME {
+    } else if protocol_version < 2
+        && agent_name != CLAUDE_AGENT_ACP_NAME
+        && agent_name != BUZZ_AGENT_NAME
+    {
         None
     } else if agent_name == CLAUDE_AGENT_ACP_NAME {
         prompt.map(SystemPromptTransport::ClaudeMeta)

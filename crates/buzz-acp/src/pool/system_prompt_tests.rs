@@ -33,6 +33,17 @@ fn goose_uses_system_prompt_only_after_custom_method_succeeds() {
 }
 
 #[test]
+fn buzz_agent_keeps_the_system_prompt_field_on_acp_v1() {
+    // The harness requests ACP v1, so buzz-agent answers 1. Its system prompt
+    // must stay in the `session/new` field, not move into the user message.
+    assert!(has_system_prompt_support(1, BUZZ_AGENT_NAME, None));
+    assert_eq!(
+        session_new_system_prompt(false, 1, BUZZ_AGENT_NAME, Some("instructions")),
+        Some(SystemPromptTransport::Field("instructions"))
+    );
+}
+
+#[test]
 fn claude_agent_acp_has_system_prompt_support_regardless_of_protocol_version() {
     // claude-agent-acp declares protocolVersion:1 but supports _meta.systemPrompt;
     // has_system_prompt_support must return true so user-message framing is suppressed.
