@@ -5,12 +5,26 @@ import {
   type OlympusAgent,
   type OlympusWorkspaceGroup,
 } from "@/features/agents/lib/olympusAgents";
-import { useOlympusAgents } from "@/features/agents/useOlympusAgents";
+import {
+  olympusRequestKey,
+  useOlympusRequestState,
+} from "@/features/agents/lib/olympusChangeRequests";
+import {
+  type OlympusAgentsState,
+  useOlympusAgents,
+} from "@/features/agents/useOlympusAgents";
+import { Pause, Play, Plus } from "lucide-react";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 import { SectionHeader } from "@/shared/ui/PageHeader";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { OlympusAgentDetailsDialog } from "./OlympusAgentDetailsDialog";
-import { formatOlympusTime, OlympusPhaseBadge } from "./OlympusAgentParts";
+import {
+  formatOlympusTime,
+  OlympusPhaseBadge,
+  OlympusRequestStatus,
+} from "./OlympusAgentParts";
+import { OlympusNewAgentDialog } from "./OlympusNewAgentDialog";
 
 type SelectedAgent = { author: string; d: string };
 
@@ -62,6 +76,7 @@ export function OlympusAgentsSection({
         <OlympusWorkspaceCard
           group={group}
           key={group.key}
+          submitChange={olympus.submitChange}
           onSelectAgent={(agent) =>
             setSelected({ author: agent.author, d: agent.d })
           }
@@ -71,7 +86,6 @@ export function OlympusAgentsSection({
       {selectedAgent ? (
         <OlympusAgentDetailsDialog
           agent={selectedAgent}
-          me={olympus.me}
           onOpenChange={(open) => {
             if (!open) setSelected(null);
           }}
@@ -90,12 +104,21 @@ export function OlympusAgentsSection({
 function OlympusWorkspaceCard({
   group,
   onSelectAgent,
+  submitChange,
 }: {
   group: OlympusWorkspaceGroup;
   onSelectAgent: (agent: OlympusAgent) => void;
+  submitChange: OlympusAgentsState["submitChange"];
 }) {
   const workspace = group.workspace;
   const headingId = React.useId();
+  const [isCreating, setIsCreating] = React.useState(false);
+  const workspaceKey = olympusRequestKey(group.name, null);
+  const createKey = `${workspaceKey}#create`;
+  const workspaceRequest = useOlympusRequestState(workspaceKey);
+  const createRequest = useOlympusRequestState(createKey);
+  const editable = workspace !== null && workspace.managedBy !== "gitops";
+  const target = { operator: group.author, workspace: group.name };
   return (
     <section
       aria-labelledby={headingId}
@@ -121,7 +144,62 @@ function OlympusWorkspaceCard({
             <Badge variant="outline">GitOps</Badge>
           ) : null}
         </div>
+        {editable ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              aria-label={`${workspace.suspend ? "Resume" : "Suspend"} workspace ${group.name}`}
+              disabled={workspaceRequest?.phase === "pending"}
+              onClick={() => {
+                void submitChange(
+                  workspaceKey,
+                  { ...target, agent: null },
+                  { action: workspace.suspend ? "resume" : "suspend" },
+                );
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {workspace.suspend ? <Play /> : <Pause />}
+              {workspace.suspend ? "Resume workspace" : "Suspend workspace"}
+            </Button>
+            <Button
+              aria-label={`New agent in ${group.name}`}
+              disabled={createRequest?.phase === "pending"}
+              onClick={() => setIsCreating(true)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Plus />
+              New agent
+            </Button>
+          </div>
+        ) : null}
       </div>
+      {workspaceRequest || createRequest ? (
+        <div className="space-y-2 border-b border-border/60 px-4 py-3">
+          <OlympusRequestStatus
+            state={workspaceRequest}
+            testId={`olympus-workspace-request-${group.name}`}
+          />
+          <OlympusRequestStatus
+            state={createRequest}
+            testId={`olympus-create-request-${group.name}`}
+          />
+        </div>
+      ) : null}
+      {isCreating && workspace ? (
+        <OlympusNewAgentDialog
+          existingNames={group.agents.map((agent) => agent.name)}
+          onCreate={(name, change) => {
+            setIsCreating(false);
+            void submitChange(createKey, { ...target, agent: name }, change);
+          }}
+          onOpenChange={setIsCreating}
+          workspace={workspace}
+        />
+      ) : null}
       {group.agents.length === 0 ? (
         <p className="px-4 py-3 text-sm text-muted-foreground">
           No agents in this workspace.

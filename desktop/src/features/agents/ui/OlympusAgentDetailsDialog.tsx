@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import { MessageSquare, UserRound } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -6,6 +6,11 @@ import type {
   OlympusAgent,
   OlympusWorkspace,
 } from "@/features/agents/lib/olympusAgents";
+import {
+  type OlympusChange,
+  olympusRequestKey,
+  useOlympusRequestState,
+} from "@/features/agents/lib/olympusChangeRequests";
 import type { OlympusAgentsState } from "@/features/agents/useOlympusAgents";
 import { useOpenDmMutation } from "@/features/channels/hooks";
 import { Button } from "@/shared/ui/button";
@@ -19,19 +24,27 @@ import {
 import { PubKey } from "@/shared/ui/PubKey";
 import { CopyButton } from "./CopyButton";
 import {
+  OlympusAgentActions,
+  OlympusAgentEditForm,
+  OlympusMcpControls,
+  OlympusMemoryControls,
+} from "./OlympusAgentChangeControls";
+import {
   formatOlympusTime,
   OlympusDetailSection,
   OlympusEmptyValue,
   OlympusPhaseBadge,
+  OlympusRequestStatus,
 } from "./OlympusAgentParts";
 
 export function OlympusAgentDetailsDialog({
   agent,
   onOpenChange,
   onOpenProfile,
+  submitChange,
+  workspace,
 }: {
   agent: OlympusAgent;
-  me: string;
   onOpenChange: (open: boolean) => void;
   onOpenProfile: (pubkey: string) => void;
   submitChange: OlympusAgentsState["submitChange"];
@@ -40,6 +53,18 @@ export function OlympusAgentDetailsDialog({
   const openDmMutation = useOpenDmMutation();
   const { goChannel } = useAppNavigation();
   const publicKey = agent.publicKey;
+  const requestKey = olympusRequestKey(agent.workspace, agent.name);
+  const request = useOlympusRequestState(requestKey);
+  const pending = request?.phase === "pending";
+  const editable = agent.managedBy !== "gitops";
+  const [isEditing, setIsEditing] = React.useState(false);
+  const send = (change: OlympusChange) => {
+    void submitChange(
+      requestKey,
+      { operator: agent.author, workspace: agent.workspace, agent: agent.name },
+      change,
+    );
+  };
 
   async function openDm() {
     if (!publicKey) return;
@@ -92,7 +117,33 @@ export function OlympusAgentDetailsDialog({
                 <UserRound />
                 Profile
               </Button>
+              {editable ? (
+                <OlympusAgentActions
+                  agent={agent}
+                  disabled={pending}
+                  isEditing={isEditing}
+                  onEdit={() => setIsEditing((value) => !value)}
+                  send={send}
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  Managed by GitOps. Change it in the repository.
+                </span>
+              )}
             </div>
+            <OlympusRequestStatus
+              state={request}
+              testId="olympus-agent-request-status"
+            />
+            {editable && isEditing ? (
+              <OlympusAgentEditForm
+                agent={agent}
+                disabled={pending}
+                onCancel={() => setIsEditing(false)}
+                send={send}
+                workspace={workspace}
+              />
+            ) : null}
             {openDmMutation.error instanceof Error ? (
               <p className="text-xs text-destructive">
                 {openDmMutation.error.message}
@@ -100,7 +151,30 @@ export function OlympusAgentDetailsDialog({
             ) : null}
 
             <OlympusAgentConfiguration agent={agent} />
-            <OlympusAgentLists agent={agent} />
+            <OlympusAgentLists
+              agent={agent}
+              controls={
+                editable
+                  ? {
+                      mcp: (
+                        <OlympusMcpControls
+                          agent={agent}
+                          disabled={pending}
+                          send={send}
+                          workspace={workspace}
+                        />
+                      ),
+                      memory: (
+                        <OlympusMemoryControls
+                          agent={agent}
+                          disabled={pending}
+                          send={send}
+                        />
+                      ),
+                    }
+                  : null
+              }
+            />
             <OlympusAgentSchedules agent={agent} />
             <OlympusAgentConditions agent={agent} />
           </div>
@@ -206,26 +280,40 @@ function ItemList({ empty, items }: { empty: string; items: string[] }) {
   );
 }
 
-function OlympusAgentLists({ agent }: { agent: OlympusAgent }) {
+function OlympusAgentLists({
+  agent,
+  controls,
+}: {
+  agent: OlympusAgent;
+  controls: { mcp: React.ReactNode; memory: React.ReactNode } | null;
+}) {
   const { spec } = agent;
   return (
     <>
       <OlympusDetailSection title="MCP servers">
-        <ItemList
-          empty="No MCP servers."
-          items={spec.mcpServers.map((server) =>
-            server.tools
-              ? `${server.name}: ${server.tools.join(", ")}`
-              : `${server.name}: all tools`,
-          )}
-        />
+        {controls ? (
+          controls.mcp
+        ) : (
+          <ItemList
+            empty="No MCP servers."
+            items={spec.mcpServers.map((server) =>
+              server.tools
+                ? `${server.name}: ${server.tools.join(", ")}`
+                : `${server.name}: all tools`,
+            )}
+          />
+        )}
       </OlympusDetailSection>
       <OlympusDetailSection title="Memory">
-        <OlympusEmptyValue>
-          {spec.memory
-            ? `Memory bank: ${spec.memory.bank}.`
-            : "Memory is off for this agent."}
-        </OlympusEmptyValue>
+        {controls ? (
+          controls.memory
+        ) : (
+          <OlympusEmptyValue>
+            {spec.memory
+              ? `Memory bank: ${spec.memory.bank}.`
+              : "Memory is off for this agent."}
+          </OlympusEmptyValue>
+        )}
       </OlympusDetailSection>
       <div className="grid gap-6 sm:grid-cols-2">
         <OlympusDetailSection title="Services">

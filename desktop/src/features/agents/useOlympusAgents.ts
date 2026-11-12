@@ -20,6 +20,7 @@ import type { RelayEvent } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 const OLYMPUS_HISTORY_LIMIT = 1_000;
+const OLYMPUS_LIVE_OVERLAP_SECONDS = 60;
 
 export function olympusAgentsQueryKey(relayUrl: string, pubkey: string) {
   return ["olympus-agents", relayUrl, pubkey] as const;
@@ -27,7 +28,8 @@ export function olympusAgentsQueryKey(relayUrl: string, pubkey: string) {
 
 const relayOlympusChangeTransport: OlympusChangeTransport = {
   sign: (template) => signRelayEvent(template),
-  subscribe: (filter, onEvent) => relayClient.subscribeLive(filter, onEvent),
+  subscribe: (filter, onEvent) =>
+    relayClient.subscribeInteractive(filter, onEvent),
   publish: (event) =>
     relayClient.publishEvent(
       event,
@@ -53,7 +55,12 @@ function useOlympusLiveEvents(
     };
     void relayClient
       .subscribeLive(
-        { kinds: [...OLYMPUS_STATE_KINDS], "#p": [pubkey], limit: 0 },
+        {
+          kinds: [...OLYMPUS_STATE_KINDS],
+          "#p": [pubkey],
+          limit: OLYMPUS_HISTORY_LIMIT,
+          since: Math.floor(Date.now() / 1_000) - OLYMPUS_LIVE_OVERLAP_SECONDS,
+        },
         ingest,
       )
       .then((unsubscribe) => {
