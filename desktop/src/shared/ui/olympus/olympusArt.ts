@@ -6,11 +6,6 @@ export const OLYMPUS_SKY_VIEW_BOX = "0 0 1440 900";
 
 export const OLYMPUS_RING = { cx: 512, cy: 468, r: 344 } as const;
 
-export const OLYMPUS_BOLT =
-  "706,56 846,56 772,256 862,256 572,628 654,346 566,346";
-export const OLYMPUS_BOLT_FOLD =
-  "770,56 846,56 772,256 862,256 572,628 704,304";
-
 export const OLYMPUS_MOUNTAIN_LIT =
   "86,940 270,640 306,622 512,236 544,420 500,590 560,940";
 export const OLYMPUS_MOUNTAIN_SHADE =
@@ -379,8 +374,6 @@ export const OLYMPUS_GRADIENTS = {
   shade: ["0 236 0 940", "0 #34459A", ".5 #1C2760", "1 #101742"],
   snow: ["0 236 0 460", "0 #FFFFFF", "1 #F3E8CC"],
   snowsh: ["0 236 0 460", "0 #D3DBFA", "1 #8A9CE0"],
-  boltl: ["0 56 0 628", "0 #FFFDF0", ".6 #FFF0B8", "1 #FFD866"],
-  boltr: ["0 56 0 628", "0 #FFDC5C", ".5 #F6B21E", "1 #DC7C0C"],
   cloudf: ["0 700 0 790", "0 #FFFCF2", ".6 #F4E9CE", "1 #C9CFF0"],
   cloudb: ["0 640 0 790", "0 #8E9DE6", "1 #4C5CB4"],
 };

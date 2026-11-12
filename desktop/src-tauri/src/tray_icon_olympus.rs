@@ -7,18 +7,7 @@ pub(crate) fn icon() -> Image<'static> {
     const LEFT: f32 = 92.0;
     const TOP: f32 = 31.0;
     const CENTER: (f32, f32) = (512.0, 468.0);
-    const BOLT_GAP: f32 = 30.0;
     const MOUNTAIN: [(f32, f32); 3] = [(130.0, 940.0), (512.0, 236.0), (894.0, 940.0)];
-    const BOLT: [(f32, f32); 7] = [
-        (706.0, 56.0),
-        (846.0, 56.0),
-        (772.0, 256.0),
-        (862.0, 256.0),
-        (572.0, 628.0),
-        (654.0, 346.0),
-        (566.0, 346.0),
-    ];
-
     fn edges(polygon: &[(f32, f32)]) -> impl Iterator<Item = ((f32, f32), (f32, f32))> + '_ {
         polygon
             .iter()
@@ -36,24 +25,9 @@ pub(crate) fn icon() -> Image<'static> {
         })
     }
 
-    fn distance_to_edges(polygon: &[(f32, f32)], x: f32, y: f32) -> f32 {
-        edges(polygon)
-            .map(|((x1, y1), (x2, y2))| {
-                let (dx, dy) = (x2 - x1, y2 - y1);
-                let t = (((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
-                (x - x1 - t * dx).hypot(y - y1 - t * dy)
-            })
-            .fold(f32::INFINITY, f32::min)
-    }
-
     fn mark_contains(x: f32, y: f32) -> bool {
-        if polygon_contains(&BOLT, x, y) {
-            return true;
-        }
         let radius = (x - CENTER.0).hypot(y - CENTER.1);
-        let ring = (310.0..=378.0).contains(&radius);
-        let mountain = radius <= 284.0 && polygon_contains(&MOUNTAIN, x, y);
-        (ring || mountain) && distance_to_edges(&BOLT, x, y) > BOLT_GAP
+        (310.0..=378.0).contains(&radius) || radius <= 284.0 && polygon_contains(&MOUNTAIN, x, y)
     }
 
     let mut rgba = vec![0; (SIZE * SIZE * 4) as usize];
@@ -98,7 +72,6 @@ mod tests {
         assert_eq!(alpha(3, 22), u8::MAX);
         assert_eq!(alpha(10, 20), 0);
         assert_eq!(alpha(20, 29), u8::MAX);
-        assert_eq!(alpha(27, 20), 0);
-        assert_eq!(alpha(34, 6), u8::MAX);
+        assert_eq!(alpha(34, 6), 0);
     }
 }
