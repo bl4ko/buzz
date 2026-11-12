@@ -19,6 +19,7 @@
 //! past every earlier list's. Concurrent CLI processes therefore serialize in
 //! the database; the CLI only pushes the committed list to Redis.
 
+mod channel_delete;
 mod communities;
 mod deletions;
 mod nip_fi;
@@ -114,6 +115,17 @@ enum Command {
             help = "Set the owner of an agent that has none; never moves an owner"
         )]
         first: bool,
+    },
+    #[command(
+        about = "Delete a channel as kind:9008 does, signed by the relay; refuses a DM and a git repository channel"
+    )]
+    DeleteChannel {
+        #[arg(long, help = "Channel UUID")]
+        channel: uuid::Uuid,
+        #[arg(long, help = "Identity of the operator, stored in the audit log")]
+        operator_id: String,
+        #[arg(long, help = "Reason for the deletion, stored in the audit log")]
+        reason: String,
     },
     /// Generate a new Nostr keypair (for bootstrapping).
     GenerateKey,
@@ -235,6 +247,11 @@ async fn run(cli: Cli) -> Result<i32> {
             reason,
             first,
         } => cmd_set_agent_owner(agent, owner, operator_id, reason, first).await,
+        Command::DeleteChannel {
+            channel,
+            operator_id,
+            reason,
+        } => cmd_delete_channel(channel, operator_id, reason).await,
         Command::ProductFeedback {
             command: ProductFeedbackCommand::List { limit },
         } => cmd_list_product_feedback(limit).await,
@@ -594,6 +611,29 @@ async fn cmd_republish_members() -> Result<i32> {
     }
     fan_out_membership_list(&pubsub, &tenant, write.snapshot).await;
     Ok(0)
+}
+
+async fn cmd_delete_channel(
+    channel: uuid::Uuid,
+    operator_id: String,
+    reason: String,
+) -> Result<i32> {
+    if operator_id.trim().is_empty() || reason.trim().is_empty() {
+        eprintln!("error: --operator-id and --reason must not be empty");
+        return Ok(1);
+    }
+    let (db, pubsub, relay_keypair) = connect_member_services().await?;
+    let tenant = resolve_admin_tenant(&db).await?;
+    channel_delete::run(
+        &db,
+        &pubsub,
+        &relay_keypair,
+        &tenant,
+        channel,
+        operator_id,
+        reason,
+    )
+    .await
 }
 
 async fn cmd_set_agent_owner(
@@ -1138,6 +1178,60 @@ mod storage_snapshot_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_delete_channel() {
+        let id = "a0438185-0498-4cd9-8082-7248d246cb0f";
+        let cli = Cli::try_parse_from([
+            "buzz-admin",
+            "delete-channel",
+            "--channel",
+            id,
+            "--operator-id",
+            "op",
+            "--reason",
+            "migrated",
+        ])
+        .expect("parse delete-channel");
+        assert!(matches!(
+            cli.command,
+            Command::DeleteChannel { channel, ref operator_id, ref reason }
+                if channel.to_string() == id && operator_id == "op" && reason == "migrated"
+        ));
+        for args in [
+            [
+                "buzz-admin",
+                "delete-channel",
+                "--channel",
+                "argus",
+                "--operator-id",
+                "op",
+                "--reason",
+                "r",
+            ]
+            .as_slice(),
+            [
+                "buzz-admin",
+                "delete-channel",
+                "--channel",
+                id,
+                "--reason",
+                "r",
+            ]
+            .as_slice(),
+            [
+                "buzz-admin",
+                "delete-channel",
+                "--channel",
+                id,
+                "--operator-id",
+                "op",
+            ]
+            .as_slice(),
+        ] {
+            assert!(Cli::try_parse_from(args).is_err(), "{args:?}");
+        }
+    }
 
     #[test]
     fn parses_set_agent_owner() {
