@@ -6,6 +6,7 @@ mod git_runtime_tests;
 
 mod acp;
 mod config;
+mod cursor;
 mod edit_routing;
 mod engram_fetch;
 mod filter;
@@ -3011,14 +3012,36 @@ async fn run_harness(
         tracing::warn!("no channel subscriptions resolved — agent will sit idle");
     }
     let mut subscribed_channel_ids = HashSet::with_capacity(channel_filters.len());
+    let mut cursor = cursor::Cursor::load(
+        config
+            .cursor_file
+            .clone()
+            .or_else(|| cursor::default_path(&config.relay_url, &pubkey_hex)),
+        startup_watermark.saturating_sub(relay::SINCE_SKEW_SECS),
+        config.missed_max_age_secs,
+    );
+    let mut resumed = 0usize;
     for (channel_id, filter) in &channel_filters {
-        if let Err(e) = relay.subscribe_channel(*channel_id, filter.clone()).await {
+        let replay_since = cursor.resume(*channel_id, startup_watermark);
+        if let Err(e) = relay
+            .subscribe_channel_from(*channel_id, filter.clone(), replay_since)
+            .await
+        {
             tracing::warn!("failed to subscribe to channel {channel_id}: {e}");
         } else {
             subscribed_channel_ids.insert(*channel_id);
-            tracing::info!("subscribed to channel {channel_id}");
+            resumed += usize::from(replay_since.is_some());
+            tracing::info!(?replay_since, "subscribed to channel {channel_id}");
         }
     }
+    if resumed > 0 {
+        tracing::info!(
+            channels = resumed,
+            "replaying missed messages from the cursor"
+        );
+        cursor.collect_backlog();
+    }
+    cursor.flush();
 
     if let Some((observer, publisher, keys, agent_pubkey, owner_pubkey, owner)) =
         relay_observer_publisher.take()
@@ -3333,6 +3356,7 @@ async fn run_harness(
 
         // Borrow result_rx and join_set simultaneously via split-borrow helper.
         pool.retain_held_scopes(|scope| queue.has_pending_scope(scope));
+        cursor.reconcile(&queue);
         let hold_deadline = pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT);
         let pool_event: Option<PoolEvent> = {
             let (result_rx, join_set) = pool.rx_and_join_set();
@@ -3436,7 +3460,7 @@ async fn run_harness(
                     None
                 }
                 // Remaining branches don't touch pool — evaluated when pool is idle.
-                buzz_event = relay.next_event() => {
+                buzz_event = cursor.next_event(async || relay.next_event().await) => {
                     let _ = result_rx; // end split borrow before relay handling
                     match buzz_event {
                         Some(buzz_event) => {
@@ -3507,12 +3531,14 @@ async fn run_harness(
                                             tracing::warn!("failed to subscribe to new channel {ch}: {e}");
                                         } else {
                                             subscribed_channel_ids.insert(ch);
+                                            cursor.track(ch, ts);
                                         }
                                     } else {
                                         tracing::debug!(channel_id = %ch, "membership notification: no matching rules — skipping");
                                     }
                                 } else {
                                     subscribed_channel_ids.remove(&ch);
+                                    cursor.forget(ch);
                                     tracing::info!(channel_id = %ch, "membership notification: unsubscribing from channel");
                                     if let Err(e) = relay.unsubscribe_channel(ch).await {
                                         tracing::warn!("failed to unsubscribe from channel {ch}: {e}");
@@ -3562,6 +3588,15 @@ async fn run_harness(
 
                             if config.ignore_self && buzz_event.event.pubkey.to_hex() == pubkey_hex {
                                 tracing::debug!(channel_id = %buzz_event.channel_id, "dropping self-authored event");
+                                continue;
+                            }
+
+                            if !cursor.observe(&buzz_event) {
+                                tracing::debug!(channel_id = %buzz_event.channel_id, "dropping event handled before the restart");
+                                continue;
+                            }
+                            if is_stale_control_command(&cursor, &buzz_event.event, kind_u32, &pubkey_hex) {
+                                tracing::info!(channel_id = %buzz_event.channel_id, "dropping control command from before startup");
                                 continue;
                             }
 
@@ -3731,6 +3766,10 @@ async fn run_harness(
                                 tracing::debug!("authorized event matched no rule — dropping");
                                 continue;
                             };
+                            if !cursor.admit_missed(&ingress.buzz_event) {
+                                tracing::debug!(channel_id = %ingress.buzz_event.channel_id, "dropping missed event over the age or count limit");
+                                continue;
+                            }
                             let ingress = ingress.resolve_edit_routing(&ctx.rest_client).await;
                             // Derive the session scope once, at admission, from
                             // the operator policy, DM status, and NIP-10 thread
@@ -3755,6 +3794,7 @@ async fn run_harness(
                                 "admitted event — resolved session scope"
                             );
                             let queued = ingress.push(&mut queue, session_scope, channel_is_dm);
+                            cursor.admit(&queued.scope, &queued.steer_event.event, queued.accepted);
                             // 👀 — immediate "seen" reaction, only if the event
                             // was actually queued (not dropped by DedupMode::Drop).
                             // Fire-and-forget: on rare fast-failure paths the
@@ -4018,6 +4058,7 @@ async fn run_harness(
                 {
                     break;
                 }
+                cursor.reconcile(&queue);
                 for (scope, thread_tags) in dispatch_pending(
                     &mut pool,
                     &mut queue,
@@ -4047,6 +4088,7 @@ async fn run_harness(
                     tracing::error!("all agents dead — exiting");
                     break;
                 }
+                cursor.reconcile(&queue);
                 for (scope, thread_tags) in dispatch_pending(
                     &mut pool,
                     &mut queue,
@@ -4288,6 +4330,8 @@ async fn run_harness(
     // signal handlers (result channel closed, LoopAction::Exit) cancel the wake
     // just as promptly. Timeout is a backstop for a slot stuck outside the
     // select (e.g. in spawn); only then do we fall back to aborting.
+    cursor.reconcile(&queue);
+    cursor.flush();
     let _ = shutdown_tx.send(());
     let wake_drain = tokio::time::timeout(Duration::from_secs(30), async {
         while wake_tasks.join_next().await.is_some() {}
@@ -4325,6 +4369,7 @@ async fn run_harness(
                 }
                 maybe_result = rx_ref.recv() => {
                     if let Some(mut pr) = maybe_result {
+                        complete_finished_turn(&mut queue, &pr);
                         let idx = pr.agent.index;
                         pr.agent.acp.shutdown().await;
                         tracing::debug!(agent = idx, "reaped checked-out agent on shutdown");
@@ -4342,10 +4387,13 @@ async fn run_harness(
     // Drain any remaining results that arrived after join_set drained but
     // before tasks were aborted.
     while let Ok(mut pr) = pool.result_rx_try_recv() {
+        complete_finished_turn(&mut queue, &pr);
         let idx = pr.agent.index;
         pr.agent.acp.shutdown().await;
         tracing::debug!(agent = idx, "reaped late-arriving agent on shutdown");
     }
+    cursor.reconcile(&queue);
+    cursor.flush();
     // Explicitly shut down idle agents still sitting in their slots.
     for slot in pool.agents_mut().iter_mut() {
         if let Some(agent) = slot.take() {
@@ -4425,6 +4473,30 @@ fn is_owner_control_command(
     kind_u32 == KIND_STREAM_MESSAGE
         && event.content.trim() == command
         && event_mentions_agent(event, agent_pubkey_hex)
+}
+
+/// A turn that ends normally while the harness shuts down is complete. Release
+/// its scope so the cursor records its events as handled, not as interrupted.
+fn complete_finished_turn(queue: &mut EventQueue, result: &PromptResult) {
+    if let (PromptSource::Channel(scope), PromptOutcome::Ok(_)) = (&result.source, &result.outcome)
+    {
+        queue.mark_complete(scope.clone());
+    }
+}
+
+/// Whether `event` is a `!shutdown`, `!cancel`, or `!rotate` for this agent
+/// that a cursor replay delivered from before startup. Such a command already
+/// took effect, or its turn is gone, so it must not run again.
+fn is_stale_control_command(
+    cursor: &cursor::Cursor,
+    event: &nostr::Event,
+    kind_u32: u32,
+    agent_pubkey_hex: &str,
+) -> bool {
+    cursor.is_missed(event)
+        && ["!shutdown", "!cancel", "!rotate"]
+            .iter()
+            .any(|command| is_owner_control_command(event, kind_u32, command, agent_pubkey_hex))
 }
 
 // ── signal_in_flight_task ─────────────────────────────────────────────────────
@@ -6571,6 +6643,44 @@ mod owner_control_command_tests {
             .tags(tags)
             .sign_with_keys(&keys)
             .unwrap()
+    }
+
+    #[test]
+    fn control_command_from_before_startup_is_stale_only_under_a_cursor() {
+        let agent = "ab".repeat(32);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = Some(dir.path().join("cursor.json"));
+        let now = nostr::Timestamp::now().as_secs();
+        let replaying = cursor::Cursor::load(path, now + 60, 86_400);
+        let live = cursor::Cursor::load(Some(dir.path().join("live.json")), now - 60, 86_400);
+        let disabled = cursor::Cursor::load(None, now + 60, 86_400);
+
+        for command in ["!shutdown", "!cancel", "!rotate"] {
+            let event = make_event(KIND_STREAM_MESSAGE, command, Some(&agent));
+            assert!(
+                is_stale_control_command(&replaying, &event, KIND_STREAM_MESSAGE, &agent),
+                "{command} replayed after a restart must not run again"
+            );
+            assert!(!is_stale_control_command(
+                &live,
+                &event,
+                KIND_STREAM_MESSAGE,
+                &agent
+            ));
+            assert!(!is_stale_control_command(
+                &disabled,
+                &event,
+                KIND_STREAM_MESSAGE,
+                &agent
+            ));
+        }
+        let message = make_event(KIND_STREAM_MESSAGE, "hello", Some(&agent));
+        assert!(!is_stale_control_command(
+            &replaying,
+            &message,
+            KIND_STREAM_MESSAGE,
+            &agent
+        ));
     }
 
     #[test]
@@ -10146,6 +10256,8 @@ mod build_mcp_servers_tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            cursor_file: None,
+            missed_max_age_secs: 0,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
@@ -11283,6 +11395,8 @@ mod error_outcome_emission_tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            cursor_file: None,
+            missed_max_age_secs: 0,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
@@ -11327,6 +11441,138 @@ mod error_outcome_emission_tests {
             // non-systemPrompt path, the simplest valid value.
             protocol_version: 1,
         }
+    }
+
+    /// Run one channel turn through the production result handler and the
+    /// cursor reconcile that follows it in the main loop, then restart.
+    /// Returns whether the restarted harness would handle the event again.
+    async fn replayed_after_turn(outcome: PromptOutcome, returns_batch: bool) -> bool {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = Some(dir.path().join("cursor.json"));
+        let channel_id = Uuid::new_v4();
+        let scope = scope::SessionScope::Conversation { channel_id };
+        let now = nostr::Timestamp::now().as_secs();
+        let event = EventBuilder::new(Kind::Custom(9), "missed?")
+            .sign_with_keys(&Keys::generate())
+            .expect("sign event");
+        let buzz_event = relay::BuzzEvent {
+            connection_generation: 0,
+            channel_id,
+            event: event.clone(),
+        };
+
+        let mut cursor = cursor::Cursor::load(path.clone(), now - 60, 86_400);
+        cursor.resume(channel_id, now - 60);
+        let mut queue = EventQueue::new(config::DedupMode::Queue);
+        assert!(cursor.observe(&buzz_event));
+        let queued = queue.push(QueuedEvent {
+            edit: None,
+            channel_id,
+            scope: scope.clone(),
+            event,
+            received_at: std::time::Instant::now(),
+            prompt_tag: "test".into(),
+        });
+        cursor.admit(&scope, &buzz_event.event, queued);
+        let batch = queue.flush_next().expect("batch in flight");
+        cursor.reconcile(&queue);
+
+        let mut agent = dummy_agent(0).await;
+        let mut pool = AgentPool::from_slots(vec![None]);
+        bind_agent_scope_owner(&mut pool, &mut agent, scope.clone());
+        let task_id = pool.join_set.spawn(async {}).id();
+        pool.task_map_mut().insert(
+            task_id,
+            crate::pool::TaskMeta {
+                agent_index: 0,
+                channel_id: Some(channel_id),
+                scope: Some(scope.clone()),
+                turn_id: "cursor".into(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let (respawn_tx, _respawn_rx) = mpsc::channel(8);
+        handle_prompt_result(
+            &mut pool,
+            &mut queue,
+            &test_config(),
+            PromptResult {
+                agent,
+                source: PromptSource::Channel(scope),
+                turn_id: "cursor".into(),
+                outcome,
+                batch: returns_batch.then_some(batch),
+            },
+            &mut false,
+            &HashSet::new(),
+            &mut [SlotCircuit {
+                crash_times: Vec::new(),
+                open_until: None,
+                respawn_in_flight: false,
+            }],
+            &respawn_tx,
+            &mut tokio::task::JoinSet::new(),
+            None,
+            None,
+            &mut tokio::time::Instant::now(),
+        );
+        cursor.reconcile(&queue);
+        cursor.flush();
+
+        let mut restarted = cursor::Cursor::load(path, now + 60, 86_400);
+        assert!(restarted.resume(channel_id, now + 60).is_some());
+        restarted.observe(&buzz_event)
+    }
+
+    #[tokio::test]
+    async fn completed_turn_is_not_replayed_after_a_restart() {
+        let ok = PromptOutcome::Ok(crate::acp::StopReason::EndTurn);
+        assert!(!replayed_after_turn(ok, false).await);
+    }
+
+    #[tokio::test]
+    async fn failed_turn_waiting_for_a_retry_is_replayed_after_a_restart() {
+        let failed = PromptOutcome::Error(AcpError::Protocol("boom".into()));
+        assert!(replayed_after_turn(failed, true).await);
+    }
+
+    #[tokio::test]
+    async fn turn_that_finishes_during_shutdown_is_not_replayed() {
+        let channel_id = Uuid::new_v4();
+        let scope = scope::SessionScope::Conversation { channel_id };
+        let mut queue = EventQueue::new(config::DedupMode::Queue);
+        queue.push(QueuedEvent {
+            edit: None,
+            channel_id,
+            scope: scope.clone(),
+            event: EventBuilder::new(Kind::Custom(9), "late")
+                .sign_with_keys(&Keys::generate())
+                .expect("sign event"),
+            received_at: std::time::Instant::now(),
+            prompt_tag: "test".into(),
+        });
+        queue.flush_next().expect("batch in flight");
+        let result = |outcome| async {
+            PromptResult {
+                agent: dummy_agent(0).await,
+                source: PromptSource::Channel(scope.clone()),
+                turn_id: "shutdown".into(),
+                outcome,
+                batch: None,
+            }
+        };
+
+        complete_finished_turn(&mut queue, &result(PromptOutcome::Cancelled).await);
+        assert!(
+            queue.is_scope_in_flight(&scope),
+            "a cancelled turn stays open for replay"
+        );
+        let ok = PromptOutcome::Ok(crate::acp::StopReason::EndTurn);
+        complete_finished_turn(&mut queue, &result(ok).await);
+        assert!(!queue.is_scope_in_flight(&scope));
     }
 
     fn bind_agent_scope_owner(

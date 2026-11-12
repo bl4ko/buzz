@@ -56,7 +56,7 @@ const WS_SEND_TIMEOUT_SECS: u64 = 10;
 /// drop after a long healthy run retries at the short end of the ladder again.
 const STABLE_CONNECTION_SECS: u64 = 60;
 /// Seconds subtracted from `since` on resubscribe to tolerate clock skew.
-const SINCE_SKEW_SECS: u64 = 5;
+pub(crate) const SINCE_SKEW_SECS: u64 = 5;
 /// WebSocket close code 1001 (Going Away): the peer is shutting down.
 const CLOSE_CODE_GOING_AWAY: u16 = 1001;
 /// WebSocket close code 1012 (Service Restart): the relay pod is rolling.

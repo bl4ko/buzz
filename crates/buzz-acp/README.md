@@ -130,6 +130,8 @@ All configuration is via environment variables (or CLI flags — every env var h
 |------|---------|---------|-------------|
 | `--agents` | `BUZZ_ACP_AGENTS` | `1` | Number of agent subprocesses (1–32). |
 | `--lazy-pool` | `BUZZ_ACP_LAZY_POOL` | `false` | Connect, subscribe, and queue accepted work before starting ACP/LLM subprocesses. The first accepted event wakes one pool initialization task; failures retry with bounded exponential backoff while work remains. |
+| `--cursor-file` | `BUZZ_ACP_CURSOR_FILE` | `~/.buzz-acp/cursor-<hash>.json` | File with the last handled message of each channel. After a restart the harness continues from it and answers the messages it missed (at most 20 for each channel, oldest first). Without a writable file the harness starts from the startup time, as before. |
+| `--missed-max-age` | `BUZZ_ACP_MISSED_MAX_AGE` | `86400` | Oldest missed message, in seconds before startup, that a restarted harness still answers. `0` disables the cursor. |
 | `--heartbeat-interval` | `BUZZ_ACP_HEARTBEAT_INTERVAL` | `0` | Seconds between heartbeat prompts. `0` = disabled. Must be `0` or ≥10 when enabled. |
 | `--heartbeat-prompt` | `BUZZ_ACP_HEARTBEAT_PROMPT` | (built-in) | Custom heartbeat prompt text. Conflicts with `--heartbeat-prompt-file`. |
 | `--heartbeat-prompt-file` | `BUZZ_ACP_HEARTBEAT_PROMPT_FILE` | — | Read heartbeat prompt from a file. Conflicts with `--heartbeat-prompt`. |
