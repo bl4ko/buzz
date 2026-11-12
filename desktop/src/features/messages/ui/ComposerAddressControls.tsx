@@ -11,6 +11,7 @@ import * as React from "react";
 import { cn } from "@/shared/lib/cn";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { Popover, PopoverAnchor, PopoverContent } from "@/shared/ui/popover";
+import { Spinner } from "@/shared/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 export type ComposerAddressAgent = {
@@ -349,10 +350,5 @@ export function ComposerSendButton({
 }
 
 function SendSpinner() {
-  return (
-    <span
-      aria-hidden
-      className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-    />
-  );
+  return <Spinner aria-hidden className="h-4 w-4" />;
 }
