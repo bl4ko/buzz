@@ -949,6 +949,23 @@ impl EventQueue {
                 .is_some_and(|events| !events.is_empty())
     }
 
+    /// Whether `event_id` still waits in this scope: queued, carried over
+    /// from a cancelled turn, or withheld for a native steer.
+    pub(crate) fn holds(&self, scope: &SessionScope, event_id: &str) -> bool {
+        let is_event = |event: &Event| event.id.to_hex() == event_id;
+        self.queues
+            .get(scope)
+            .is_some_and(|queue| queue.iter().any(|queued| is_event(&queued.event)))
+            || self
+                .cancelled_batches
+                .get(scope)
+                .is_some_and(|events| events.iter().any(|batch| is_event(&batch.event)))
+            || self
+                .withheld_native_steer
+                .get(scope)
+                .is_some_and(|queue| queue.iter().any(|queued| is_event(&queued.event)))
+    }
+
     /// Number of queued events for a specific scope (or channel, treated as its
     /// conversation scope). Test-only.
     #[cfg(test)]

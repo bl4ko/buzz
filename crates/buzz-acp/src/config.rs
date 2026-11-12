@@ -532,6 +532,17 @@ pub struct CliArgs {
     /// ignored (the watermark stays at startup time).
     #[arg(long, env = "BUZZ_ACP_REPLAY_FLOOR")]
     pub replay_floor: Option<u64>,
+
+    /// File that records the last handled message of each channel, so a
+    /// restarted harness answers the messages it missed. Default:
+    /// `~/.buzz-acp/cursor-<relay and key hash>.json`.
+    #[arg(long, env = "BUZZ_ACP_CURSOR_FILE")]
+    pub cursor_file: Option<PathBuf>,
+
+    /// Oldest missed message, in seconds before startup, that a restarted
+    /// harness still answers. 0 disables the cursor and the replay.
+    #[arg(long, env = "BUZZ_ACP_MISSED_MAX_AGE", default_value_t = 86_400)]
+    pub missed_max_age: u64,
 }
 
 /// Merged NIP-01 subscription filter for a single channel.
@@ -627,6 +638,10 @@ pub struct Config {
     /// triggering message. Clamped where consumed — see
     /// `startup_watermark_with_floor`.
     pub replay_floor_unix: Option<u64>,
+    /// Cursor file override (`--cursor-file` / `BUZZ_ACP_CURSOR_FILE`).
+    pub cursor_file: Option<PathBuf>,
+    /// Age limit for missed-message replay; 0 disables the cursor.
+    pub missed_max_age_secs: u64,
     /// Agent owner pubkey (hex). Used for `--respond-to=owner-only` gate.
     /// Replaces the old REST-based owner lookup.
     pub agent_owner: Option<String>,
@@ -1234,6 +1249,8 @@ impl Config {
             lazy_pool: args.lazy_pool,
             idle_pool_sleep_secs: args.idle_pool_sleep,
             replay_floor_unix: args.replay_floor,
+            cursor_file: args.cursor_file,
+            missed_max_age_secs: args.missed_max_age,
             agent_owner: args.agent_owner.map(|s| s.trim().to_ascii_lowercase()),
             no_base_prompt: args.no_base_prompt,
             base_prompt_content,
@@ -1612,6 +1629,8 @@ mod tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            cursor_file: None,
+            missed_max_age_secs: 0,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
