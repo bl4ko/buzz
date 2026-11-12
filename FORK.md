@@ -8,6 +8,8 @@ Keep custom changes on fork `main`. Rebase it onto `origin/main` after upstream 
 
 The desktop changes use the channel member list to include external agents. External agents keep the existing runtime relay hook. The release script inherits `BUZZ_BUILD_RELAY_RECONNECT_CMD` when set.
 
+The relay accepts the Olympus agent kinds 30190, 30191, 44310, and 44311 from relay owners and admins only, and gives them only to readers in their `p` tags ([NIP-OL](docs/nips/NIP-OL.md)).
+
 ## Mac TestFlight
 
 Build and upload the desktop app locally:
