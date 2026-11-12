@@ -49,3 +49,13 @@ export async function setCommunityIcon(icon: string): Promise<void> {
     "Failed to update the community icon.",
   );
 }
+
+/** A relay's NIP-11 `name`, or null when it is unset or unreachable. */
+export async function fetchCommunityName(
+  relayUrl: string,
+): Promise<string | null> {
+  return (
+    (await invokeTauri<string | null>("fetch_workspace_name", { relayUrl })) ??
+    null
+  );
+}

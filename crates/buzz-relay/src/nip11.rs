@@ -395,6 +395,9 @@ pub(crate) async fn nip11_document(state: &crate::state::AppState, raw_host: &st
         admin_api.as_deref(),
         state.config.klipy.as_ref().map(|_| "klipy"),
     );
+    if let Some(name) = &state.config.relay_name {
+        info.name = name.clone();
+    }
     info.artifacts["incremental"] = crate::api::artifact_sync::capability();
     if let Ok(tenant) = crate::tenant::bind_community(state, raw_host).await {
         if let Some(profile) = crate::verified_profiles::discovery(state, &tenant).await {
@@ -549,6 +552,26 @@ mod tests {
         }
         assert_ne!(docs[0], docs[1], "enforce advertises NIP-FI");
         assert_eq!(docs[2], docs[1]);
+    }
+
+    #[tokio::test]
+    async fn configured_relay_name_replaces_the_built_in_name() {
+        let base = crate::state::tests::test_state_with_unreachable_database_url(
+            "postgres://127.0.0.1:1/none",
+        )
+        .await;
+        assert_eq!(
+            super::nip11_document(&base, "relay.example").await.name,
+            "Buzz Relay"
+        );
+        let mut state = (*base).clone();
+        let mut config = (*state.config).clone();
+        config.relay_name = Some("Olympus".into());
+        state.config = std::sync::Arc::new(config);
+        assert_eq!(
+            super::nip11_document(&state, "relay.example").await.name,
+            "Olympus"
+        );
     }
 
     use super::*;

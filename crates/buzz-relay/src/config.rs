@@ -170,6 +170,8 @@ pub struct Config {
     pub relay_url: String,
     /// Public WebSocket URL of the dedicated device-pairing relay, when configured.
     pub pairing_relay_url: Option<String>,
+    /// NIP-11 `name` (`BUZZ_RELAY_NAME`); the built-in name when unset.
+    pub relay_name: Option<String>,
     /// Maximum number of concurrent WebSocket connections.
     pub max_connections: usize,
     /// Maximum number of concurrently executing message handlers.
@@ -804,6 +806,10 @@ impl Config {
         let relay_url =
             std::env::var("RELAY_URL").unwrap_or_else(|_| "ws://localhost:3000".to_string());
 
+        let relay_name = std::env::var("BUZZ_RELAY_NAME")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let pairing_relay_url = std::env::var("BUZZ_PAIRING_RELAY_URL")
             .ok()
             .map(|value| value.trim().to_string())
@@ -1525,6 +1531,7 @@ impl Config {
             db_read_pool_size,
             relay_url,
             pairing_relay_url,
+            relay_name,
             max_connections,
             max_concurrent_handlers,
             send_buffer_size,
@@ -3241,6 +3248,18 @@ mod tests {
             result,
             Err(ConfigError::InvalidValue(ref msg)) if msg.contains("BUZZ_PAIRING_RELAY_URL")
         ));
+    }
+
+    #[test]
+    fn relay_name_is_trimmed_and_optional() {
+        let _guards = env_guards();
+        std::env::set_var("BUZZ_RELAY_NAME", "  Olympus ");
+        let named = Config::from_env().expect("config");
+        std::env::set_var("BUZZ_RELAY_NAME", " ");
+        let blank = Config::from_env().expect("config");
+        std::env::remove_var("BUZZ_RELAY_NAME");
+        assert_eq!(named.relay_name.as_deref(), Some("Olympus"));
+        assert_eq!(blank.relay_name, None);
     }
 
     #[test]

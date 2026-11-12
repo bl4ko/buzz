@@ -61,6 +61,11 @@ fn tags_named<'a>(event: &'a Event, name: &'a str) -> impl Iterator<Item = &'a [
 /// owner signature and every condition apply to the event. Time clauses constrain
 /// the profile's `created_at`, not the verifier's clock. Ownership is provenance;
 /// the agent's pubkey remains the author.
+/// NIP-24 `bot: true` in kind:0 content marks an automated identity.
+pub(crate) fn profile_is_bot(content: &Value) -> bool {
+    content.get("bot").and_then(Value::as_bool) == Some(true)
+}
+
 pub(crate) fn profile_valid_oa_owner_pubkey(event: &Event) -> Option<String> {
     if event.kind != nostr::Kind::Metadata {
         return None;
@@ -364,7 +369,7 @@ pub fn users_batch_from_events(
             name: v.get("name").and_then(Value::as_str).map(str::to_string),
             avatar_url: v.get("picture").and_then(Value::as_str).map(str::to_string),
             nip05_handle: v.get("nip05").and_then(Value::as_str).map(str::to_string),
-            is_agent: owner_pubkey.is_some(),
+            is_agent: owner_pubkey.is_some() || profile_is_bot(&v),
             owner_pubkey,
         };
         profiles.insert(pk.clone(), summary);

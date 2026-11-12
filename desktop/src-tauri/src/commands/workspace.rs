@@ -98,6 +98,39 @@ pub async fn fetch_workspace_icon(
     Ok(doc.icon.filter(|icon| !icon.is_empty()))
 }
 
+#[derive(Deserialize)]
+struct RelayInfoName {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// Fetch a relay's NIP-11 `name`. `None` when it is unset or the relay is
+/// unreachable.
+#[tauri::command]
+pub async fn fetch_workspace_name(
+    relay_url: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let http_url = relay::relay_http_base_url(&relay_url);
+    let Ok(response) = state
+        .http_client
+        .get(&http_url)
+        .header("Accept", "application/nostr+json")
+        .send()
+        .await
+    else {
+        return Ok(None);
+    };
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+    let doc = response
+        .json::<RelayInfoName>()
+        .await
+        .unwrap_or(RelayInfoName { name: None });
+    Ok(doc.name)
+}
+
 #[derive(Serialize)]
 pub struct ActiveWorkspaceInfo {
     relay_url: String,

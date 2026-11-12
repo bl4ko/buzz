@@ -12,6 +12,7 @@ import {
   joinAlertSummaryBody,
   joinAlertTitle,
   normalizeJoinPubkey,
+  personJoinAlerts,
   readJoinAlertLedger,
   reconcileJoinAlertLedger,
   writeJoinAlertLedger,
@@ -253,15 +254,20 @@ export function useCommunityJoinAlerts({ enabled }: { enabled: boolean }) {
     // whatever is active when the send resolves.
     const title = resolveTitle(session);
 
-    // Resolve display names so the alert reads "Alice joined" rather than a
-    // truncated key; a lookup failure degrades to the key, it does not skip.
-    //
-    // Above the cap the batch collapses into one summary, so skip the profile
-    // fetch entirely — it would be a 250-key request whose result is unused.
-    if (alerts.length > JOIN_ALERT_MAX_INDIVIDUAL) {
+    // Resolve profiles to drop agent and bot joins and to name people; a
+    // lookup failure degrades to the key, it does not skip.
+    let profiles: UserProfileLookup | undefined;
+    try {
+      profiles = (await getUsersBatch(alerts)).profiles;
+    } catch {
+      profiles = undefined;
+    }
+    const people = personJoinAlerts(alerts, profiles);
+
+    if (people.length > JOIN_ALERT_MAX_INDIVIDUAL) {
       if (cancelled()) return;
       await sendDesktopNotification({
-        body: joinAlertSummaryBody(alerts.length),
+        body: joinAlertSummaryBody(people.length),
         target: {
           channelId: null,
           eventId: event.id,
@@ -273,14 +279,7 @@ export function useCommunityJoinAlerts({ enabled }: { enabled: boolean }) {
       return;
     }
 
-    let profiles: UserProfileLookup | undefined;
-    try {
-      profiles = (await getUsersBatch(alerts)).profiles;
-    } catch {
-      profiles = undefined;
-    }
-
-    for (const pubkey of alerts) {
+    for (const pubkey of people) {
       // Per-send, not once after the lookup: a demotion landing between two
       // named sends must suppress the rest of the batch, not just the batch
       // that had not started.

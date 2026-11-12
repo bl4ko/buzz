@@ -279,6 +279,23 @@ fn users_batch_marks_valid_nip_oa_profiles_as_agents() {
 }
 
 #[test]
+fn users_batch_and_search_mark_nip24_bots_as_agents() {
+    let bot = ev(0, r#"{"name":"scheduler","bot":true}"#, vec![]);
+    let person = ev(0, r#"{"name":"Ana","bot":"true"}"#, vec![]);
+    let (bot_pk, person_pk) = (bot.pubkey.to_hex(), person.pubkey.to_hex());
+    let resp = users_batch_from_events(
+        &[bot.clone(), person.clone()],
+        &[bot_pk.clone(), person_pk.clone()],
+    );
+
+    assert!(resp.profiles[&bot_pk].is_agent);
+    assert_eq!(resp.profiles[&bot_pk].owner_pubkey, None);
+    assert!(!resp.profiles[&person_pk].is_agent);
+    assert!(user_search_result_from_event(&bot).is_agent);
+    assert!(!user_search_result_from_event(&person).is_agent);
+}
+
+#[test]
 fn user_notes_builds_cursor_from_last() {
     let e1 = ev(1, "first", vec![]);
     let e2 = ev(1, "second", vec![]);
