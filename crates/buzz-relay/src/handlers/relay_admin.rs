@@ -670,7 +670,11 @@ async fn hide_removed_agent_dm(tenant: &TenantContext, state: &Arc<AppState>, ta
     let Ok(agent) = hex::decode(target_hex) else {
         return;
     };
-    match state.db.hide_agent_owner_dm(tenant.community(), &agent).await {
+    match state
+        .db
+        .hide_agent_owner_dm(tenant.community(), &agent)
+        .await
+    {
         Ok(Some((channel, owner))) => {
             info!(%channel, agent = %target_hex, "removed agent: DM hidden for its owner");
             if let Err(e) = publish_dm_visibility_snapshot(tenant, state, &owner).await {
@@ -1191,6 +1195,7 @@ mod postgres_tests {
                     &nostr::Keys::generate(),
                 )
                 .await
+                .map(|write| write.outcome)
                 .expect("seed member");
             state
                 .db

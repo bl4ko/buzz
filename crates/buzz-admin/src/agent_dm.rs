@@ -16,7 +16,9 @@ pub async fn run(agent: String) -> Result<i32> {
     let (db, _pubsub, keys) = connect_member_services().await?;
     let tenant = resolve_admin_tenant(&db).await?;
     let community = tenant.community();
-    let Some((channel, owner)) = db.hide_agent_owner_dm(community, &hex::decode(&agent)?).await?
+    let Some((channel, owner)) = db
+        .hide_agent_owner_dm(community, &hex::decode(&agent)?)
+        .await?
     else {
         println!("{}", serde_json::json!({"agent": agent, "status": "no_dm"}));
         return Ok(2);
