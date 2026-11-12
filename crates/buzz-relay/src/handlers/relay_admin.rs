@@ -7,7 +7,7 @@
 //!
 //! | Kind | Operation       | Required sender role |
 //! |------|-----------------|----------------------|
-//! | 9030 | Add member      | admin or owner       |
+//! | 9030 | Add member, optionally with the agent's owner (see [`consented_owner`]) | admin or owner |
 //! | 9031 | Remove member   | admin or owner       |
 //! | 9032 | Change role     | owner only           |
 //! | 9033 | Set workspace profile (icon) | admin or owner; on an open relay whose community has no admin/owner row at all, any authenticated sender (see [`may_set_workspace_profile`]) |
@@ -23,6 +23,7 @@ use buzz_core::kind::{
 };
 use buzz_core::tenant::TenantContext;
 use buzz_db::relay_members::RemoveResult;
+use buzz_db::user::AgentOwnerAssignment;
 
 use crate::handlers::side_effects::{
     auto_join_default_channels, fan_out_nip43_membership_list, publish_nip43_member_added,
@@ -55,6 +56,97 @@ fn extract_tag_value(event: &Event, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// The target of a kind:9030 and the owner the event names for it in an
+/// `["owner", <owner pubkey>, <consent>]` tag, or `None` without the tag. The
+/// consent is the target's own signature
+/// (`buzz_sdk::nip_oa::compute_owner_consent`), so no key can be made
+/// someone's agent without holding it.
+fn consented_owner(
+    event: &Event,
+    target_hex: &str,
+) -> Result<Option<(nostr::PublicKey, nostr::PublicKey)>, String> {
+    let mut owner_tags = event
+        .tags
+        .iter()
+        .map(|tag| tag.as_slice())
+        .filter(|parts| parts.first().map(String::as_str) == Some("owner"));
+    let Some(parts) = owner_tags.next() else {
+        return Ok(None);
+    };
+    if owner_tags.next().is_some() {
+        return Err(format!("{OWNER_REFUSED}: more than one owner tag"));
+    }
+    let [_, owner_hex, consent] = parts else {
+        return Err(format!(
+            "{OWNER_REFUSED}: owner tag must hold the owner pubkey and the agent's consent signature"
+        ));
+    };
+    let target = nostr::PublicKey::from_hex(target_hex)
+        .map_err(|e| format!("{OWNER_REFUSED}: invalid target pubkey: {e}"))?;
+    buzz_sdk::nip_oa::verify_owner_consent(&target, owner_hex, consent)
+        .map(|owner| Some((target, owner)))
+        .map_err(|e| format!("{OWNER_REFUSED}: {e}"))
+}
+
+/// Prefix of every refusal of a kind:9030 `owner` tag.
+const OWNER_REFUSED: &str = "agent owner refused";
+
+/// Why a kind:9030 `owner` tag was refused, or `None` when the agent has the
+/// named owner.
+fn owner_refusal(assignment: AgentOwnerAssignment) -> Option<&'static str> {
+    match assignment {
+        AgentOwnerAssignment::Assigned | AgentOwnerAssignment::Unchanged => None,
+        AgentOwnerAssignment::OwnerConflict => Some("the agent has a different owner"),
+        AgentOwnerAssignment::SelfOwner => Some("owner and agent pubkeys must differ"),
+        AgentOwnerAssignment::AgentNotMember => {
+            Some("the agent must be a relay member with the member role")
+        }
+        AgentOwnerAssignment::NotAddedBySender => {
+            Some("an admin can set the owner only of a member it added")
+        }
+        AgentOwnerAssignment::OwnerNotMember => Some("the owner is not a relay member"),
+        AgentOwnerAssignment::OwnerIsAgent => Some("the owner is itself an agent"),
+        AgentOwnerAssignment::AgentOwnsAgents => Some("the agent is the owner of other agents"),
+    }
+}
+
+/// Record that an admin gave `agent` its first owner: audit it, and do what a
+/// first NIP-OA link does (`link_agent_owner`), so the agent's ownerless
+/// sockets reconnect with the owner attached.
+async fn first_owner_assigned(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    sender: &nostr::PublicKey,
+    agent: &[u8],
+    owner: &nostr::PublicKey,
+) {
+    let community = tenant.community();
+    state
+        .author_type_cache
+        .insert((community, agent.to_vec()), true);
+    state
+        .observer_owner_cache
+        .insert((community, agent.to_vec(), owner.to_bytes().to_vec()), true);
+    state.disconnect_unowned_agent_clusterwide(tenant, agent);
+    if let Some(audit_tx) = &state.audit_tx {
+        let entry = buzz_audit::NewAuditEntry {
+            community_id: community,
+            action: buzz_audit::AuditAction::AgentOwnerChanged,
+            actor_pubkey: Some(sender.to_bytes().to_vec()),
+            object_id: Some(hex::encode(agent)),
+            detail: serde_json::json!({
+                "previous_owner": null,
+                "new_owner": owner.to_hex(),
+                "source": "kind:9030",
+            }),
+        };
+        if let Err(e) = audit_tx.send(entry).await {
+            tracing::error!("agent owner audit channel closed, entry lost: {e}");
+            metrics::counter!("buzz_audit_send_errors_total").increment(1);
+        }
+    }
 }
 
 /// Maximum accepted workspace icon https URL length.
@@ -336,21 +428,67 @@ async fn execute_relay_admin_command(
                 return Err(format!("invalid role: {role}"));
             }
 
+            let owner = consented_owner(event, &target_hex)?;
+            if owner.is_some() && role != "member" {
+                return Err(format!(
+                    "{OWNER_REFUSED}: the agent must be a relay member with the member role"
+                ));
+            }
+
             // Note: idempotent — if target already exists at any role, this is a
             // silent no-op. The existing role is NOT overwritten. Use kind:9032
             // to change an existing member's role.
-            let write = state
-                .db
-                .add_relay_member(
-                    tenant.community(),
-                    &target_hex,
-                    &role,
-                    Some(&sender_hex),
-                    &state.relay_keypair,
-                )
-                .await
-                .map_err(|e| format!("database error: {e}"))?;
-            let was_inserted = write.outcome;
+            let (was_inserted, snapshot) = match owner {
+                None => {
+                    let write = state
+                        .db
+                        .add_relay_member(
+                            tenant.community(),
+                            &target_hex,
+                            &role,
+                            Some(&sender_hex),
+                            &state.relay_keypair,
+                        )
+                        .await
+                        .map_err(|e| format!("database error: {e}"))?;
+                    (write.outcome, write.snapshot)
+                }
+                Some((agent, owner)) => {
+                    let write = state
+                        .db
+                        .add_relay_member_with_owner(
+                            tenant.community(),
+                            &target_hex,
+                            owner.as_bytes(),
+                            &sender_hex,
+                            sender_role != "owner",
+                            &state.relay_keypair,
+                        )
+                        .await
+                        .map_err(|e| format!("database error: {e}"))?;
+                    let (was_inserted, assignment) = write.outcome;
+                    if let Some(reason) = owner_refusal(assignment) {
+                        return Err(format!("{OWNER_REFUSED}: {reason}"));
+                    }
+                    if assignment == AgentOwnerAssignment::Assigned {
+                        info!(
+                            sender = %sender_hex,
+                            target = %target_hex,
+                            owner = %owner.to_hex(),
+                            "agent owner assigned by relay admin"
+                        );
+                        first_owner_assigned(
+                            tenant,
+                            state,
+                            &event.pubkey,
+                            agent.as_bytes(),
+                            &owner,
+                        )
+                        .await;
+                    }
+                    (was_inserted, write.snapshot)
+                }
+            };
 
             info!(
                 sender = %sender_hex,
@@ -376,7 +514,7 @@ async fn execute_relay_admin_command(
                 )
                 .await;
             }
-            fan_out_nip43_membership_list(tenant, state, write.snapshot).await;
+            fan_out_nip43_membership_list(tenant, state, snapshot).await;
         }
 
         // kind:9031 — Remove relay member
@@ -1160,6 +1298,401 @@ mod postgres_tests {
             );
             assert_eq!(roles(agent).await, expected);
         }
+    }
+
+    fn add_with_owner_tags(sender: &Keys, agent: &Keys, tags: &[&[&str]]) -> nostr::Event {
+        let mut all = vec![Tag::public_key(agent.public_key())];
+        all.extend(tags.iter().map(|tag| Tag::parse(*tag).expect("tag")));
+        EventBuilder::new(Kind::Custom(RELAY_ADMIN_ADD_MEMBER as u16), "")
+            .tags(all)
+            .sign_with_keys(sender)
+            .expect("sign 9030")
+    }
+
+    /// A kind:9030 that names `owner` for `agent` with the consent of `consenting`.
+    fn add_with_owner(
+        sender: &Keys,
+        agent: &Keys,
+        owner: &Keys,
+        consenting: &Keys,
+    ) -> nostr::Event {
+        let owner_hex = owner.public_key().to_hex();
+        let message = nostr::secp256k1::Message::from_digest(
+            <nostr::hashes::sha256::Hash as nostr::hashes::Hash>::hash(
+                format!(
+                    "nostr:agent-owner:{}:{owner_hex}",
+                    agent.public_key().to_hex()
+                )
+                .as_bytes(),
+            )
+            .to_byte_array(),
+        );
+        let consent = consenting.sign_schnorr(&message).to_string();
+        add_with_owner_tags(sender, agent, &[&["owner", &owner_hex, &consent]])
+    }
+
+    struct OwnerTagFixture {
+        state: Arc<AppState>,
+        tenant: TenantContext,
+        relay_owner: Keys,
+        admin: Keys,
+        human: Keys,
+    }
+
+    impl OwnerTagFixture {
+        async fn new(label: &str) -> Self {
+            let host = format!("{label}-{}.example", uuid::Uuid::new_v4().simple());
+            let (state, tenant) = workspace_profile_test_state(&host, true).await;
+            let fixture = Self {
+                state,
+                tenant,
+                relay_owner: Keys::generate(),
+                admin: Keys::generate(),
+                human: Keys::generate(),
+            };
+            for (keys, role) in [
+                (&fixture.relay_owner, "owner"),
+                (&fixture.admin, "admin"),
+                (&fixture.human, "member"),
+            ] {
+                fixture.seed_member(keys, role, None).await;
+            }
+            fixture
+        }
+
+        async fn seed_member(&self, keys: &Keys, role: &str, added_by: Option<&Keys>) {
+            self.state
+                .db
+                .add_relay_member(
+                    self.tenant.community(),
+                    &keys.public_key().to_hex(),
+                    role,
+                    added_by.map(|k| k.public_key().to_hex()).as_deref(),
+                    &Keys::generate(),
+                )
+                .await
+                .map(|write| write.outcome)
+                .expect("seed member");
+        }
+
+        async fn submit(&self, event: &nostr::Event) -> Result<(), RelayAdminError> {
+            handle_relay_admin_event(&self.tenant, &self.state, event).await
+        }
+
+        async fn is_member(&self, keys: &Keys) -> bool {
+            self.state
+                .db
+                .get_relay_member(self.tenant.community(), &keys.public_key().to_hex())
+                .await
+                .expect("relay member")
+                .is_some()
+        }
+
+        async fn owner_of(&self, agent: &Keys) -> Option<Vec<u8>> {
+            self.state
+                .db
+                .get_agent_channel_policy(self.tenant.community(), agent.public_key().as_bytes())
+                .await
+                .expect("stored owner")
+                .and_then(|(_, owner)| owner)
+        }
+
+        async fn assert_refused(&self, event: &nostr::Event, reason: &str) {
+            match self.submit(event).await {
+                Err(RelayAdminError::Rejected(message)) => assert_eq!(
+                    message,
+                    format!("{OWNER_REFUSED}: {reason}"),
+                    "refusal reason"
+                ),
+                other => panic!("expected a refusal ({reason}), got {other:?}"),
+            }
+        }
+    }
+
+    /// An admin's kind:9030 with the agent's consent adds the agent and
+    /// stores its owner, so the owner gates (`is_agent_owner`: kind:44200,
+    /// observer frames) pass; a socket the agent holds without an owner is
+    /// closed so that it reconnects with the owner attached; a repeat is a
+    /// no-op. Mutations: ignore the tag → no stored owner (RED); drop
+    /// `disconnect_unowned_agent_clusterwide` → the socket stays (RED); skip
+    /// the cache writes → the cached negative stays (RED).
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn admin_adds_an_agent_with_its_owner() {
+        let f = OwnerTagFixture::new("owner-tag-add").await;
+        let (agent, bystander) = (Keys::generate(), Keys::generate());
+        let community = f.tenant.community();
+        let agent_socket = bound_root_socket(&f.state, community, &agent);
+        let bystander_socket = bound_root_socket(&f.state, community, &bystander);
+        let cache_key = (
+            community,
+            agent.public_key().to_bytes().to_vec(),
+            f.human.public_key().to_bytes().to_vec(),
+        );
+        f.state
+            .observer_owner_cache
+            .insert(cache_key.clone(), false);
+
+        let add = add_with_owner(&f.admin, &agent, &f.human, &agent);
+        f.submit(&add)
+            .await
+            .expect("admin adds the agent with its owner");
+
+        let member = f
+            .state
+            .db
+            .get_relay_member(community, &agent.public_key().to_hex())
+            .await
+            .expect("relay member")
+            .expect("agent is a member");
+        assert_eq!(
+            (member.role.as_str(), member.added_by),
+            ("member", Some(f.admin.public_key().to_hex()))
+        );
+        assert!(f
+            .state
+            .db
+            .is_agent_owner(
+                community,
+                agent.public_key().as_bytes(),
+                f.human.public_key().as_bytes()
+            )
+            .await
+            .expect("owner lookup"));
+        assert_eq!(f.state.observer_owner_cache.get(&cache_key), Some(true));
+        assert!(
+            agent_socket.is_cancelled(),
+            "ownerless agent socket reconnects"
+        );
+        assert!(!bystander_socket.is_cancelled());
+
+        let again = bound_root_socket(&f.state, community, &agent);
+        f.submit(&add_with_owner(&f.admin, &agent, &f.human, &agent))
+            .await
+            .expect("a repeat with the same owner is accepted");
+        assert!(!again.is_cancelled(), "a repeat changes nothing");
+    }
+
+    /// The refusals of a kind:9030 `owner` tag. Each leaves the roster and
+    /// the stored owners as they were: the add and the owner are one write.
+    /// Mutations: drop the consent check → a member is made an agent without
+    /// its key (RED); drop a refusal in `assign_agent_owner_in` → its case is
+    /// RED; commit a refused add → the agent is a member afterwards (RED).
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn owner_tag_refusals_change_nothing() {
+        let f = OwnerTagFixture::new("owner-tag-refuse").await;
+        let (outsider, owned_agent, other_admin) =
+            (Keys::generate(), Keys::generate(), Keys::generate());
+        f.seed_member(&other_admin, "admin", None).await;
+        f.submit(&add_with_owner(
+            &f.admin,
+            &owned_agent,
+            &f.human,
+            &owned_agent,
+        ))
+        .await
+        .expect("seed an owned agent");
+        let human_hex = f.human.public_key().to_hex();
+
+        let fresh = Keys::generate();
+        for (event, reason) in [
+            (
+                add_with_owner(&f.admin, &fresh, &f.human, &f.admin),
+                "invalid input: consent signature is not by the agent for this owner",
+            ),
+            (
+                add_with_owner(&f.admin, &fresh, &f.human, &f.human),
+                "invalid input: consent signature is not by the agent for this owner",
+            ),
+            (
+                add_with_owner_tags(&f.admin, &fresh, &[&["owner", &human_hex]]),
+                "owner tag must hold the owner pubkey and the agent's consent signature",
+            ),
+            (
+                {
+                    let one = add_with_owner(&f.admin, &fresh, &f.human, &fresh);
+                    let tag: Vec<String> = one
+                        .tags
+                        .iter()
+                        .map(|t| t.as_slice().to_vec())
+                        .find(|t| t[0] == "owner")
+                        .expect("owner tag");
+                    let tag: Vec<&str> = tag.iter().map(String::as_str).collect();
+                    add_with_owner_tags(&f.admin, &fresh, &[&tag, &tag])
+                },
+                "more than one owner tag",
+            ),
+            (
+                add_with_owner(&f.admin, &fresh, &outsider, &fresh),
+                "the owner is not a relay member",
+            ),
+            (
+                add_with_owner(&f.admin, &fresh, &owned_agent, &fresh),
+                "the owner is itself an agent",
+            ),
+        ] {
+            f.assert_refused(&event, reason).await;
+            assert!(!f.is_member(&fresh).await, "{reason}: the add is undone");
+            assert_eq!(f.owner_of(&fresh).await, None, "{reason}");
+        }
+        let with_admin_role = {
+            let plain = add_with_owner(&f.relay_owner, &fresh, &f.human, &fresh);
+            let owner_tag: Vec<String> = plain
+                .tags
+                .iter()
+                .map(|t| t.as_slice().to_vec())
+                .find(|t| t[0] == "owner")
+                .expect("owner tag");
+            let owner_tag: Vec<&str> = owner_tag.iter().map(String::as_str).collect();
+            add_with_owner_tags(&f.relay_owner, &fresh, &[&["role", "admin"], &owner_tag])
+        };
+        f.assert_refused(
+            &with_admin_role,
+            "the agent must be a relay member with the member role",
+        )
+        .await;
+        assert!(!f.is_member(&fresh).await);
+
+        // An agent keeps its owner.
+        f.assert_refused(
+            &add_with_owner(&f.admin, &owned_agent, &f.admin, &owned_agent),
+            "the agent has a different owner",
+        )
+        .await;
+        f.assert_refused(
+            &add_with_owner(&f.relay_owner, &owned_agent, &f.relay_owner, &owned_agent),
+            "the agent has a different owner",
+        )
+        .await;
+        assert_eq!(
+            f.owner_of(&owned_agent).await,
+            Some(f.human.public_key().to_bytes().to_vec())
+        );
+
+        // A member that owns agents, and an admin, cannot become agents.
+        f.assert_refused(
+            &add_with_owner(&f.relay_owner, &f.human, &f.relay_owner, &f.human),
+            "the agent is the owner of other agents",
+        )
+        .await;
+        f.assert_refused(
+            &add_with_owner(&f.relay_owner, &other_admin, &f.human, &other_admin),
+            "the agent must be a relay member with the member role",
+        )
+        .await;
+
+        // An admin sets the owner only of a member it added; the relay owner
+        // is not bound by that.
+        let (unowned, by_other_admin) = (Keys::generate(), Keys::generate());
+        f.seed_member(&unowned, "member", None).await;
+        f.seed_member(&by_other_admin, "member", Some(&other_admin))
+            .await;
+        for agent in [&unowned, &by_other_admin] {
+            f.assert_refused(
+                &add_with_owner(&f.admin, agent, &f.human, agent),
+                "an admin can set the owner only of a member it added",
+            )
+            .await;
+            assert!(f.is_member(agent).await, "an existing member stays");
+            assert_eq!(f.owner_of(agent).await, None);
+        }
+        f.submit(&add_with_owner(
+            &other_admin,
+            &by_other_admin,
+            &f.human,
+            &by_other_admin,
+        ))
+        .await
+        .expect("the admin that added the member sets its owner");
+        f.submit(&add_with_owner(
+            &f.relay_owner,
+            &unowned,
+            &f.human,
+            &unowned,
+        ))
+        .await
+        .expect("the relay owner sets the owner of any member");
+
+        // A plain member cannot use the tag at all.
+        match f
+            .submit(&add_with_owner(&f.human, &fresh, &f.human, &fresh))
+            .await
+        {
+            Err(RelayAdminError::Rejected(message)) => {
+                assert_eq!(message, "actor not authorized: must be admin or owner")
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(!f.is_member(&fresh).await);
+    }
+
+    /// The owner must be a member of the community the command is sent to,
+    /// and the owner is stored there only. Mutation: read the owner's
+    /// membership or write the owner without the community → RED.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn owner_tag_stays_inside_one_community() {
+        let here = OwnerTagFixture::new("owner-tag-here").await;
+        let host = format!("owner-tag-there-{}.example", uuid::Uuid::new_v4().simple());
+        let there = here
+            .state
+            .db
+            .ensure_configured_community(&host)
+            .await
+            .expect("second community");
+        let there = TenantContext::resolved(there.id, &host);
+        let (agent, foreign_owner) = (Keys::generate(), Keys::generate());
+        here.state
+            .db
+            .add_relay_member(
+                there.community(),
+                &foreign_owner.public_key().to_hex(),
+                "member",
+                None,
+                &Keys::generate(),
+            )
+            .await
+            .map(|write| write.outcome)
+            .expect("member of the other community");
+
+        here.assert_refused(
+            &add_with_owner(&here.admin, &agent, &foreign_owner, &agent),
+            "the owner is not a relay member",
+        )
+        .await;
+        let add = add_with_owner(&here.admin, &agent, &here.human, &agent);
+        match handle_relay_admin_event(&there, &here.state, &add).await {
+            Err(RelayAdminError::Rejected(message)) => {
+                assert_eq!(message, "actor not authorized: must be admin or owner")
+            }
+            other => panic!("an admin of one community acted in another: {other:?}"),
+        }
+
+        here.submit(&add)
+            .await
+            .expect("add in the admin's community");
+        for (community, expected) in [(here.tenant.community(), true), (there.community(), false)] {
+            assert_eq!(
+                here.state
+                    .db
+                    .is_agent_owner(
+                        community,
+                        agent.public_key().as_bytes(),
+                        here.human.public_key().as_bytes()
+                    )
+                    .await
+                    .expect("owner lookup"),
+                expected
+            );
+        }
+        assert!(here
+            .state
+            .db
+            .get_relay_member(there.community(), &agent.public_key().to_hex())
+            .await
+            .expect("relay member")
+            .is_none());
     }
 
     /// A pod-local root socket registered and bound to `keys`, as root AUTH

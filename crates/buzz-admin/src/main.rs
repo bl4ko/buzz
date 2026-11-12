@@ -33,7 +33,7 @@ use anyhow::Result;
 use buzz_core::tenant::{relay_url_authority, TenantContext};
 use buzz_db::{
     partition::{PartitionAuditOutcome, PartitionAuditReport},
-    user::AgentOwnerTransfer,
+    user::{AgentOwnerAssignment, AgentOwnerTransfer},
     Db, DbConfig,
 };
 use buzz_media::{BucketSnapshot, MediaConfig, MediaStorage, S3AddressingStyle, SweepError};
@@ -94,7 +94,9 @@ enum Command {
     RepublishMembers,
     /// List all relay members.
     ListMembers,
-    #[command(about = "Move an agent's stored owner to another relay member")]
+    #[command(
+        about = "Move an agent's stored owner to another relay member, or with --first set the owner of an agent that has none"
+    )]
     SetAgentOwner {
         #[arg(long, help = "Agent public key, npub or hex")]
         agent: String,
@@ -107,6 +109,11 @@ enum Command {
         operator_id: String,
         #[arg(long, help = "Reason for the change, stored in the audit log")]
         reason: String,
+        #[arg(
+            long,
+            help = "Set the owner of an agent that has none; never moves an owner"
+        )]
+        first: bool,
     },
     /// Generate a new Nostr keypair (for bootstrapping).
     GenerateKey,
@@ -226,7 +233,8 @@ async fn run(cli: Cli) -> Result<i32> {
             owner,
             operator_id,
             reason,
-        } => cmd_set_agent_owner(agent, owner, operator_id, reason).await,
+            first,
+        } => cmd_set_agent_owner(agent, owner, operator_id, reason, first).await,
         Command::ProductFeedback {
             command: ProductFeedbackCommand::List { limit },
         } => cmd_list_product_feedback(limit).await,
@@ -593,6 +601,7 @@ async fn cmd_set_agent_owner(
     owner_arg: String,
     operator_id: String,
     reason: String,
+    first: bool,
 ) -> Result<i32> {
     let (agent, owner) = match (parse_pubkey_hex(&agent_arg), parse_pubkey_hex(&owner_arg)) {
         (Ok(agent), Ok(owner)) => (agent, owner),
@@ -607,6 +616,9 @@ async fn cmd_set_agent_owner(
     }
     let db = connect_db().await?;
     let tenant = resolve_admin_tenant(&db).await?;
+    if first {
+        return assign_first_agent_owner(&db, &tenant, agent, owner, operator_id, reason).await;
+    }
     let outcome = match db
         .transfer_agent_owner(
             tenant.community(),
@@ -662,6 +674,107 @@ async fn cmd_set_agent_owner(
     }
     println!("{evidence}");
     Ok(code)
+}
+
+/// `set-agent-owner --first`: store the first owner of an agent that has
+/// none, audit it, and make the agent's ownerless sockets reconnect.
+async fn assign_first_agent_owner(
+    db: &Db,
+    tenant: &TenantContext,
+    agent: String,
+    owner: String,
+    operator_id: String,
+    reason: String,
+) -> Result<i32> {
+    let agent_bytes = hex::decode(&agent)?;
+    let outcome = match db
+        .assign_agent_owner(tenant.community(), &agent_bytes, &hex::decode(&owner)?)
+        .await
+    {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            eprintln!("error: DB write failed: {e}");
+            return Ok(5);
+        }
+    };
+    let (code, status) = first_agent_owner_result(outcome);
+    let mut evidence = serde_json::json!({
+        "event": "agent_owner_assignment",
+        "status": status,
+        "community": tenant.host(),
+        "agent": agent,
+        "new_owner": owner,
+        "operator_id": operator_id,
+        "reason": reason,
+    });
+    if outcome != AgentOwnerAssignment::Assigned {
+        println!("{evidence}");
+        return Ok(code);
+    }
+    let entry = buzz_audit::NewAuditEntry {
+        community_id: tenant.community(),
+        action: buzz_audit::AuditAction::AgentOwnerChanged,
+        actor_pubkey: None,
+        object_id: Some(agent.clone()),
+        detail: serde_json::json!({
+            "previous_owner": null,
+            "new_owner": owner,
+            "operator_id": operator_id,
+            "reason": reason,
+        }),
+    };
+    let audited = match buzz_audit::AuditService::new(db.pool().clone())
+        .log(entry)
+        .await
+    {
+        Ok(stored) => {
+            evidence["audit_seq"] = stored.seq.into();
+            evidence["changed_at"] = stored.created_at.to_rfc3339().into();
+            true
+        }
+        Err(e) => {
+            evidence["audit_error"] = e.to_string().into();
+            false
+        }
+    };
+    let reconnect = buzz_pubsub::conn_control::ConnControl::DisconnectPubkey {
+        pubkey: agent_bytes,
+        event_id: "0".repeat(64),
+        reason: "auth-required: agent owner recorded; reconnect".to_string(),
+        unowned_only: true,
+    };
+    let published = match connect_pubsub().await {
+        Ok(pubsub) => pubsub
+            .publish_conn_control(tenant, &reconnect)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    if let Err(e) = &published {
+        evidence["reconnect_error"] = e.clone().into();
+    }
+    println!("{evidence}");
+    Ok(match (audited, published.is_ok()) {
+        (false, _) => 6,
+        (true, false) => 7,
+        (true, true) => code,
+    })
+}
+
+fn first_agent_owner_result(outcome: AgentOwnerAssignment) -> (i32, &'static str) {
+    match outcome {
+        AgentOwnerAssignment::Assigned => (0, "assigned"),
+        AgentOwnerAssignment::Unchanged => (0, "unchanged"),
+        AgentOwnerAssignment::SelfOwner => (1, "owner_is_agent"),
+        AgentOwnerAssignment::AgentNotMember | AgentOwnerAssignment::NotAddedBySender => {
+            (2, "agent_not_member")
+        }
+        AgentOwnerAssignment::OwnerConflict => (3, "owner_exists"),
+        AgentOwnerAssignment::OwnerNotMember => (4, "owner_not_member"),
+        AgentOwnerAssignment::OwnerIsAgent => (4, "owner_has_owner"),
+        AgentOwnerAssignment::AgentOwnsAgents => (4, "agent_owns_agents"),
+    }
 }
 
 fn set_agent_owner_result(outcome: &AgentOwnerTransfer) -> (i32, &'static str) {
@@ -768,6 +881,10 @@ async fn connect_member_services() -> Result<(Db, Arc<PubSubManager>, Keys)> {
         Keys::parse(&hex).map_err(|e| anyhow::anyhow!("invalid BUZZ_RELAY_PRIVATE_KEY: {e}"))?
     };
 
+    Ok((db, connect_pubsub().await?, relay_keypair))
+}
+
+async fn connect_pubsub() -> Result<Arc<PubSubManager>> {
     let redis_url =
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
 
@@ -777,13 +894,11 @@ async fn connect_member_services() -> Result<(Db, Arc<PubSubManager>, Keys)> {
             .map_err(|e| anyhow::anyhow!("Redis pool creation failed: {e}"))?
     };
 
-    let pubsub = Arc::new(
+    Ok(Arc::new(
         PubSubManager::new(&redis_url, redis_pool)
             .await
             .map_err(|e| anyhow::anyhow!("PubSub init failed: {e}"))?,
-    );
-
-    Ok((db, pubsub, relay_keypair))
+    ))
 }
 
 async fn connect_db() -> Result<Db> {
@@ -1040,8 +1155,27 @@ mod tests {
         .expect("parse set-agent-owner command");
         assert!(matches!(
             cli.command,
-            Command::SetAgentOwner { ref agent, ref owner, ref operator_id, ref reason }
+            Command::SetAgentOwner { ref agent, ref owner, ref operator_id, ref reason, first }
                 if agent == "a1" && owner == "b2" && operator_id == "op" && reason == "rotation"
+                    && !first
+        ));
+        let first = Cli::try_parse_from([
+            "buzz-admin",
+            "set-agent-owner",
+            "--agent",
+            "a1",
+            "--owner",
+            "b2",
+            "--operator-id",
+            "op",
+            "--reason",
+            "enrolled without an owner",
+            "--first",
+        ])
+        .expect("parse set-agent-owner --first");
+        assert!(matches!(
+            first.command,
+            Command::SetAgentOwner { first: true, .. }
         ));
         assert!(Cli::try_parse_from([
             "buzz-admin",
@@ -1071,6 +1205,36 @@ mod tests {
         ];
         for (outcome, expected) in cases {
             assert_eq!(set_agent_owner_result(&outcome), expected, "{outcome:?}");
+        }
+    }
+
+    #[test]
+    fn first_agent_owner_result_codes() {
+        let cases = [
+            (AgentOwnerAssignment::Assigned, (0, "assigned")),
+            (AgentOwnerAssignment::Unchanged, (0, "unchanged")),
+            (AgentOwnerAssignment::SelfOwner, (1, "owner_is_agent")),
+            (
+                AgentOwnerAssignment::AgentNotMember,
+                (2, "agent_not_member"),
+            ),
+            (
+                AgentOwnerAssignment::NotAddedBySender,
+                (2, "agent_not_member"),
+            ),
+            (AgentOwnerAssignment::OwnerConflict, (3, "owner_exists")),
+            (
+                AgentOwnerAssignment::OwnerNotMember,
+                (4, "owner_not_member"),
+            ),
+            (AgentOwnerAssignment::OwnerIsAgent, (4, "owner_has_owner")),
+            (
+                AgentOwnerAssignment::AgentOwnsAgents,
+                (4, "agent_owns_agents"),
+            ),
+        ];
+        for (outcome, expected) in cases {
+            assert_eq!(first_agent_owner_result(outcome), expected, "{outcome:?}");
         }
     }
 
