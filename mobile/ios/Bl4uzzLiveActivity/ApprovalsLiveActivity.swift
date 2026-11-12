@@ -74,7 +74,7 @@ enum ApprovalsPalette {
   static let pill = Color(red: 58 / 255, green: 58 / 255, blue: 64 / 255)
   static let pillText = Color(white: 0.87)
   static let caseText = Color(red: 157 / 255, green: 180 / 255, blue: 255 / 255)
-  static let bee = Color(red: 215 / 255, green: 215 / 255, blue: 46 / 255)
+  static let bee = Color(red: 247 / 255, green: 194 / 255, blue: 52 / 255)
   static let denyFill = Color(red: 1, green: 69 / 255, blue: 58 / 255).opacity(0.18)
   static let denyText = Color(red: 1, green: 107 / 255, blue: 97 / 255)
   static let approveFill = Color(red: 48 / 255, green: 209 / 255, blue: 88 / 255)
@@ -155,12 +155,25 @@ struct ApprovalsHeader: View {
       RoundedRectangle(cornerRadius: iconSize * 0.27)
         .fill(Color(red: 14 / 255, green: 22 / 255, blue: 48 / 255))
         .frame(width: iconSize, height: iconSize)
-        .overlay(Text("⚡").font(.system(size: iconSize * 0.58)))
+        .overlay(OlympusBolt().fill(ApprovalsPalette.bee).frame(height: iconSize * 0.66))
       Text(title)
         .font(.system(size: font))
         .foregroundStyle(ApprovalsPalette.secondary)
         .lineLimit(1)
     }
+  }
+}
+
+struct OlympusBolt: Shape {
+  func path(in rect: CGRect) -> Path {
+    let points: [(CGFloat, CGFloat)] = [
+      (706, 56), (846, 56), (772, 256), (862, 256), (572, 628), (654, 346), (566, 346),
+    ]
+    let scale = rect.height / 572
+    var path = Path()
+    path.addLines(points.map { CGPoint(x: rect.midX + ($0.0 - 714) * scale, y: rect.minY + ($0.1 - 56) * scale) })
+    path.closeSubpath()
+    return path
   }
 }
 

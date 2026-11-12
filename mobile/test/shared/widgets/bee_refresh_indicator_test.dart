@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:buzz/shared/widgets/bee_refresh_indicator.dart';
-import 'package:buzz/shared/olympus/olympus_pull_bolt.dart';
+import 'package:buzz/shared/olympus/olympus_pull_key.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/widget_helpers.dart';
 
 void main() {
-  testWidgets('shows the bolt while pulling to refresh', (tester) async {
+  testWidgets('shows the key tiles while pulling to refresh', (tester) async {
     const contentKey = ValueKey('loading-content');
     var refreshes = 0;
     final refreshCompleter = Completer<void>();
@@ -39,14 +39,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     await tester.pump(const Duration(milliseconds: 300));
 
-    final beeFinder = find.byType(OlympusPullBolt);
+    final beeFinder = find.byType(OlympusPullKey);
     final loadingTop = tester.getTopLeft(listFinder).dy;
     final loadingContentTop = tester.getTopLeft(find.byKey(contentKey)).dy;
     final gapTransform = tester.widget<Transform>(
       find.byKey(const ValueKey('bee-refresh-retained-gap')),
     );
     expect(beeFinder, findsOneWidget);
-    expect(tester.widget<OlympusPullBolt>(beeFinder).loading, isTrue);
+    expect(tester.widget<OlympusPullKey>(beeFinder).loading, isTrue);
     expect(refreshes, 1);
     expect(gapTransform.transform.getTranslation().y, closeTo(72, 1));
     expect(loadingTop - restingTop, closeTo(72, 1));
@@ -112,8 +112,11 @@ void main() {
     await gesture.moveBy(const Offset(0, 12));
     await tester.pump();
 
-    final beeFinder = find.byType(OlympusPullBolt);
-    expect(beeFinder, findsNothing);
+    final beeFinder = find.byType(OlympusPullKey);
+    expect(
+      tester.widget<OlympusPullKey>(beeFinder).charge,
+      inExclusiveRange(0, 0.2),
+    );
     expect(
       tester.getTopLeft(find.byKey(contentKey)).dy,
       greaterThan(restingContentTop),
@@ -126,16 +129,9 @@ void main() {
     final partialOpacity = tester.widget<Opacity>(
       find.byKey(const ValueKey('bee-refresh-opacity')),
     );
-    expect(partialOpacity.opacity, greaterThan(0));
-    expect(partialOpacity.opacity, lessThan(1));
-    final partialScale = tester
-        .widget<Transform>(find.byKey(const ValueKey('bee-refresh-scale')))
-        .transform
-        .storage[0];
-    expect(partialScale, greaterThan(0.6));
-    expect(partialScale, lessThan(1));
+    expect(partialOpacity.opacity, 1);
     expect(
-      tester.widget<OlympusPullBolt>(beeFinder).charge,
+      tester.widget<OlympusPullKey>(beeFinder).charge,
       inExclusiveRange(0, 1),
     );
     expect(hapticCalls, isEmpty);
@@ -179,7 +175,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(tester.widget<OlympusPullBolt>(beeFinder).charge, 1);
+    expect(tester.widget<OlympusPullKey>(beeFinder).charge, 1);
     expect(find.byKey(const ValueKey('bee-refresh-eyes-emoji')), findsNothing);
     expect(hapticCalls, hasLength(1));
 
@@ -199,9 +195,9 @@ void main() {
     final eyes = tester.getRect(
       find.byKey(const ValueKey('bee-refresh-eyes-emoji')),
     );
-    final bolt = tester.getRect(find.byType(OlympusPullBolt));
-    expect(eyes.top, greaterThan(bolt.bottom));
-    expect(eyes.center.dx, closeTo(bolt.center.dx, 1));
+    final tiles = tester.getRect(find.byType(OlympusPullKey));
+    expect(eyes.top, greaterThan(tiles.bottom));
+    expect(eyes.center.dx, closeTo(tiles.center.dx, 1));
     final initialShake = tester
         .widget<Transform>(
           find.byKey(const ValueKey('bee-refresh-eyes-emoji-shake')),
@@ -290,7 +286,7 @@ void main() {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(ListView)),
     );
-    final beeFinder = find.byType(OlympusPullBolt);
+    final beeFinder = find.byType(OlympusPullKey);
     for (var step = 0; step < 10; step++) {
       await gesture.moveBy(
         const Offset(0, 50),
@@ -319,43 +315,62 @@ void main() {
   });
 
   for (final platformFlag in [false, true]) {
-    testWidgets('keeps the bolt static when motion is disabled '
-        '${platformFlag ? 'by iOS Reduce Motion' : 'by MediaQuery'}', (
-      tester,
-    ) async {
-      if (platformFlag) {
-        tester.platformDispatcher.accessibilityFeaturesTestValue =
-            const FakeAccessibilityFeatures(reduceMotion: true);
-        addTearDown(
-          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
-        );
-      }
-      final refresh = Completer<void>();
-      await tester.pumpWidget(
-        WidgetHelpers.testable(
-          disableAnimations: !platformFlag,
-          child: BeeRefreshIndicator(
-            onRefresh: () => refresh.future,
-            child: ListView(children: const [SizedBox(height: 800)]),
+    testWidgets(
+      platformFlag
+          ? 'pulses the tiles for iOS Reduce Motion'
+          : 'keeps the tiles static when MediaQuery disables animations',
+      (tester) async {
+        if (platformFlag) {
+          tester.platformDispatcher.accessibilityFeaturesTestValue =
+              const FakeAccessibilityFeatures(reduceMotion: true);
+          addTearDown(
+            tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+          );
+        }
+        final refresh = Completer<void>();
+        await tester.pumpWidget(
+          WidgetHelpers.testable(
+            disableAnimations: !platformFlag,
+            child: BeeRefreshIndicator(
+              onRefresh: () => refresh.future,
+              child: ListView(children: const [SizedBox(height: 800)]),
+            ),
           ),
-        ),
-      );
+        );
 
-      await tester.timedDrag(
-        find.byType(ListView),
-        const Offset(0, 320),
-        const Duration(milliseconds: 400),
-      );
-      await tester.pumpAndSettle();
+        await tester.timedDrag(
+          find.byType(ListView),
+          const Offset(0, 320),
+          const Duration(milliseconds: 400),
+        );
+        if (platformFlag) {
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 600));
+        } else {
+          await tester.pumpAndSettle();
+        }
 
-      expect(
-        tester.widget<OlympusPullBolt>(find.byType(OlympusPullBolt)).loading,
-        isTrue,
-      );
-      expect(tester.binding.hasScheduledFrame, isFalse);
-      refresh.complete();
-      await tester.pumpAndSettle();
-    });
+        expect(
+          tester.widget<OlympusPullKey>(find.byType(OlympusPullKey)).loading,
+          isTrue,
+        );
+        final painter =
+            tester
+                    .widget<CustomPaint>(
+                      find.descendant(
+                        of: find.byType(OlympusPullKey),
+                        matching: find.byType(CustomPaint),
+                      ),
+                    )
+                    .painter!
+                as OlympusPullPainter;
+        expect(painter.reduced, isTrue);
+        expect(painter.progress.isAnimating, platformFlag);
+        expect(tester.binding.hasScheduledFrame, platformFlag);
+        refresh.complete();
+        await tester.pumpAndSettle();
+      },
+    );
   }
 
   testWidgets('provides elastic always-scrollable physics', (tester) async {

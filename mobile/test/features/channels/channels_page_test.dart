@@ -65,7 +65,7 @@ import 'package:buzz/shared/me/me_sync.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:buzz/shared/emoji/emoji_avatar.dart';
-import 'package:buzz/shared/olympus/olympus_cloud_spinner.dart';
+import 'package:buzz/shared/olympus/olympus_inline_spinner.dart';
 import 'package:buzz/shared/widgets/buzz_loading_indicator.dart';
 import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:buzz/shared/widgets/ios_navigation_bar.dart';
@@ -2391,7 +2391,7 @@ void main() {
           );
           final pulse =
               (tester.widget<CustomPaint>(spinner).painter!
-                      as OlympusCloudPainter)
+                      as OlympusInlinePainter)
                   .progress;
           final before = pulse.value;
           await tester.pump(const Duration(milliseconds: 120));

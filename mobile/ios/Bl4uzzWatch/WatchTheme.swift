@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension Color {
-  static let bee = Color(red: 215 / 255, green: 215 / 255, blue: 46 / 255)
+  static let bee = Color(red: 247 / 255, green: 194 / 255, blue: 52 / 255)
 }
 
 enum WatchPalette {
@@ -17,7 +17,11 @@ enum WatchPalette {
   static let bubble = Color.white.opacity(0.14)
   static let success = Color(red: 0.19, green: 0.82, blue: 0.35)
   static let backdrop = LinearGradient(
-    colors: [Color.bee.opacity(0.34), Color.bee.opacity(0.08), .black],
+    colors: [
+      Color(red: 31 / 255, green: 41 / 255, blue: 112 / 255),
+      Color(red: 14 / 255, green: 22 / 255, blue: 64 / 255),
+      .black,
+    ],
     startPoint: .top, endPoint: .bottom
   )
 
@@ -57,32 +61,77 @@ struct WatchGlassGroup<Content: View>: View {
 }
 
 struct OlympusMark: View {
-  private static let layers: [(Color, [(CGFloat, CGFloat)])] = [
-    (Color(red: 46 / 255, green: 63 / 255, blue: 120 / 255), [(110, 860), (512, 230), (914, 860)]),
-    (Color(red: 59 / 255, green: 79 / 255, blue: 146 / 255), [(512, 230), (914, 860), (600, 860)]),
-    (
-      Color(red: 245 / 255, green: 235 / 255, blue: 208 / 255),
-      [(512, 230), (610, 372), (566, 350), (532, 392), (494, 352), (452, 382), (414, 372)]
-    ),
-    (
-      Color(red: 232 / 255, green: 185 / 255, blue: 49 / 255),
-      [(742, 70), (610, 330), (690, 330), (600, 560), (830, 262), (740, 262), (830, 70)]
-    ),
+  private typealias Points = [(CGFloat, CGFloat)]
+  private static let lit: Points = [
+    (86, 940), (270, 640), (306, 622), (512, 236), (544, 420), (500, 590), (560, 940),
   ]
+  private static let shade: Points = [
+    (512, 236), (606, 402), (636, 388), (770, 628), (800, 618), (948, 940), (560, 940), (500, 590), (544, 420),
+  ]
+  private static let snow: Points = [
+    (512, 236), (405, 436), (442, 412), (468, 456), (500, 406), (524, 452), (544, 420), (574, 460), (602, 416),
+    (626, 448), (658, 428), (636, 388), (606, 402),
+  ]
+  private static let bolt: Points = [
+    (706, 56), (846, 56), (772, 256), (862, 256), (572, 628), (654, 346), (566, 346),
+  ]
+  private static let fold: Points = [(770, 56), (846, 56), (772, 256), (862, 256), (572, 628), (704, 304)]
+
+  private static func rgb(_ hex: UInt32) -> Color {
+    Color(
+      red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255
+    )
+  }
+
+  private static func polygon(_ points: Points) -> Path {
+    var path = Path()
+    path.addLines(points.map { CGPoint(x: $0.0, y: $0.1) })
+    path.closeSubpath()
+    return path
+  }
+
+  private static func fill(_ colors: [UInt32], from start: CGPoint, to end: CGPoint) -> GraphicsContext.Shading {
+    .linearGradient(Gradient(colors: colors.map(rgb)), startPoint: start, endPoint: end)
+  }
+
+  private static func vertical(_ colors: [UInt32], _ top: CGFloat, _ bottom: CGFloat) -> GraphicsContext.Shading {
+    fill(colors, from: CGPoint(x: 0, y: top), to: CGPoint(x: 0, y: bottom))
+  }
 
   var body: some View {
     Canvas { context, size in
-      let scale = min(size.width / 804, size.height / 790)
-      let dx = (size.width - 804 * scale) / 2 - 110 * scale
-      let dy = (size.height - 790 * scale) / 2 - 70 * scale
-      for (color, points) in Self.layers {
-        var path = Path()
-        path.addLines(points.map { CGPoint(x: dx + $0.0 * scale, y: dy + $0.1 * scale) })
-        path.closeSubpath()
-        context.fill(path, with: .color(color))
-      }
+      let scale = min(size.width, size.height) / 840
+      context.translateBy(
+        x: (size.width - 840 * scale) / 2 - 92 * scale, y: (size.height - 840 * scale) / 2 - 31 * scale
+      )
+      context.scaleBy(x: scale, y: scale)
+      let ring = Path(ellipseIn: CGRect(x: 168, y: 124, width: 688, height: 688))
+      context.fill(
+        Path(ellipseIn: CGRect(x: 198, y: 154, width: 628, height: 628)),
+        with: .radialGradient(
+          Gradient(colors: ([0x7A6CF2, 0x3E40B0, 0x151C56] as [UInt32]).map(Self.rgb)),
+          center: CGPoint(x: 512, y: 372), startRadius: 0, endRadius: 400
+        )
+      )
+      var disc = context
+      disc.clip(to: ring)
+      disc.fill(Self.polygon(Self.lit), with: Self.vertical([0x93A8F6, 0x5068CA, 0x2A3A8E], 236, 940))
+      disc.fill(Self.polygon(Self.shade), with: Self.vertical([0x34459A, 0x1C2760, 0x101742], 236, 940))
+      disc.fill(Self.polygon(Self.snow), with: Self.vertical([0xFFFFFF, 0xF3E8CC], 236, 460))
+      context.stroke(
+        ring,
+        with: Self.fill(
+          [0xFFEFA6, 0xF7C234, 0xE39A16, 0xB46A0C], from: CGPoint(x: 150, y: 110), to: CGPoint(x: 870, y: 830)
+        ),
+        lineWidth: 84
+      )
+      context.translateBy(x: 716, y: 342)
+      context.scaleBy(x: 1.1, y: 1.1)
+      context.translateBy(x: -716, y: -342)
+      context.fill(Self.polygon(Self.bolt), with: Self.vertical([0xFFFDF0, 0xFFF0B8, 0xFFD866], 56, 628))
+      context.fill(Self.polygon(Self.fold), with: Self.vertical([0xFFDC5C, 0xF6B21E, 0xDC7C0C], 56, 628))
     }
-    .aspectRatio(804 / 790, contentMode: .fit)
+    .aspectRatio(1, contentMode: .fit)
     .accessibilityHidden(true)
   }
 }

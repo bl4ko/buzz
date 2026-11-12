@@ -1,6 +1,5 @@
-import 'package:buzz/shared/olympus/olympus_bolt_spinner.dart';
-import 'package:buzz/shared/olympus/olympus_cloud_spinner.dart';
-import 'package:buzz/shared/olympus/olympus_colors.dart';
+import 'package:buzz/shared/olympus/olympus_key_loader.dart';
+import 'package:buzz/shared/olympus/olympus_inline_spinner.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/buzz_loading_indicator.dart';
 import 'package:flutter/material.dart';
@@ -36,14 +35,29 @@ void main() {
     of: find.byKey(const ValueKey('buzz-loading-indicator-spinner')),
     matching: find.byType(CustomPaint),
   );
+  (Animation<double>, bool, Object) read(WidgetTester tester) =>
+      switch (tester.widget<CustomPaint>(spinner).painter) {
+        OlympusKeyPainter(:final progress, :final reduced, :final light) => (
+          progress,
+          reduced,
+          light,
+        ),
+        OlympusInlinePainter(:final progress, :final reduced, :final color) => (
+          progress,
+          reduced,
+          color,
+        ),
+        final painter => throw StateError('Unexpected painter $painter'),
+      };
 
-  testWidgets('animates both Olympus spinners and holds still for reduced '
-      'motion', (tester) async {
+  testWidgets('animates both Olympus spinners and holds still without '
+      'animations', (tester) async {
     final semantics = tester.ensureSemantics();
     for (final (style, brightness) in [
-      (BuzzLoadingStyle.bolt, Brightness.light),
-      (BuzzLoadingStyle.clouds, Brightness.light),
-      (BuzzLoadingStyle.clouds, Brightness.dark),
+      (BuzzLoadingStyle.page, Brightness.light),
+      (BuzzLoadingStyle.page, Brightness.dark),
+      (BuzzLoadingStyle.inline, Brightness.light),
+      (BuzzLoadingStyle.inline, Brightness.dark),
     ]) {
       await tester.pumpWidget(
         _testable(
@@ -53,17 +67,13 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 70));
-      final painter = tester.widget<CustomPaint>(spinner).painter!;
-      final (progress, color) = switch (painter) {
-        OlympusBoltPainter(:final progress, :final color) => (progress, color),
-        OlympusCloudPainter(:final progress, :final color) => (progress, color),
-        _ => throw StateError('Unexpected painter $painter'),
-      };
-      expect(progress.value, greaterThan(0));
+      final (progress, reduced, look) = read(tester);
+      expect(progress.value, inExclusiveRange(0, 1));
+      expect(reduced, isFalse);
       expect(
-        color,
-        style == BuzzLoadingStyle.bolt
-            ? OlympusColors.gold
+        look,
+        style == BuzzLoadingStyle.page
+            ? brightness == Brightness.light
             : tester.element(spinner).colors.onSurfaceVariant,
       );
       expect(tester.getSize(spinner), const Size.square(40));
@@ -82,24 +92,24 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final still = tester.widget<CustomPaint>(spinner).painter!;
-      expect(switch (still) {
-        OlympusBoltPainter(:final color) => color,
-        OlympusCloudPainter(:final color, :final still) when still => color,
-        _ => null,
-      }, Colors.white);
+      final (still, stillReduced, stillLook) = read(tester);
+      expect(still.value, 1);
+      expect(stillReduced, isTrue);
+      expect(stillLook, style == BuzzLoadingStyle.page ? false : Colors.white);
       expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
     }
     semantics.dispose();
   });
-  testWidgets('picks the bolt for page-size loads and clouds inline', (
+
+  testWidgets('picks the key loader for page-size loads and the tiles inline', (
     tester,
   ) async {
     for (final (size, painterType) in [
-      (40.0, OlympusBoltPainter),
-      (44.0, OlympusBoltPainter),
-      (36.0, OlympusCloudPainter),
-      (18.0, OlympusCloudPainter),
+      (40.0, OlympusKeyPainter),
+      (44.0, OlympusKeyPainter),
+      (36.0, OlympusInlinePainter),
+      (18.0, OlympusInlinePainter),
     ]) {
       await tester.pumpWidget(
         _testable(
@@ -118,16 +128,17 @@ void main() {
         disableAnimations: false,
         brightness: Brightness.light,
         size: 18,
-        style: BuzzLoadingStyle.bolt,
+        style: BuzzLoadingStyle.page,
       ),
     );
     expect(
       tester.widget<CustomPaint>(spinner).painter,
-      isA<OlympusBoltPainter>(),
+      isA<OlympusKeyPainter>(),
     );
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('stops both spinners for the iOS Reduce Motion setting', (
+  testWidgets('pulses both spinners for the iOS Reduce Motion setting', (
     tester,
   ) async {
     tester.platformDispatcher.accessibilityFeaturesTestValue =
@@ -142,13 +153,11 @@ void main() {
         ),
       );
       await tester.pump();
-      final progress = switch (tester.widget<CustomPaint>(spinner).painter) {
-        OlympusBoltPainter(:final progress) => progress,
-        OlympusCloudPainter(:final progress) => progress,
-        final painter => throw StateError('Unexpected painter $painter'),
-      };
-      expect(progress.isAnimating, isFalse);
-      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pump(const Duration(milliseconds: 300));
+      final (progress, reduced, _) = read(tester);
+      expect(reduced, isTrue);
+      expect(progress.status, AnimationStatus.reverse);
+      expect(progress.value, inExclusiveRange(0, 1));
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });

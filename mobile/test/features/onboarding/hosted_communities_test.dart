@@ -370,7 +370,7 @@ Future<void> revealOptionsWithSemantics(WidgetTester tester) async {
     );
     // The action belongs to the wordmark, never an unlabelled page-sized stop.
     expect(data.label, 'Olympus');
-    expect(wordmark.rect.height, lessThan(200));
+    expect(wordmark.rect.height, lessThan(260));
     wordmark.owner!.performAction(
       wordmark.id,
       ui.SemanticsAction.customAction,

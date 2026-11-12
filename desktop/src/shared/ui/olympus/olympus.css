@@ -1,82 +1,118 @@
 :root {
   --olympus-navy: #0e1630;
   --olympus-marble: #f5ebd0;
-  --olympus-gold: #e8b931;
-  --olympus-cloud: #8fa3d9;
+}
+
+:root,
+.buzz-onboarding-neutral-theme.buzz-startup-shell,
+.buzz-onboarding-neutral-theme[data-system-color-scheme="light"] {
+  --olympus-gold: #b8730f;
+  --olympus-hot: #e9a81c;
+  --olympus-ink-hot: #d9930f;
+}
+
+.dark,
+.buzz-onboarding-neutral-theme[data-system-color-scheme="dark"]:not(
+  .buzz-startup-shell
+),
+.buzz-onboarding-neutral-theme.buzz-startup-shell.buzz-onboarding-security-theme {
+  --olympus-gold: #f7c234;
+  --olympus-hot: #fff6c8;
+  --olympus-ink-hot: #fff3c4;
 }
 
 @layer components {
   .olympus-bolt {
-    aspect-ratio: 250 / 510;
+    aspect-ratio: 1;
     color: var(--olympus-gold);
     display: inline-block;
     flex-shrink: 0;
-    position: relative;
   }
 }
 
-.olympus-bolt__clip {
-  clip-path: polygon(
-    60.8% 1.96%,
-    8% 52.94%,
-    40% 52.94%,
-    4% 98.04%,
-    96% 39.61%,
-    60% 39.61%,
-    96% 1.96%
-  );
-  inset: 0;
-  overflow: hidden;
-  position: absolute;
-}
-
-.olympus-bolt__fill {
-  animation: olympus-charge 1.4s ease-in infinite;
-  background: currentColor;
+.olympus-bolt svg {
   display: block;
   height: 100%;
-  will-change: transform;
+  overflow: visible;
+  width: 100%;
 }
 
-.olympus-bolt__outline {
+.olympus-bolt path,
+.olympus-inline path {
+  animation-delay: inherit;
   fill: none;
-  height: 100%;
-  inset: 0;
-  overflow: visible;
-  position: absolute;
+}
+
+.olympus-bolt path {
+  stroke-linecap: square;
+}
+
+.olympus-bolt__tile {
+  opacity: 0.2;
   stroke: currentColor;
-  stroke-linejoin: round;
-  stroke-width: 18;
-  width: 100%;
+  stroke-width: 2;
+}
+
+.olympus-bolt__glow {
+  opacity: 0;
+  stroke: var(--olympus-hot);
+  stroke-width: 3;
 }
 
 .olympus-puffs {
   border-radius: 0;
   border-width: 0;
+  container-type: inline-size;
 }
 
-.olympus-puff {
-  animation: olympus-pulse 1.2s ease-in-out infinite;
-  aspect-ratio: 1;
-  background: currentColor;
-  border-radius: 9999px;
-  display: block;
+.olympus-inline {
+  display: none;
   flex: none;
-  opacity: 0.3;
-  width: 25%;
+  height: 100%;
+  stroke: currentColor;
+  width: 100%;
 }
 
-.olympus-puff:nth-child(2) {
-  animation-delay: 0.2s;
-  margin-inline: 11%;
+.olympus-inline--16 {
+  display: block;
 }
 
-.olympus-puff:nth-child(3) {
-  animation-delay: 0.4s;
+@container (11.5px <= width < 12.5px) or (23.5px <= width < 24.5px) {
+  .olympus-inline--12 {
+    display: block;
+  }
+
+  .olympus-inline--16 {
+    display: none;
+  }
+}
+
+@container (19.5px <= width < 20.5px) {
+  .olympus-inline--20 {
+    display: block;
+  }
+
+  .olympus-inline--16 {
+    display: none;
+  }
+}
+
+.olympus-inline__tile {
+  opacity: 0.26;
+}
+
+.olympus-inline__hot {
+  opacity: 0;
+  stroke: var(--olympus-ink-hot);
+}
+
+.olympus-mark {
+  overflow: visible;
 }
 
 .olympus-welcome {
   color-scheme: dark;
+  --olympus-r: clamp(110px, min(21vh, 50vh - 13.0625rem), 200px);
   --buzz-welcome-chartreuse: var(--olympus-navy);
   --buzz-onboarding-shell-bottom: transparent;
   --background: 226 55% 12%;
@@ -94,220 +130,789 @@
   --ring: 45 80% 55%;
   background-color: var(--olympus-navy);
   background-image: none;
+  isolation: isolate;
 }
 
-.olympus-sky__cloud {
-  height: auto;
-  position: absolute;
-  will-change: transform;
+.olympus-sky {
+  z-index: -2;
 }
 
-.olympus-sky__cloud--a {
-  animation: olympus-drift 22s ease-in-out infinite alternate;
-  left: 10%;
-  opacity: 0.3;
-  top: 12%;
-  width: clamp(8rem, 24vh, 16rem);
-}
-
-.olympus-sky__cloud--b {
-  animation: olympus-drift-reverse 18s ease-in-out -7s infinite alternate;
-  left: 74%;
-  opacity: 0.22;
-  top: 24%;
-  width: clamp(6rem, 17vh, 11rem);
-}
-
-.olympus-flash {
-  animation: olympus-flash 6s linear -3s infinite;
-  opacity: 0;
-}
-
-.olympus-sky__flash {
-  background: rgb(255 255 255 / 0.6);
+.olympus-sky__gradient {
+  background: linear-gradient(#03041a, #0b0f38 50%, #171c58);
   inset: 0;
   position: absolute;
 }
 
-.olympus-hero {
-  aspect-ratio: 1024 / 920;
-  height: clamp(9rem, 30vh, 19rem);
-  position: relative;
+.olympus-sky__art {
+  aspect-ratio: 1440 / 900;
+  height: 100%;
+  left: 50%;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
 }
 
-.olympus-hero__mountain {
+.olympus-sky__art :where(div, svg),
+.olympus-wisp,
+.olympus-seal :where(div, svg) {
   height: 100%;
   inset: 0;
   position: absolute;
   width: 100%;
 }
 
-.olympus-hero__bolt {
-  animation: olympus-strike 6s ease-out -3s infinite;
-  height: 53.26%;
-  left: 58.59%;
+.olympus-sky__art svg {
+  overflow: visible;
+}
+
+.olympus-sky__ground {
+  top: max(0px, calc(var(--olympus-r) + 8.8125rem - 38.889vh));
+}
+
+.olympus-sky__shade {
+  background: linear-gradient(
+    rgb(10 14 46 / 0),
+    rgb(10 14 46 / 0.92) 11.195%,
+    #070a22 31.987%
+  );
+  height: 66%;
+  left: -28%;
+  top: 78.889%;
+  width: 156%;
+}
+
+.olympus-star {
+  background: #eef2ff;
+  border-radius: 50%;
   position: absolute;
-  top: 3.26%;
-  width: 22.46%;
 }
 
-.olympus-hero__cloud {
-  height: auto;
+.olympus-star--disc {
+  opacity: 0.8;
+}
+
+.olympus-sheet {
+  background: radial-gradient(
+    closest-side,
+    rgb(233 230 255 / 0.95),
+    rgb(169 164 255 / 0.5) 35%,
+    rgb(124 120 240 / 0)
+  );
+}
+
+.olympus-flicker {
+  background: radial-gradient(
+    closest-side,
+    rgb(244 240 255 / 0.675),
+    rgb(184 174 255 / 0.3375) 40%,
+    rgb(138 128 240 / 0)
+  );
+}
+
+.olympus-sheet,
+.olympus-flicker,
+.olympus-distant,
+.olympus-strike,
+.olympus-flash {
+  fill: none;
+  opacity: 0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.olympus-draw {
+  stroke-dasharray: 1 9;
+  stroke-dashoffset: 1;
+}
+
+.olympus-hero {
+  aspect-ratio: 1;
+  pointer-events: none;
+  position: relative;
+  width: calc(2 * var(--olympus-r));
+}
+
+.olympus-hero__aurora {
+  background: radial-gradient(
+    closest-side,
+    rgb(122 112 240 / 0.55),
+    rgb(74 76 200 / 0.22) 45%,
+    rgb(48 56 160 / 0)
+  );
+  inset: -60%;
+  opacity: 0.8;
   position: absolute;
-  will-change: transform;
+  z-index: -1;
 }
 
-.olympus-hero__cloud--a {
-  animation: olympus-drift-front 14s ease-in-out infinite alternate;
-  left: 14.45%;
-  top: 68.33%;
-  width: 35.55%;
+.olympus-hero__wisps {
+  inset-block: 0;
+  left: 50%;
+  margin-left: -50vw;
+  overflow: hidden;
+  position: absolute;
+  width: 100vw;
 }
 
-.olympus-hero__cloud--b {
-  animation: olympus-drift-front-reverse 18s ease-in-out infinite alternate;
-  left: 64.16%;
-  top: 58.52%;
-  width: 25.98%;
+.olympus-wisp i {
+  background: radial-gradient(
+    closest-side,
+    rgb(220 226 255 / 0.55),
+    rgb(183 194 248 / 0.2) 60%,
+    rgb(183 194 248 / 0)
+  );
+  position: absolute;
+}
+
+.olympus-wisp--a {
+  animation-delay: -9s;
+  animation-duration: 26s;
+}
+
+.olympus-wisp--b {
+  animation-delay: -4s;
+  animation-duration: 19s;
+}
+
+.olympus-wisp--c {
+  animation-delay: -15s;
+  animation-duration: 24s;
+}
+
+.olympus-seal {
+  inset: -29.365%;
+  position: absolute;
+}
+
+.olympus-seal__halo {
+  opacity: 0.5;
+}
+
+.olympus-seal__face {
+  height: 66.667%;
+  inset: 16.667%;
+  width: 66.667%;
+}
+
+.olympus-seal__disc,
+.olympus-seal__storm {
+  border-radius: 50%;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.olympus-seal__disc {
+  height: 86%;
+  inset: 7%;
+  width: 86%;
+}
+
+.olympus-seal__storm {
+  height: 90.698%;
+  inset: 4.651%;
+  width: 90.698%;
 }
 
 .olympus-wordmark {
   color: var(--olympus-marble);
-  font-family: Georgia, ui-serif, "Times New Roman", serif;
-  font-weight: 600;
-  letter-spacing: 0.32em;
-  line-height: 1.2;
-  padding-left: 0.32em;
+  font:
+    700 2.5rem / 1 "Iowan Old Style",
+    "Palatino Linotype",
+    Palatino,
+    Georgia,
+    serif;
+  letter-spacing: 0.42em;
+  margin: 1.5rem -0.42em 0 0;
+  white-space: nowrap;
 }
 
-@keyframes olympus-charge {
-  0% {
-    transform: translateY(100%);
+.olympus-wordmark .olympus-in {
+  display: inline-block;
+}
+
+.olympus-rule {
+  height: auto;
+  margin-top: 0.875rem;
+  width: 6.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .olympus-bolt__tile {
+    animation: olympus-tile 1.6s linear infinite;
   }
 
-  70%,
+  .olympus-bolt__glow {
+    animation: olympus-tile-glow 1.6s linear infinite;
+  }
+
+  .olympus-inline__tile {
+    animation: olympus-key 1.2s linear infinite;
+  }
+
+  .olympus-inline__hot {
+    animation: olympus-key-hot 1.2s linear infinite;
+  }
+
+  .olympus-star {
+    animation: olympus-twinkle 3s ease-in-out infinite alternate;
+  }
+
+  .olympus-star--disc {
+    animation: olympus-twinkle-disc 6s ease-in-out infinite;
+  }
+
+  .olympus-cloud--back {
+    animation: olympus-cloud-back 50s ease-in-out infinite alternate;
+  }
+
+  .olympus-cloud--mid {
+    animation: olympus-cloud-mid 40s ease-in-out infinite alternate;
+  }
+
+  .olympus-cloud--front {
+    animation: olympus-cloud-front 30s ease-in-out infinite alternate;
+  }
+
+  .olympus-wisp {
+    animation-iteration-count: infinite;
+    animation-name: olympus-wisp;
+    animation-timing-function: linear;
+  }
+
+  .olympus-seal__halo {
+    animation: olympus-halo 12s ease-in-out infinite;
+  }
+
+  .olympus-drift--ridge {
+    animation: olympus-drift-ridge 44s ease-in-out infinite;
+  }
+
+  .olympus-drift--back {
+    animation: olympus-drift-back 40s ease-in-out infinite;
+  }
+
+  .olympus-drift--front {
+    animation: olympus-drift-front 30s ease-in-out infinite;
+  }
+
+  .olympus-seal__meander {
+    animation: olympus-spin 120s linear infinite;
+  }
+
+  .olympus-sheet {
+    animation: olympus-sheet 900ms linear both paused;
+  }
+
+  .olympus-flicker {
+    animation: olympus-flicker 520ms linear both paused;
+  }
+
+  .olympus-distant {
+    animation: olympus-distant 420ms linear both paused;
+  }
+
+  .olympus-strike {
+    animation: olympus-strike 760ms linear both paused;
+  }
+
+  .olympus-flash {
+    animation: olympus-flash 820ms linear both paused;
+  }
+
+  .olympus-draw {
+    animation: olympus-draw linear both paused;
+  }
+
+  .olympus-sky__gradient {
+    animation: olympus-fade-in 700ms ease-out 300ms both;
+  }
+
+  .olympus-sky__stars,
+  .olympus-hero__aurora {
+    animation: olympus-fade-in 1200ms ease-out 500ms both;
+  }
+
+  .olympus-hero__wisps {
+    animation: olympus-fade-in 1200ms ease-out 1100ms both;
+  }
+
+  .olympus-rise {
+    animation: olympus-rise-in 900ms cubic-bezier(0.22, 1, 0.36, 1) 600ms both;
+  }
+
+  .olympus-rise--mid {
+    animation-delay: 700ms;
+  }
+
+  .olympus-rise--front {
+    animation-delay: 800ms;
+  }
+
+  .olympus-rise--base {
+    animation-delay: 840ms;
+  }
+
+  .olympus-seal {
+    animation:
+      olympus-seal-in 700ms cubic-bezier(0.22, 1, 0.36, 1) 400ms both,
+      olympus-fade-in 300ms ease-out both;
+  }
+
+  .olympus-wordmark .olympus-in {
+    animation: olympus-letter-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .olympus-rule {
+    animation: olympus-rule-in 600ms cubic-bezier(0.22, 1, 0.36, 1) 1500ms both;
+  }
+
+  .olympus-lockup ~ * {
+    animation: olympus-fade-up 500ms ease-out 1500ms both;
+  }
+
+  .olympus-lockup ~ div {
+    animation-delay: 1700ms;
+    animation-duration: 400ms;
+  }
+
+  .olympus-welcome
+    [data-onboarding-direction="forward"]
+    > .buzz-onboarding-transition-content,
+  .olympus-welcome:has([data-onboarding-direction="backward"])
+    :is(.olympus-in, .olympus-lockup ~ *) {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .olympus-bolt svg {
+    animation: olympus-pulse 1.6s ease-in-out infinite alternate;
+  }
+
+  .olympus-inline {
+    animation: olympus-pulse-inline 1.2s ease-in-out infinite alternate;
+  }
+
+  .olympus-bolt__tile,
+  .olympus-inline__tile {
+    opacity: 1;
+  }
+
+  .olympus-seal__halo {
+    animation: olympus-halo-calm 8s ease-in-out infinite alternate;
+  }
+
+  .olympus-wisp--b,
+  .olympus-wisp--c,
+  .olympus-sheet,
+  .olympus-flicker,
+  .olympus-distant,
+  .olympus-strike,
+  .olympus-flash {
+    display: none;
+  }
+
+  .olympus-sky,
+  .olympus-welcome
+    [data-onboarding-direction]
+    > .buzz-onboarding-transition-content {
+    animation: olympus-fade-in 300ms ease-out both;
+  }
+}
+
+@keyframes olympus-tile {
+  0% {
+    opacity: 0.2;
+  }
+
+  4%,
+  12.5% {
+    opacity: 1;
+  }
+
+  25% {
+    opacity: 0.6;
+  }
+
+  37.5% {
+    opacity: 0.34;
+  }
+
+  50%,
   100% {
-    transform: translateY(0);
+    opacity: 0.2;
+  }
+}
+
+@keyframes olympus-tile-glow {
+  0% {
+    opacity: 0;
+  }
+
+  4% {
+    opacity: 0.85;
+  }
+
+  12.5% {
+    opacity: 0.5;
+  }
+
+  25%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes olympus-key {
+  0% {
+    opacity: 0.26;
+  }
+
+  6%,
+  25% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.52;
+  }
+
+  75%,
+  100% {
+    opacity: 0.26;
+  }
+}
+
+@keyframes olympus-key-hot {
+  0% {
+    opacity: 0;
+  }
+
+  6% {
+    opacity: 0.9;
+  }
+
+  25%,
+  100% {
+    opacity: 0;
   }
 }
 
 @keyframes olympus-pulse {
-  0%,
-  60% {
-    opacity: 0.3;
+  from {
+    opacity: 0.45;
   }
 
-  75% {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes olympus-pulse-inline {
+  from {
+    opacity: 0.4;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes olympus-twinkle {
+  from {
+    opacity: 0.22;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes olympus-twinkle-disc {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+
+  20% {
     opacity: 1;
   }
 
+  70% {
+    opacity: 0.22;
+  }
+}
+
+@keyframes olympus-cloud-back {
+  from {
+    transform: translateX(3.111vh);
+  }
+
+  to {
+    transform: translateX(-3.111vh);
+  }
+}
+
+@keyframes olympus-cloud-mid {
+  from {
+    transform: translateX(-4vh);
+  }
+
+  to {
+    transform: translateX(4vh);
+  }
+}
+
+@keyframes olympus-cloud-front {
+  from {
+    transform: translateX(5.333vh);
+  }
+
+  to {
+    transform: translateX(-5.333vh);
+  }
+}
+
+@keyframes olympus-wisp {
+  from {
+    transform: translateX(-45%);
+  }
+
+  to {
+    transform: translateX(145%);
+  }
+}
+
+@keyframes olympus-halo {
+  0%,
   100% {
-    opacity: 0.3;
+    opacity: 0.5;
+  }
+
+  25% {
+    opacity: 0.62;
+  }
+
+  75% {
+    opacity: 0.38;
   }
 }
 
-@keyframes olympus-drift {
+@keyframes olympus-halo-calm {
   from {
-    transform: translateX(-55%);
+    opacity: 0.38;
   }
 
   to {
-    transform: translateX(55%);
+    opacity: 0.62;
   }
 }
 
-@keyframes olympus-drift-reverse {
-  from {
-    transform: translateX(55%);
+@keyframes olympus-drift-ridge {
+  0%,
+  100% {
+    transform: translateX(0);
   }
 
-  to {
-    transform: translateX(-55%);
+  25% {
+    transform: translateX(1.453%);
+  }
+
+  75% {
+    transform: translateX(-1.453%);
+  }
+}
+
+@keyframes olympus-drift-back {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(2.035%);
+  }
+
+  75% {
+    transform: translateX(-2.035%);
   }
 }
 
 @keyframes olympus-drift-front {
-  from {
-    transform: translateX(-38%);
+  0%,
+  100% {
+    transform: translateX(0);
   }
 
-  to {
-    transform: translateX(38%);
+  25% {
+    transform: translateX(-2.616%);
+  }
+
+  75% {
+    transform: translateX(2.616%);
   }
 }
 
-@keyframes olympus-drift-front-reverse {
-  from {
-    transform: translateX(41%);
+@keyframes olympus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes olympus-sheet {
+  0%,
+  100% {
+    opacity: 0;
   }
 
-  to {
-    transform: translateX(-41%);
+  6.667% {
+    opacity: 0.9;
+  }
+
+  15.556% {
+    opacity: 0.2;
+  }
+
+  24.444% {
+    opacity: 0.7;
+  }
+
+  35.556% {
+    opacity: 0.1;
+  }
+
+  44.444% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes olympus-flicker {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  9.615% {
+    opacity: 0.8;
+  }
+
+  23.077% {
+    opacity: 0.2;
+  }
+
+  36.538% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes olympus-distant {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  2.381% {
+    opacity: 1;
+  }
+
+  23.81% {
+    opacity: 0.3;
+  }
+
+  38.095% {
+    opacity: 1;
   }
 }
 
 @keyframes olympus-strike {
   0%,
-  86% {
-    opacity: 0;
-    transform: translateY(-12%) scale(0.96);
-  }
-
-  88% {
-    opacity: 1;
-    transform: none;
-  }
-
-  92% {
-    opacity: 0.35;
-  }
-
-  94%,
   100% {
+    opacity: 0;
+  }
+
+  1.053%,
+  12.5% {
     opacity: 1;
+  }
+
+  17.763% {
+    opacity: 0.22;
+  }
+
+  26.316% {
+    opacity: 0.95;
+  }
+
+  39.474% {
+    opacity: 0.6;
   }
 }
 
 @keyframes olympus-flash {
   0%,
-  87% {
-    opacity: 0;
-  }
-
-  88% {
-    opacity: 0.35;
-  }
-
-  90% {
-    opacity: 0;
-  }
-
-  93% {
-    opacity: 0.18;
-  }
-
-  96%,
   100% {
+    opacity: 0;
+  }
+
+  6.707% {
+    opacity: 1;
+  }
+
+  15.854% {
+    opacity: 0.2;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  40.244% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes olympus-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes olympus-fade-in {
+  from {
     opacity: 0;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .olympus-bolt__fill,
-  .olympus-puff,
-  .olympus-sky__cloud,
-  .olympus-flash,
-  .olympus-hero__bolt,
-  .olympus-hero__cloud {
-    animation: none;
-    will-change: auto;
+@keyframes olympus-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
   }
+}
 
-  .olympus-puff:nth-child(1) {
-    opacity: 1;
+@keyframes olympus-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4.889vh);
   }
+}
 
-  .olympus-puff:nth-child(2) {
-    opacity: 0.6;
+@keyframes olympus-seal-in {
+  from {
+    transform: translateY(8.8125rem) scale(0.8);
+  }
+}
+
+@keyframes olympus-letter-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em) scale(0.96);
+  }
+}
+
+@keyframes olympus-rule-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
   }
 }

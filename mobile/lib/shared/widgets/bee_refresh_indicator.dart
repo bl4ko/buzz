@@ -6,18 +6,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import '../olympus/olympus_colors.dart';
-import '../olympus/olympus_pull_bolt.dart';
+import '../olympus/olympus_pull_key.dart';
+import '../olympus/use_olympus_reduced_motion.dart';
 
-/// Replaces the standard pull-to-refresh spinner with the Olympus bolt.
+/// Replaces the standard pull-to-refresh spinner with the Olympus key tiles.
 ///
 /// Flutter continues to own the gesture, refresh lifecycle, and accessibility
 /// semantics. This widget maps those states into the elastic pull, retained
-/// loading gap, and bee animation.
+/// loading gap, and tile animation.
 class BeeRefreshIndicator extends HookConsumerWidget {
   /// Called when the user completes a pull, to load fresh data.
   ///
-  /// The bolt keeps charging until this future settles, so it should complete
+  /// The tiles keep running until this future settles, so it should complete
   /// only once the refresh is done.
   final Future<void> Function() onRefresh;
 
@@ -38,12 +38,10 @@ class BeeRefreshIndicator extends HookConsumerWidget {
   });
 
   static const _beeWidth = 60.0;
-  static const _beeHeight = _beeWidth * 309 / 466;
+  static const _beeHeight = 44.0;
   static const _triggerDistance = 100.0;
   static const _loadingGap = 72.0;
   static const _beeVerticalAlignment = 0.75;
-  static const _beeInitialScale = 0.6;
-  static const _beeRevealStartProgress = 0.18;
   static const _eyeEmojiSwapViewportFraction = 0.26;
   static const _eyeEmojiMinSwapBeyondArmDistance = 220.0;
   static const _eyeEmojiMaxSwapBeyondArmDistance = 280.0;
@@ -64,8 +62,9 @@ class BeeRefreshIndicator extends HookConsumerWidget {
     final didTriggerArmHaptic = useRef(false);
     final didTriggerEmojiHaptic = useRef(false);
     final eyeShakeHapticTimer = useRef<Timer?>(null);
+    final fadeOnly = useOlympusReducedMotion(context);
     final completionController = useAnimationController(
-      duration: _settleDuration,
+      duration: Duration(milliseconds: fadeOnly ? 200 : 240),
     );
     final gapController = useAnimationController(
       duration: _settleDuration,
@@ -269,20 +268,15 @@ class BeeRefreshIndicator extends HookConsumerWidget {
       RefreshIndicatorStatus.done => true,
       _ => false,
     };
-    final dragRevealProgress =
-        ((pullProgress.value - _beeRevealStartProgress) /
-                (1 - _beeRevealStartProgress))
-            .clamp(0.0, 1.0);
+    final done = Curves.easeIn.transform(completionProgress);
     final isVisible =
         status.value != null &&
-        (isLoading || dragRevealProgress > 0 || completionProgress > 0);
+        (isLoading || pullProgress.value > 0 || completionProgress > 0);
     final retainedGap = _loadingGap * gapProgress;
     final visibleGap = pullDistance.value + retainedGap;
     final top = edgeOffset + (visibleGap - _beeHeight) * _beeVerticalAlignment;
-    final opacity = isLoading ? 1 - completionProgress : dragRevealProgress;
-    final beeScale = isLoading
-        ? 1.0
-        : _beeInitialScale + (1 - _beeInitialScale) * dragRevealProgress;
+    final opacity = isLoading ? 1 - done : 1.0;
+    final beeScale = isLoading && !fadeOnly ? 1 + 0.2 * done : 1.0;
     final showEyeEmoji = !isLoading && didTriggerEmojiHaptic.value;
     final eyeShakeOffset = showEyeEmoji && !reducedMotion
         ? sin(eyeShakeProgress * 2 * pi) * 0.75
@@ -346,10 +340,14 @@ class BeeRefreshIndicator extends HookConsumerWidget {
                             alignment: Alignment.topCenter,
                             children: [
                               Positioned.fill(
-                                child: OlympusPullBolt(
+                                child: OlympusPullKey(
                                   height: _beeHeight,
-                                  color: OlympusColors.gold,
-                                  charge: pullProgress.value,
+                                  charge:
+                                      isLoading ||
+                                          status.value ==
+                                              RefreshIndicatorStatus.armed
+                                      ? 1
+                                      : pullProgress.value.clamp(0.0, 0.84),
                                   loading: isLoading,
                                 ),
                               ),
