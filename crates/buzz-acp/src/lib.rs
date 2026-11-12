@@ -4392,6 +4392,9 @@ async fn run_harness(
         pr.agent.acp.shutdown().await;
         tracing::debug!(agent = idx, "reaped late-arriving agent on shutdown");
     }
+    if !pool::drain_reaction_cleanups(Duration::from_secs(5)).await {
+        tracing::warn!("reaction cleanup did not finish before shutdown");
+    }
     cursor.reconcile(&queue);
     cursor.flush();
     // Explicitly shut down idle agents still sitting in their slots.

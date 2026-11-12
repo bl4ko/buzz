@@ -5090,6 +5090,16 @@ fn record_scope_delivery_success(
 /// the cleanup spawn may race with the 👀 add, leaving a stale 👀. This is
 /// accepted as a cosmetic edge case — the message will be retried and the
 /// stale 👀 is harmless.
+static REACTION_CLEANUPS: std::sync::LazyLock<tokio_util::task::TaskTracker> =
+    std::sync::LazyLock::new(tokio_util::task::TaskTracker::new);
+
+/// Wait up to `limit` for the reaction removals of finished turns, so a
+/// shutdown does not leave 👀 and 💬 on messages that were answered.
+pub(crate) async fn drain_reaction_cleanups(limit: Duration) -> bool {
+    REACTION_CLEANUPS.close();
+    timeout(limit, REACTION_CLEANUPS.wait()).await.is_ok()
+}
+
 struct ReactionGuard {
     rest: Option<crate::relay::RestClient>,
     ids: Vec<String>,
@@ -5114,7 +5124,7 @@ impl Drop for ReactionGuard {
         if let Some(rest) = self.rest.take() {
             let ids = std::mem::take(&mut self.ids);
             if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn(clear_reactions(rest, ids));
+                handle.spawn(REACTION_CLEANUPS.track_future(clear_reactions(rest, ids)));
             }
             // If no runtime is available, reactions are left as-is — they are
             // cosmetic indicators and the stale state is harmless.
@@ -5709,6 +5719,47 @@ pub(crate) mod tests {
             args: vec![],
             env: vec![],
         }
+    }
+
+    #[tokio::test]
+    async fn shutdown_waits_for_the_reaction_cleanup_of_a_finished_turn() {
+        use std::sync::atomic::Ordering;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let queries = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let served = queries.clone();
+        let server = tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let served = served.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0; 8192];
+                    let _ = socket.read(&mut buf).await;
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    served.fetch_add(1, Ordering::SeqCst);
+                    let _ = socket
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]")
+                        .await;
+                });
+            }
+        });
+        let rest = crate::relay::RestClient {
+            http: reqwest::Client::new(),
+            base_url,
+            keys: nostr::Keys::generate(),
+            auth_tag_json: None,
+        };
+
+        drop(ReactionGuard::new(rest, vec!["e".repeat(64)]));
+        assert_eq!(queries.load(Ordering::SeqCst), 0);
+        assert!(drain_reaction_cleanups(Duration::from_secs(5)).await);
+        assert_eq!(
+            queries.load(Ordering::SeqCst),
+            2,
+            "one lookup each for 👀 and 💬"
+        );
+        server.abort();
     }
 
     #[test]

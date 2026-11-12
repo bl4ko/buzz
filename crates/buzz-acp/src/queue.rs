@@ -1706,6 +1706,11 @@ pub(crate) fn format_event_block(
     block
 }
 
+/// A top-level direct message is answered in the main conversation.
+const DM_MAIN_TIMELINE_INSTRUCTION: &str = "\nIMPORTANT: This direct message is in the main \
+     conversation. Reply there: use `buzz messages send` without `--reply-to`. \
+     Reply in a thread only when the human writes in that thread.";
+
 /// Append a reply instruction when the agent is responding to a thread event.
 ///
 /// Tells the agent to default to `--reply-to <event_id>` for ordinary replies
@@ -2027,6 +2032,8 @@ fn format_context_hints(
             if let Some(event_id) = reply_anchor {
                 append_reply_instruction(&mut s, event_id);
             }
+        } else {
+            s.push_str(DM_MAIN_TIMELINE_INSTRUCTION);
         }
         crate::prompt_framing::semantic_section("context", &s)
     } else if let Some(root) = scope
@@ -4601,7 +4608,8 @@ mod tests {
                             };
                             assert!(prompt.contains(&format!("--reply-to {anchor}")));
                         } else {
-                            assert!(!prompt.contains("--reply-to"));
+                            assert!(!prompt.contains(&format!("--reply-to {root}")));
+                            assert!(prompt.contains("without `--reply-to`"));
                             assert!(prompt.contains("buzz messages get"));
                         }
                     }
@@ -5965,7 +5973,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reply_instruction_absent_for_dm_non_reply() {
+    fn test_dm_non_reply_answers_in_the_main_conversation() {
         let ch = Uuid::new_v4();
         let event = make_event("hey there");
         let batch = FlushBatch {
@@ -5996,8 +6004,13 @@ mod tests {
         )
         .join("\n\n");
         assert!(
-            !prompt.contains("--reply-to"),
-            "DM non-reply should NOT include reply instruction"
+            prompt.contains("without `--reply-to`"),
+            "DM non-reply should answer in the main conversation: {prompt}"
+        );
+        assert!(
+            !prompt.contains("--reply-to <")
+                && !prompt.contains(&format!("--reply-to {}", batch.events[0].event.id.to_hex())),
+            "DM non-reply must not name a thread target: {prompt}"
         );
     }
 

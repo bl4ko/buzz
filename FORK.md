@@ -57,3 +57,7 @@ The visible brand is Olympus. Keep these overrides when you rebase onto upstream
 - Mobile: the welcome bee files (`website_bee_*.dart`, `website_welcome_background.dart`) and `flapping_bee.dart` are deleted. `onboarding_wordmark.dart`, `onboarding_background.dart`, `buzz_loading_indicator.dart`, `bee_loading_mark.dart`, and `bee_refresh_indicator.dart` are rewritten on `lib/shared/olympus/`. `BuzzLoadingIndicator` picks the key-tile loader or the inline key tiles by size, so call sites stay upstream. `pairing_welcome_view.dart` wraps the wordmark, tagline, and actions for the intro (`OlympusIntro`).
 - Desktop: `LandingBees.tsx` is deleted. `spinner.tsx`, `BuzzLoadingState.tsx`, and the loading gates in `App.tsx` use `src/shared/ui/olympus/`. The tray icon is in `tray_icon_olympus.rs`. The first-paint mark is `public/boot.css` with `public/olympus-boot-{dark,light}.svg`.
 - Keep upstream bee assets that are now unused (`FlappingBee.tsx`, `FuzzyLogo.tsx`, `BuzzLogoAnimation.tsx`, the bee and wordmark assets in `pubspec.yaml`, `tray_bee_icon`) to avoid modify/delete conflicts.
+
+## Agent harness replies
+
+`buzz-acp` tells the agent to answer a top-level direct message in the main conversation (no `--reply-to`); a DM thread reply stays in its thread. At shutdown it waits up to 5 s for the 👀 and 💬 removals of finished turns.
