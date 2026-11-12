@@ -214,7 +214,7 @@ function OlympusAgentConfiguration({ agent }: { agent: OlympusAgent }) {
           <Field label="Effort">{agent.spec.effort ?? "Default"}</Field>
           <Field label="Owner">
             {agent.owner ? (
-              <PubKey pubkey={agent.owner} variant="full" />
+              <PubKey pubkey={agent.owner} />
             ) : (
               "Hephaestus default owner"
             )}

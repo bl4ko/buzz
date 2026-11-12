@@ -22,6 +22,7 @@
 //   --outdir <path>            Output directory (default: test-results/screenshots)
 //   --messages <path>          JSON file with messages to inject before capture
 //   --update-ready             Mock an available update so the sidebar update card renders
+//   --olympus-events <path>    JSON array of Olympus relay events (kinds 30190, 30191) to seed
 
 import { parseArgs } from "node:util";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
@@ -43,6 +44,7 @@ const { values: args } = parseArgs({
     messages: { type: "string" },
     "local-storage": { type: "string", multiple: true, default: [] },
     "update-ready": { type: "boolean", default: false },
+    "olympus-events": { type: "string" },
   },
   strict: true,
 });
@@ -57,6 +59,10 @@ const localStorageSeeds = args["local-storage"].map((entry) => {
   }
   return [entry.slice(0, separatorIndex), entry.slice(separatorIndex + 1)];
 });
+
+const olympusEvents = args["olympus-events"]
+  ? JSON.parse(readFileSync(resolve(args["olympus-events"]), "utf8"))
+  : null;
 
 const activeChannel = args["active-channel"];
 const rightClick = args["right-click"];
@@ -141,7 +147,7 @@ if (localStorageSeeds.length > 0) {
 
 // Install E2E mock bridge config + MockNotification (mirrors installBridge in bridge.ts)
 await page.addInitScript(
-  ({ updateReady }) => {
+  ({ olympusEvents, updateReady }) => {
     class MockNotification extends EventTarget {
       static permission = "granted";
       static async requestPermission() {
@@ -165,11 +171,14 @@ await page.addInitScript(
 
     window.__BUZZ_E2E__ = {
       mode: "mock",
-      ...(updateReady ? { mock: { updateAvailable: true } } : {}),
+      mock: {
+        ...(updateReady ? { updateAvailable: true } : {}),
+        ...(olympusEvents ? { olympusEvents } : {}),
+      },
     };
     window.__BUZZ_E2E_APP_BADGE_COUNT__ = 0;
   },
-  { updateReady: args["update-ready"] },
+  { olympusEvents, updateReady: args["update-ready"] },
 );
 
 try {

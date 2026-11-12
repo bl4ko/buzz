@@ -267,9 +267,7 @@ function OlympusAgentRow({
         ) : (
           <span>No MCP servers</span>
         )}
-        <span>
-          · Memory {agent.spec.memory ? agent.spec.memory.bank : "off"}
-        </span>
+        <span>Memory {agent.spec.memory ? agent.spec.memory.bank : "off"}</span>
       </span>
     </button>
   );

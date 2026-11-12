@@ -90,15 +90,22 @@ export function OlympusNewAgentDialog({
               </label>
               <Input
                 aria-describedby={
-                  nameError ? `${formId}-name-error` : undefined
+                  nameError ? `${formId}-name-error` : `${formId}-name-hint`
                 }
                 aria-invalid={nameError ? true : undefined}
                 autoComplete="off"
                 id={`${formId}-name`}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="my-agent"
                 value={name}
               />
+              {nameError ? null : (
+                <p
+                  className="text-xs text-muted-foreground"
+                  id={`${formId}-name-hint`}
+                >
+                  Lowercase letters, digits, and hyphens.
+                </p>
+              )}
               {nameError ? (
                 <p
                   className="text-xs text-destructive"

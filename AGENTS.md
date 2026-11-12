@@ -430,7 +430,8 @@ Options: `--name` (filename), `--route` (client route), `--active-channel`
 `--right-click` (right-click for context menus), `--hover` (hover before
 capture), `--clip` (crop region as `x,y,w,h` — e.g. `0,0,256,720` for sidebar
 only), `--wait` (ms, default 2000), `--viewport` (WxH, default 1280x720),
-`--outdir` (default `test-results/screenshots`), `--messages` (JSON file path).
+`--outdir` (default `test-results/screenshots`), `--messages` (JSON file path),
+`--olympus-events` (JSON array of Olympus kind 30190/30191 events to seed).
 Output is a PNG path on stdout.
 
 Use `--messages` to inject content into a channel before capture. The JSON file
