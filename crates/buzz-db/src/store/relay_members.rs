@@ -171,6 +171,56 @@ pub async fn add_relay_member(
     commit_membership_write(tx, added, added, relay_keypair).await
 }
 
+/// Adds an agent to `community` as a `member` and gives it its first owner,
+/// both or neither.
+///
+/// The outcome is whether the member row was inserted, and what happened to
+/// the owner. An owner that is refused leaves the roster unchanged. With
+/// `added_by_sender_only`, an agent that was already a member must have been
+/// added by `sender`.
+pub async fn add_relay_member_with_owner(
+    pool: &PgPool,
+    community: CommunityId,
+    pubkey: &str,
+    owner_pubkey: &[u8],
+    sender: &str,
+    added_by_sender_only: bool,
+    relay_keypair: &nostr::Keys,
+) -> Result<MembershipWrite<(bool, crate::user::AgentOwnerAssignment)>> {
+    let agent_pubkey =
+        hex::decode(pubkey).map_err(|_| DbError::InvalidData("invalid member pubkey".into()))?;
+    let mut tx = crate::begin_community_write_transaction(
+        pool,
+        community,
+        observability::WriterOperation::Authorization,
+    )
+    .await?;
+    crate::relay_invite::lock_admission(tx.conn(), community).await?;
+    let result = sqlx::query(
+        "INSERT INTO relay_members (community_id, pubkey, role, added_by) \
+         VALUES ($1, $2, 'member', $3) ON CONFLICT (community_id, pubkey) DO NOTHING",
+    )
+    .bind(community.as_uuid())
+    .bind(pubkey)
+    .bind(sender)
+    .execute(tx.conn())
+    .await?;
+    let added = result.rows_affected() > 0;
+    let assignment = crate::user::assign_agent_owner_in(
+        tx.conn(),
+        community,
+        &agent_pubkey,
+        owner_pubkey,
+        added_by_sender_only.then_some(sender),
+    )
+    .await?;
+    if !assignment.is_linked() {
+        tx.rollback().await?;
+        return Ok(MembershipWrite::unchanged((false, assignment)));
+    }
+    commit_membership_write(tx, (added, assignment), added, relay_keypair).await
+}
+
 /// Commit a membership transaction, first writing the NIP-43 snapshot when
 /// it `changed` `relay_members`.
 pub(crate) async fn commit_membership_write<T>(
@@ -1273,6 +1323,30 @@ impl Db {
         relay_keypair: &nostr::Keys,
     ) -> Result<MembershipWrite<bool>> {
         add_relay_member(&self.pool, community, pubkey, role, added_by, relay_keypair).await
+    }
+
+    /// Adds an agent as a `member` and gives it its first owner, both or
+    /// neither. See [`add_relay_member_with_owner`].
+    #[datastore_span(name = "add_relay_member_with_owner", system = "postgresql")]
+    pub async fn add_relay_member_with_owner(
+        &self,
+        community: CommunityId,
+        pubkey: &str,
+        owner_pubkey: &[u8],
+        sender: &str,
+        added_by_sender_only: bool,
+        relay_keypair: &nostr::Keys,
+    ) -> Result<MembershipWrite<(bool, crate::user::AgentOwnerAssignment)>> {
+        add_relay_member_with_owner(
+            &self.pool,
+            community,
+            pubkey,
+            owner_pubkey,
+            sender,
+            added_by_sender_only,
+            relay_keypair,
+        )
+        .await
     }
 
     /// Claims relay membership via an invite and atomically persists the

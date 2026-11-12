@@ -344,9 +344,155 @@ pub fn parse_auth_tag(json_str: &str) -> Result<Tag, SdkError> {
     .map_err(|e| SdkError::InvalidInput(format!("failed to construct Tag: {e}")))
 }
 
+fn owner_consent_message(agent_pubkey: &PublicKey, owner_pubkey: &PublicKey) -> Message {
+    hash_preimage(&format!(
+        "nostr:agent-owner:{}:{}",
+        agent_pubkey.to_hex(),
+        owner_pubkey.to_hex()
+    ))
+}
+
+/// Sign an agent's consent to `owner_pubkey` as its owner, for the `owner`
+/// tag of a relay add-member command (kind:9030).
+///
+/// The signature is BIP-340 Schnorr by the agent key over
+/// `SHA256("nostr:agent-owner:" || agent_pubkey_hex || ":" || owner_pubkey_hex)`,
+/// returned as 128 lowercase hex characters.
+///
+/// # Errors
+///
+/// Returns [`SdkError::InvalidInput`] if the agent and the owner are the same key.
+pub fn compute_owner_consent(
+    agent_keys: &Keys,
+    owner_pubkey: &PublicKey,
+) -> Result<String, SdkError> {
+    let agent_pubkey = agent_keys.public_key();
+    if agent_pubkey == *owner_pubkey {
+        return Err(SdkError::InvalidInput(
+            "owner and agent pubkeys must differ".into(),
+        ));
+    }
+    let message = owner_consent_message(&agent_pubkey, owner_pubkey);
+    Ok(agent_keys.sign_schnorr(&message).to_string())
+}
+
+/// Verify the consent signature made by [`compute_owner_consent`] and return
+/// the owner it names.
+///
+/// # Errors
+///
+/// Returns [`SdkError::InvalidInput`] for an owner that is not 64 lowercase
+/// hex characters or equals the agent, and for a signature that is not 128
+/// lowercase hex characters or was not made by the agent key for this owner.
+pub fn verify_owner_consent(
+    agent_pubkey: &PublicKey,
+    owner_pubkey_hex: &str,
+    consent_sig_hex: &str,
+) -> Result<PublicKey, SdkError> {
+    if owner_pubkey_hex.len() != 64 || !owner_pubkey_hex.chars().all(is_lowercase_hex) {
+        return Err(SdkError::InvalidInput(
+            "owner pubkey must be 64 lowercase hex chars".into(),
+        ));
+    }
+    if consent_sig_hex.len() != 128 || !consent_sig_hex.chars().all(is_lowercase_hex) {
+        return Err(SdkError::InvalidInput(
+            "consent signature must be 128 lowercase hex chars".into(),
+        ));
+    }
+    let owner_pubkey = PublicKey::from_hex(owner_pubkey_hex)
+        .map_err(|e| SdkError::InvalidInput(format!("invalid owner pubkey: {e}")))?;
+    if owner_pubkey == *agent_pubkey {
+        return Err(SdkError::InvalidInput(
+            "owner and agent pubkeys must differ".into(),
+        ));
+    }
+    let sig = Signature::from_str(consent_sig_hex)
+        .map_err(|e| SdkError::InvalidInput(format!("invalid consent signature: {e}")))?;
+    let xonly = agent_pubkey
+        .xonly()
+        .map_err(|e| SdkError::InvalidInput(format!("invalid agent pubkey: {e}")))?;
+    SECP256K1
+        .verify_schnorr(
+            &sig,
+            &owner_consent_message(agent_pubkey, &owner_pubkey),
+            &xonly,
+        )
+        .map_err(|_| {
+            SdkError::InvalidInput("consent signature is not by the agent for this owner".into())
+        })?;
+    Ok(owner_pubkey)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A consent made by the Hephaestus operator (`enroll::owner_consent`);
+    /// the same vector is in its tests.
+    #[test]
+    fn owner_consent_vector() {
+        let agent =
+            PublicKey::from_hex("142715675faf8da1ecc4d51e0b9e539fa0d52fdd96ed60dbe99adb15d6b05ad9")
+                .unwrap();
+        let owner = "01791e6c17e6f39eff2211a24cec91e757b9b41c6c3d1eb887e0828c19e55c6d";
+        let sig = "e4975c0794a6fb6d846c774cf088568d9a340a9e399f423324978936a5fc7b9fc9d98864fa1a46ee8018d2f89914b9c78a7b6a4d360c44f480d3b0761d100d16";
+        assert_eq!(
+            verify_owner_consent(&agent, owner, sig).unwrap().to_hex(),
+            owner
+        );
+    }
+
+    /// The agent's consent names one agent and one owner. Mutations: drop the
+    /// signature check, sign or verify with the owner key, or leave the agent
+    /// or the owner out of the preimage → RED.
+    #[test]
+    fn owner_consent_binds_agent_and_owner() {
+        let (agent, owner, other) = (Keys::generate(), Keys::generate(), Keys::generate());
+        let owner_hex = owner.public_key().to_hex();
+        let consent = compute_owner_consent(&agent, &owner.public_key()).expect("consent");
+
+        assert_eq!(
+            verify_owner_consent(&agent.public_key(), &owner_hex, &consent).expect("valid"),
+            owner.public_key()
+        );
+        assert!(
+            verify_owner_consent(&other.public_key(), &owner_hex, &consent).is_err(),
+            "another agent"
+        );
+        assert!(
+            verify_owner_consent(&agent.public_key(), &other.public_key().to_hex(), &consent)
+                .is_err(),
+            "another owner"
+        );
+        let by_owner = owner
+            .sign_schnorr(&owner_consent_message(
+                &agent.public_key(),
+                &owner.public_key(),
+            ))
+            .to_string();
+        assert!(
+            verify_owner_consent(&agent.public_key(), &owner_hex, &by_owner).is_err(),
+            "signed by the owner, not the agent"
+        );
+        let nip_oa = compute_auth_tag(&agent, &owner.public_key(), "").expect("auth tag");
+        let nip_oa_sig = parse_auth_tag_fields(&nip_oa).expect("fields").sig_hex;
+        assert!(
+            verify_owner_consent(&agent.public_key(), &owner_hex, &nip_oa_sig).is_err(),
+            "a NIP-OA signature is not a consent"
+        );
+        assert!(
+            verify_owner_consent(&agent.public_key(), &owner_hex.to_uppercase(), &consent).is_err()
+        );
+        assert!(verify_owner_consent(&agent.public_key(), &owner_hex, "00").is_err());
+        assert!(
+            verify_owner_consent(&agent.public_key(), &owner_hex, &consent.to_uppercase()).is_err()
+        );
+        assert!(compute_owner_consent(&agent, &agent.public_key()).is_err());
+        assert!(
+            verify_owner_consent(&agent.public_key(), &agent.public_key().to_hex(), &consent)
+                .is_err()
+        );
+    }
 
     const OWNER_PUBKEY_HEX: &str =
         "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";

@@ -509,6 +509,171 @@ async fn transfer_agent_owner_in(
     Ok(AgentOwnerTransfer::Changed { previous })
 }
 
+/// Result of giving an agent its first owner without the owner's signature
+/// ([`assign_agent_owner`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentOwnerAssignment {
+    /// The owner was stored.
+    Assigned,
+    /// The agent already has this owner.
+    Unchanged,
+    /// The agent already has a different owner.
+    OwnerConflict,
+    /// The agent and the owner are the same key.
+    SelfOwner,
+    /// The agent is not a relay member with the `member` role.
+    AgentNotMember,
+    /// The agent's membership was not added by the required key.
+    NotAddedBySender,
+    /// The owner is not a relay member.
+    OwnerNotMember,
+    /// The owner is itself an agent with an owner.
+    OwnerIsAgent,
+    /// The agent is the owner of other agents.
+    AgentOwnsAgents,
+    /// The agent or the owner is banned or timed out.
+    Restricted,
+}
+
+impl AgentOwnerAssignment {
+    /// Whether the agent now has the requested owner.
+    pub fn is_linked(self) -> bool {
+        matches!(self, Self::Assigned | Self::Unchanged)
+    }
+}
+
+/// Give `agent_pubkey` its first owner on an operator's authority. An existing
+/// owner is never replaced.
+pub async fn assign_agent_owner(
+    pool: &PgPool,
+    community_id: CommunityId,
+    agent_pubkey: &[u8],
+    owner_pubkey: &[u8],
+) -> Result<AgentOwnerAssignment> {
+    let mut tx = crate::begin_community_write_transaction(
+        pool,
+        community_id,
+        crate::observability::WriterOperation::Authorization,
+    )
+    .await?;
+    crate::relay_invite::lock_admission(tx.conn(), community_id).await?;
+    let outcome =
+        assign_agent_owner_in(tx.conn(), community_id, agent_pubkey, owner_pubkey, None).await?;
+    if outcome == AgentOwnerAssignment::Assigned {
+        tx.commit().await?;
+    } else {
+        tx.rollback().await?;
+    }
+    Ok(outcome)
+}
+
+/// [`assign_agent_owner`] inside the caller's transaction, which holds the
+/// admission lock. With `added_by`, the agent's membership must have been
+/// added by that key.
+pub(crate) async fn assign_agent_owner_in(
+    conn: &mut sqlx::PgConnection,
+    community_id: CommunityId,
+    agent_pubkey: &[u8],
+    owner_pubkey: &[u8],
+    added_by: Option<&str>,
+) -> Result<AgentOwnerAssignment> {
+    if agent_pubkey == owner_pubkey {
+        return Ok(AgentOwnerAssignment::SelfOwner);
+    }
+    let stored: Option<Option<Vec<u8>>> = sqlx::query_scalar(
+        "SELECT agent_owner_pubkey FROM users WHERE community_id = $1 AND pubkey = $2 FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(agent_pubkey)
+    .fetch_optional(&mut *conn)
+    .await?;
+    match stored.flatten() {
+        Some(stored) if stored == owner_pubkey => return Ok(AgentOwnerAssignment::Unchanged),
+        Some(_) => return Ok(AgentOwnerAssignment::OwnerConflict),
+        None => {}
+    }
+    let membership: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT role, added_by FROM relay_members WHERE community_id = $1 AND pubkey = $2 \
+         FOR SHARE",
+    )
+    .bind(community_id.as_uuid())
+    .bind(hex::encode(agent_pubkey))
+    .fetch_optional(&mut *conn)
+    .await?;
+    match membership {
+        Some((role, adder)) if role == "member" => {
+            if added_by.is_some_and(|required| adder.as_deref() != Some(required)) {
+                return Ok(AgentOwnerAssignment::NotAddedBySender);
+            }
+        }
+        _ => return Ok(AgentOwnerAssignment::AgentNotMember),
+    }
+    let owner_is_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM relay_members WHERE community_id = $1 AND pubkey = $2)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(hex::encode(owner_pubkey))
+    .fetch_one(&mut *conn)
+    .await?;
+    if !owner_is_member {
+        return Ok(AgentOwnerAssignment::OwnerNotMember);
+    }
+    let owner_is_agent: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE community_id = $1 AND pubkey = $2 \
+         AND agent_owner_pubkey IS NOT NULL)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(owner_pubkey)
+    .fetch_one(&mut *conn)
+    .await?;
+    if owner_is_agent {
+        return Ok(AgentOwnerAssignment::OwnerIsAgent);
+    }
+    let agent_owns_agents: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE community_id = $1 AND agent_owner_pubkey = $2)",
+    )
+    .bind(community_id.as_uuid())
+    .bind(agent_pubkey)
+    .fetch_one(&mut *conn)
+    .await?;
+    if agent_owns_agents {
+        return Ok(AgentOwnerAssignment::AgentOwnsAgents);
+    }
+    for pubkey in [agent_pubkey, owner_pubkey] {
+        if crate::relay_invite::principal_restricted(conn, community_id, &hex::encode(pubkey))
+            .await?
+        {
+            return Ok(AgentOwnerAssignment::Restricted);
+        }
+    }
+    for pubkey in [owner_pubkey, agent_pubkey] {
+        sqlx::query(
+            "INSERT INTO users (community_id, pubkey) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(community_id.as_uuid())
+        .bind(pubkey)
+        .execute(&mut *conn)
+        .await?;
+    }
+    sqlx::query(
+        "UPDATE users SET agent_owner_pubkey = $3 \
+         WHERE community_id = $1 AND pubkey = $2 AND agent_owner_pubkey IS NULL",
+    )
+    .bind(community_id.as_uuid())
+    .bind(agent_pubkey)
+    .bind(owner_pubkey)
+    .execute(&mut *conn)
+    .await?;
+    crate::relay_invite::revoke_restricted_agent_invites(
+        conn,
+        community_id,
+        agent_pubkey,
+        owner_pubkey,
+    )
+    .await?;
+    Ok(AgentOwnerAssignment::Assigned)
+}
+
 /// Get the channel_add_policy and agent_owner_pubkey for a user.
 /// Returns None if the pubkey is not in the users table.
 /// Returns Some((policy_str, owner_bytes_or_none)) if found.
@@ -792,6 +957,18 @@ impl Db {
         owner_pubkey: &[u8],
     ) -> Result<AgentOwnerTransfer> {
         transfer_agent_owner(&self.pool, community_id, agent_pubkey, owner_pubkey).await
+    }
+
+    /// Give an agent its first owner on an operator's authority; an existing
+    /// owner is never replaced.
+    #[datastore_span(name = "assign_agent_owner", system = "postgresql")]
+    pub async fn assign_agent_owner(
+        &self,
+        community_id: CommunityId,
+        agent_pubkey: &[u8],
+        owner_pubkey: &[u8],
+    ) -> Result<AgentOwnerAssignment> {
+        assign_agent_owner(&self.pool, community_id, agent_pubkey, owner_pubkey).await
     }
 
     /// Get the channel_add_policy and agent_owner_pubkey for a user.
@@ -1124,6 +1301,110 @@ mod postgres_tests {
         );
         assert_eq!(owner_of(agent.clone()).await, Some(new_owner.clone()));
         assert_eq!(owner_of(other_agent.clone()).await, Some(old_owner.clone()));
+    }
+
+    /// `assign_agent_owner` gives a relay member its first owner and never
+    /// moves one. Mutations: drop a refusal → its row is RED; drop the stored
+    /// owner comparison → the second owner replaces the first (RED); drop a
+    /// `community_id` predicate → the other community's member is accepted (RED).
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn test_assign_agent_owner() {
+        let db = setup_db().await;
+        let community = make_community(&db.pool).await;
+        let other_community = make_community(&db.pool).await;
+        let [agent, owner, second_owner, admin, outsider, owned, foreign, banned_owner, banned_agent] =
+            std::array::from_fn(|_| random_pubkey());
+        for (pubkey, role, community) in [
+            (&agent, "member", community),
+            (&owner, "member", community),
+            (&second_owner, "member", community),
+            (&admin, "admin", community),
+            (&owned, "member", community),
+            (&foreign, "member", other_community),
+            (&banned_owner, "member", community),
+            (&banned_agent, "member", community),
+        ] {
+            sqlx::query(
+                "INSERT INTO relay_members (community_id, pubkey, role) VALUES ($1, $2, $3)",
+            )
+            .bind(community.as_uuid())
+            .bind(hex::encode(pubkey))
+            .bind(role)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        }
+        for pubkey in [&owned, &owner] {
+            ensure_user(&db.pool, community, pubkey).await.unwrap();
+        }
+        for pubkey in [&banned_owner, &banned_agent] {
+            sqlx::query(
+                "INSERT INTO community_bans (community_id, pubkey, banned, actor_pubkey) VALUES ($1, $2, true, $2)",
+            )
+            .bind(community.as_uuid())
+            .bind(pubkey)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        }
+        assert!(set_agent_owner(&db.pool, community, &owned, &owner)
+            .await
+            .unwrap());
+        let assign = |agent: &Vec<u8>, owner: &Vec<u8>| {
+            let (db, agent, owner) = (db.clone(), agent.clone(), owner.clone());
+            async move {
+                db.assign_agent_owner(community, &agent, &owner)
+                    .await
+                    .unwrap()
+            }
+        };
+        let owner_of = |agent: &Vec<u8>| {
+            let (db, agent) = (db.clone(), agent.clone());
+            async move {
+                db.get_agent_channel_policy(community, &agent)
+                    .await
+                    .unwrap()
+                    .and_then(|(_, owner)| owner)
+            }
+        };
+
+        for (target, named, expected) in [
+            (&agent, &agent, AgentOwnerAssignment::SelfOwner),
+            (&outsider, &owner, AgentOwnerAssignment::AgentNotMember),
+            (&foreign, &owner, AgentOwnerAssignment::AgentNotMember),
+            (&admin, &owner, AgentOwnerAssignment::AgentNotMember),
+            (&agent, &outsider, AgentOwnerAssignment::OwnerNotMember),
+            (&agent, &foreign, AgentOwnerAssignment::OwnerNotMember),
+            (&agent, &owned, AgentOwnerAssignment::OwnerIsAgent),
+            (&owner, &second_owner, AgentOwnerAssignment::AgentOwnsAgents),
+            (&agent, &banned_owner, AgentOwnerAssignment::Restricted),
+            (
+                &banned_agent,
+                &second_owner,
+                AgentOwnerAssignment::Restricted,
+            ),
+        ] {
+            assert_eq!(assign(target, named).await, expected);
+            assert_eq!(owner_of(target).await, None, "{expected:?} stores nothing");
+        }
+
+        assert_eq!(assign(&agent, &owner).await, AgentOwnerAssignment::Assigned);
+        assert_eq!(
+            assign(&agent, &owner).await,
+            AgentOwnerAssignment::Unchanged
+        );
+        assert_eq!(
+            assign(&agent, &second_owner).await,
+            AgentOwnerAssignment::OwnerConflict
+        );
+        assert_eq!(owner_of(&agent).await, Some(owner.clone()));
+        assert!(
+            !is_agent_owner(&db.pool, other_community, &agent, &owner)
+                .await
+                .unwrap(),
+            "the owner is stored in one community"
+        );
     }
 
     #[tokio::test]
