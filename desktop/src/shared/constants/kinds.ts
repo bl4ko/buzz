@@ -64,6 +64,10 @@ export const KIND_MANAGED_AGENT = 30177;
 // publisher's personas. Separate from KIND_TEAM (30176, the team's own wire
 // body) so an ordinary team edit cannot disturb catalog share state.
 export const KIND_TEAM_CATALOG = 30178;
+export const KIND_OLYMPUS_AGENT = 30190;
+export const KIND_OLYMPUS_WORKSPACE = 30191;
+export const KIND_OLYMPUS_CHANGE_REQUEST = 44310;
+export const KIND_OLYMPUS_CHANGE_RESULT = 44311;
 export const KIND_USER_STATUS = 30315;
 export const KIND_AGENT_OBSERVER_FRAME = 24200;
 export const KIND_AGENT_TURN_METRIC = 44200;

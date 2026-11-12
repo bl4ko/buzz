@@ -249,3 +249,35 @@ for (const failingUpdate of [0, 1]) {
     assert.equal(pendingTrust.length, failingUpdate + 1);
   });
 }
+
+test("community switch drops pending Olympus change requests", async (t) => {
+  const { getOlympusRequestState, submitOlympusChange } = await import(
+    "@/features/agents/lib/olympusChangeRequests"
+  );
+  t.mock.method(relayClient, "disconnect", () => {});
+  const { result, rerender } = renderHook(
+    ({ community, key }) =>
+      useCommunityInit(community, key, false, false, [a, b]),
+    { initialProps: { community: b, key: "b" } },
+  );
+  await waitFor(() => assert.equal(result.current.isReady, true));
+  const pending = submitOlympusChange(
+    {
+      key: "dev/proof",
+      me: "a".repeat(64),
+      target: { operator: "b".repeat(64), workspace: "dev", agent: "proof" },
+      change: { action: "suspend" },
+    },
+    {
+      sign: async (template) => ({ ...template, id: "e".repeat(64) }),
+      subscribe: async () => async () => {},
+      publish: async () => {},
+    },
+  );
+  await waitFor(() =>
+    assert.equal(getOlympusRequestState("dev/proof")?.phase, "pending"),
+  );
+  rerender({ community: a, key: "a" });
+  await waitFor(() => assert.equal(getOlympusRequestState("dev/proof"), null));
+  assert.equal(await pending, null);
+});
