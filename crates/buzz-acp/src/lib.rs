@@ -3017,7 +3017,7 @@ async fn run_harness(
             .cursor_file
             .clone()
             .or_else(|| cursor::default_path(&config.relay_url, &pubkey_hex)),
-        now_unix,
+        startup_watermark.saturating_sub(relay::SINCE_SKEW_SECS),
         config.missed_max_age_secs,
     );
     let mut resumed = 0usize;
@@ -3291,7 +3291,6 @@ async fn run_harness(
         if pool_ready && last_maintenance.elapsed() >= maintenance_interval {
             last_maintenance = std::time::Instant::now();
             queue.compact_expired_state();
-            cursor.reconcile(&queue);
 
             // Slot refill: spawn background tasks for empty slots whose
             // circuit breaker allows it. spawn_and_init runs off the main
@@ -3357,6 +3356,7 @@ async fn run_harness(
 
         // Borrow result_rx and join_set simultaneously via split-borrow helper.
         pool.retain_held_scopes(|scope| queue.has_pending_scope(scope));
+        cursor.reconcile(&queue);
         let hold_deadline = pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT);
         let pool_event: Option<PoolEvent> = {
             let (result_rx, join_set) = pool.rx_and_join_set();
@@ -4331,6 +4331,7 @@ async fn run_harness(
     // just as promptly. Timeout is a backstop for a slot stuck outside the
     // select (e.g. in spawn); only then do we fall back to aborting.
     cursor.reconcile(&queue);
+    cursor.flush();
     let _ = shutdown_tx.send(());
     let wake_drain = tokio::time::timeout(Duration::from_secs(30), async {
         while wake_tasks.join_next().await.is_some() {}
@@ -4392,6 +4393,7 @@ async fn run_harness(
         tracing::debug!(agent = idx, "reaped late-arriving agent on shutdown");
     }
     cursor.reconcile(&queue);
+    cursor.flush();
     // Explicitly shut down idle agents still sitting in their slots.
     for slot in pool.agents_mut().iter_mut() {
         if let Some(agent) = slot.take() {
@@ -11518,6 +11520,7 @@ mod error_outcome_emission_tests {
             &mut tokio::time::Instant::now(),
         );
         cursor.reconcile(&queue);
+        cursor.flush();
 
         let mut restarted = cursor::Cursor::load(path, now + 60, 86_400);
         assert!(restarted.resume(channel_id, now + 60).is_some());

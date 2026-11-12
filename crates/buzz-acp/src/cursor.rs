@@ -4,8 +4,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use buzz_core::kind::{KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -14,9 +15,11 @@ use crate::queue::EventQueue;
 use crate::relay::BuzzEvent;
 use crate::scope::SessionScope;
 
-const MAX_FILE_BYTES: u64 = 1024 * 1024;
-const MAX_CHANNELS: usize = 512;
-const MAX_IDS_PER_CHANNEL: usize = 256;
+const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_CHANNELS: usize = 256;
+const MAX_IDS_PER_CHANNEL: usize = 128;
+const MAX_REPLAYS: usize = 2;
+const SAVE_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_OPEN_PER_SCOPE: usize = 512;
 const MAX_BACKLOG_EVENTS: usize = 2_000;
 const MISSED_PER_CHANNEL_LIMIT: usize = 20;
@@ -28,6 +31,8 @@ struct ChannelCursor {
     ts: u64,
     #[serde(default)]
     ids: VecDeque<(u64, String)>,
+    #[serde(default)]
+    replays: VecDeque<(u64, String)>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -40,7 +45,8 @@ struct CursorFile {
 /// `ts` is the newest event seen in a channel; the saved value stops one
 /// second before the oldest event that is still queued or in flight, so an
 /// interrupted turn is replayed. `ids` are the handled events at or after the
-/// saved value, which a replay must skip.
+/// saved value, which a replay must skip. `replays` counts the replays of an
+/// event, so one that stops the harness each time is given up.
 pub(crate) struct Cursor {
     path: Option<PathBuf>,
     started_at: u64,
@@ -51,6 +57,7 @@ pub(crate) struct Cursor {
     backlog: VecDeque<BuzzEvent>,
     collect_until: Option<tokio::time::Instant>,
     dirty: bool,
+    saved_at: Instant,
 }
 
 /// Default cursor file: one per relay and agent key under the agent's home.
@@ -73,6 +80,7 @@ impl Cursor {
             backlog: VecDeque::new(),
             collect_until: None,
             dirty: false,
+            saved_at: Instant::now(),
         };
         let Some(path) = cursor.path.clone() else {
             return cursor;
@@ -127,13 +135,11 @@ impl Cursor {
             self.channels.remove(&stale);
         }
         let ts = ts.min(unix_now());
-        self.channels.insert(
-            channel,
-            ChannelCursor {
-                ts,
-                ids: VecDeque::new(),
-            },
-        );
+        let cursor = ChannelCursor {
+            ts,
+            ..Default::default()
+        };
+        self.channels.insert(channel, cursor);
         self.dirty = true;
     }
 
@@ -161,6 +167,12 @@ impl Cursor {
             };
             match tokio::time::timeout_at(deadline, recv()).await {
                 Ok(Some(event)) => {
+                    let kind = u32::from(event.event.kind.as_u16());
+                    if kind == KIND_MEMBER_ADDED_NOTIFICATION
+                        || kind == KIND_MEMBER_REMOVED_NOTIFICATION
+                    {
+                        return Some(event);
+                    }
                     self.backlog.push_back(event);
                     if self.backlog.len() >= MAX_BACKLOG_EVENTS {
                         self.release_backlog();
@@ -206,14 +218,36 @@ impl Cursor {
         true
     }
 
-    /// Age and count limits for an answerable event from before startup.
+    /// Age, replay, and count limits for an answerable event from before startup.
     pub(crate) fn admit_missed(&mut self, event: &BuzzEvent) -> bool {
         if !self.is_missed(&event.event) {
             return true;
         }
-        let age = self.started_at - event.event.created_at.as_secs();
-        if age > self.max_age_secs {
+        let ts = event.event.created_at.as_secs();
+        if self.started_at - ts > self.max_age_secs {
             return false;
+        }
+        let Some(cursor) = self.channels.get_mut(&event.channel_id) else {
+            return true;
+        };
+        let id = event.event.id.to_hex();
+        if cursor
+            .replays
+            .iter()
+            .filter(|(_, seen)| *seen == id)
+            .count()
+            >= MAX_REPLAYS
+        {
+            tracing::warn!(channel_id = %event.channel_id, event_id = %id, "missed message was replayed before without a result — giving it up");
+            self.handled(event.channel_id, (ts, id));
+            return false;
+        }
+        if self.missed.get(&event.channel_id).copied().unwrap_or(0) < MISSED_PER_CHANNEL_LIMIT {
+            cursor.replays.push_back((ts, id));
+            while cursor.replays.len() > MAX_IDS_PER_CHANNEL {
+                cursor.replays.pop_front();
+            }
+            self.dirty = true;
         }
         let count = self.missed.entry(event.channel_id).or_default();
         *count += 1;
@@ -243,6 +277,9 @@ impl Cursor {
             let dropped = open.remove(0);
             self.handled(scope.channel_id(), dropped);
         }
+        if self.is_missed(event) {
+            self.save();
+        }
     }
 
     fn handled(&mut self, channel: Uuid, entry: (u64, String)) {
@@ -256,7 +293,8 @@ impl Cursor {
         self.dirty = true;
     }
 
-    /// Mark every tracked event that left the queue as handled, then save.
+    /// Mark every tracked event that left the queue as handled and save. With
+    /// nothing newly handled, pending changes are saved every 30 s.
     pub(crate) fn reconcile(&mut self, queue: &EventQueue) {
         let mut settled = Vec::new();
         self.open.retain(|scope, events| {
@@ -272,10 +310,13 @@ impl Cursor {
             });
             !events.is_empty()
         });
+        let changed = !settled.is_empty();
         for (channel, entry) in settled {
             self.handled(channel, entry);
         }
-        self.flush();
+        if changed || self.saved_at.elapsed() >= SAVE_INTERVAL {
+            self.flush();
+        }
     }
 
     pub(crate) fn flush(&mut self) {
@@ -301,10 +342,11 @@ impl Cursor {
         }
         for cursor in file.channels.values_mut() {
             let floor = cursor.ts;
-            cursor
-                .ids
-                .retain(|(ts, _)| ts.saturating_add(ID_RETAIN_SECS) >= floor);
+            for list in [&mut cursor.ids, &mut cursor.replays] {
+                list.retain(|(ts, _)| ts.saturating_add(ID_RETAIN_SECS) >= floor);
+            }
         }
+        self.saved_at = Instant::now();
         let tmp = path.with_extension("tmp");
         let written = serde_json::to_vec(&file)
             .map_err(std::io::Error::other)
@@ -489,6 +531,7 @@ mod tests {
         assert!(queue.requeue(batch).is_none());
         queue.mark_complete(&scope);
         cursor.reconcile(&queue);
+        cursor.flush();
 
         let mut restarted = Cursor::load(file(&dir), START + 600, DAY);
         assert_eq!(restarted.resume(channel, START + 600), Some(START + 9));
@@ -516,6 +559,41 @@ mod tests {
             "a live event has no limit"
         );
         assert!(restarted.admit_missed(&event_at(Uuid::new_v4(), now - 1)));
+    }
+
+    #[test]
+    fn event_that_never_completes_is_given_up_after_two_replays() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let channel = Uuid::new_v4();
+        let scope = conversation(channel);
+        let poison = event_at(channel, START + 10);
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        let mut cursor = Cursor::load(file(&dir), START, DAY);
+        cursor.resume(channel, START);
+        admit(&mut cursor, &mut queue, &scope, &poison);
+        queue.flush_next().expect("batch");
+        cursor.reconcile(&queue);
+        cursor.flush();
+
+        for restart in 1..=MAX_REPLAYS as u64 {
+            let now = START + 600 * restart;
+            let mut cursor = Cursor::load(file(&dir), now, DAY);
+            assert_eq!(cursor.resume(channel, now), Some(START + 9));
+            let mut queue = EventQueue::new(DedupMode::Queue);
+            assert!(cursor.admit_missed(&poison), "replay {restart} is allowed");
+            admit(&mut cursor, &mut queue, &scope, &poison);
+            queue.flush_next().expect("batch");
+        }
+
+        let now = START + 6_000;
+        let mut cursor = Cursor::load(file(&dir), now, DAY);
+        cursor.resume(channel, now);
+        assert!(cursor.observe(&poison));
+        assert!(!cursor.admit_missed(&poison), "a third replay would loop");
+        cursor.flush();
+        let mut cursor = Cursor::load(file(&dir), now + 600, DAY);
+        assert_eq!(cursor.resume(channel, now + 600), Some(START + 10));
+        assert!(!cursor.observe(&poison));
     }
 
     #[test]
@@ -589,8 +667,30 @@ mod tests {
         for ts in [START - 1, START - 30, START - 20] {
             tx.send(event_at(channel, ts)).await.expect("send");
         }
+        let membership =
+            EventBuilder::new(Kind::Custom(KIND_MEMBER_REMOVED_NOTIFICATION as u16), "")
+                .custom_created_at(Timestamp::from(START - 50))
+                .sign_with_keys(&Keys::generate())
+                .expect("sign membership event");
+        tx.send(BuzzEvent {
+            connection_generation: 0,
+            channel_id: channel,
+            event: membership,
+        })
+        .await
+        .expect("send");
         let mut cursor = Cursor::load(None, START, DAY);
         cursor.collect_backlog();
+        let first = cursor
+            .next_event(async || rx.recv().await)
+            .await
+            .expect("event");
+        assert_eq!(
+            first.event.created_at.as_secs(),
+            START - 50,
+            "membership notifications keep the relay order and are not held"
+        );
+        assert!(cursor.collect_until.is_some());
         let mut order = Vec::new();
         for _ in 0..3 {
             let event = cursor
