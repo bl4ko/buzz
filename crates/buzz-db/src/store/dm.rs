@@ -621,6 +621,37 @@ impl Db {
     ) -> Result<Vec<Uuid>> {
         crate::dm::list_hidden_dms(&self.pool, community_id, pubkey).await
     }
+
+    /// Hide the DM between an agent and its stored owner for that owner.
+    /// Returns the DM and the owner, or `None` when there is no such DM.
+    #[datastore_span(name = "hide_agent_owner_dm", system = "postgresql")]
+    pub async fn hide_agent_owner_dm(
+        &self,
+        community_id: CommunityId,
+        agent: &[u8],
+    ) -> Result<Option<(Uuid, Vec<u8>)>> {
+        let owner: Option<Vec<u8>> = sqlx::query_scalar(
+            "SELECT agent_owner_pubkey FROM users WHERE community_id = $1 AND pubkey = $2",
+        )
+        .bind(community_id.as_uuid())
+        .bind(agent)
+        .fetch_optional(&self.pool)
+        .await?
+        .flatten();
+        let Some(owner) = owner else {
+            return Ok(None);
+        };
+        let hash = compute_participant_hash(&[agent, &owner]);
+        let Some(dm) = crate::dm::find_dm_by_participants(&self.pool, community_id, &hash).await?
+        else {
+            return Ok(None);
+        };
+        match crate::dm::hide_dm(&self.pool, community_id, dm.id, &owner).await {
+            Ok(()) => Ok(Some((dm.id, owner))),
+            Err(DbError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 // -- Tests --------------------------------------------------------------------

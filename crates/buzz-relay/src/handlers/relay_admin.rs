@@ -26,8 +26,8 @@ use buzz_db::relay_members::RemoveResult;
 use buzz_db::user::AgentOwnerAssignment;
 
 use crate::handlers::side_effects::{
-    auto_join_default_channels, fan_out_nip43_membership_list, publish_nip43_member_added,
-    publish_nip43_member_removed,
+    auto_join_default_channels, fan_out_nip43_membership_list, publish_dm_visibility_snapshot,
+    publish_nip43_member_added, publish_nip43_member_removed,
 };
 use crate::state::AppState;
 
@@ -593,6 +593,7 @@ async fn execute_relay_admin_command(
                 warn!(error = %e, "failed to publish NIP-43 member removed event");
             }
             fan_out_nip43_membership_list(tenant, state, write.snapshot).await;
+            hide_removed_agent_dm(tenant, state, &target_hex).await;
             revoked
                 .map_err(|e| format!("error: member removed but live revoke incomplete: {e}"))?;
         }
@@ -663,6 +664,22 @@ async fn execute_relay_admin_command(
     }
 
     Ok(())
+}
+
+async fn hide_removed_agent_dm(tenant: &TenantContext, state: &Arc<AppState>, target_hex: &str) {
+    let Ok(agent) = hex::decode(target_hex) else {
+        return;
+    };
+    match state.db.hide_agent_owner_dm(tenant.community(), &agent).await {
+        Ok(Some((channel, owner))) => {
+            info!(%channel, agent = %target_hex, "removed agent: DM hidden for its owner");
+            if let Err(e) = publish_dm_visibility_snapshot(tenant, state, &owner).await {
+                warn!(error = %e, "removed agent: DM visibility snapshot failed");
+            }
+        }
+        Ok(None) => {}
+        Err(e) => warn!(error = %e, "removed agent: DM hide failed"),
+    }
 }
 
 #[cfg(test)]
@@ -1142,6 +1159,113 @@ mod postgres_tests {
 
         assert!(member_socket.cancellation_token().is_cancelled());
         assert!(!bystander_socket.cancellation_token().is_cancelled());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn removing_an_agent_hides_its_dm_for_its_owner() {
+        let host = format!("remove-agent-dm-{}.example", uuid::Uuid::new_v4().simple());
+        let (state, tenant) = workspace_profile_test_state(&host, true).await;
+        let community = tenant.community();
+        let (admin, owner, agent, other, plain) = (
+            Keys::generate(),
+            Keys::generate(),
+            Keys::generate(),
+            Keys::generate(),
+            Keys::generate(),
+        );
+        for (keys, role) in [
+            (&admin, "admin"),
+            (&owner, "member"),
+            (&agent, "member"),
+            (&other, "member"),
+            (&plain, "member"),
+        ] {
+            state
+                .db
+                .add_relay_member(
+                    community,
+                    &keys.public_key().to_hex(),
+                    role,
+                    None,
+                    &nostr::Keys::generate(),
+                )
+                .await
+                .expect("seed member");
+            state
+                .db
+                .ensure_user(community, &keys.public_key().to_bytes())
+                .await
+                .expect("seed user");
+        }
+        let bytes = |keys: &Keys| keys.public_key().to_bytes().to_vec();
+        for owned in [&agent, &other] {
+            sqlx::query(
+                "UPDATE users SET agent_owner_pubkey = $1 WHERE community_id = $2 AND pubkey = $3",
+            )
+            .bind(bytes(&owner))
+            .bind(community.as_uuid())
+            .bind(bytes(owned))
+            .execute(state.db.pool())
+            .await
+            .expect("store owner");
+        }
+        let dm = |with: &Keys| {
+            let state = state.clone();
+            let (owner, with) = (bytes(&owner), bytes(with));
+            async move {
+                state
+                    .db
+                    .open_dm(community, &[owner.as_slice()], &with)
+                    .await
+                    .expect("open dm")
+                    .0
+                    .id
+            }
+        };
+        let (agent_dm, other_dm, plain_dm) = (dm(&agent).await, dm(&other).await, dm(&plain).await);
+
+        for target in [&agent, &plain] {
+            let removal = EventBuilder::new(Kind::Custom(RELAY_ADMIN_REMOVE_MEMBER as u16), "")
+                .tags(vec![Tag::public_key(target.public_key())])
+                .sign_with_keys(&admin)
+                .expect("sign 9031");
+            handle_relay_admin_event(&tenant, &state, &removal)
+                .await
+                .expect("admin removes member");
+        }
+
+        let hidden = state
+            .db
+            .list_hidden_dms(community, &bytes(&owner))
+            .await
+            .expect("hidden dms");
+        assert_eq!(hidden, vec![agent_dm]);
+        assert!(!hidden.contains(&other_dm) && !hidden.contains(&plain_dm));
+        assert!(state
+            .db
+            .list_hidden_dms(community, &bytes(&agent))
+            .await
+            .expect("agent hidden dms")
+            .is_empty());
+
+        let snapshot = state
+            .db
+            .query_events_for_event_write(&buzz_db::event::EventQuery {
+                kinds: Some(vec![buzz_core::kind::KIND_DM_VISIBILITY as i32]),
+                d_tag: Some(owner.public_key().to_hex()),
+                limit: Some(1),
+                ..buzz_db::event::EventQuery::for_community(community)
+            })
+            .await
+            .expect("snapshot");
+        let tags: Vec<Vec<String>> = snapshot[0]
+            .event
+            .tags
+            .iter()
+            .map(|t| t.as_slice().to_vec())
+            .collect();
+        assert!(tags.contains(&vec!["h".to_string(), agent_dm.to_string()]));
     }
 
     /// A kind:9030 add joins the new relay member to the community's

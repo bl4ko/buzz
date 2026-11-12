@@ -19,6 +19,7 @@
 //! past every earlier list's. Concurrent CLI processes therefore serialize in
 //! the database; the CLI only pushes the committed list to Redis.
 
+mod agent_dm;
 mod channel_delete;
 mod communities;
 mod deletions;
@@ -126,6 +127,11 @@ enum Command {
         operator_id: String,
         #[arg(long, help = "Reason for the deletion, stored in the audit log")]
         reason: String,
+    },
+    #[command(about = "Hide the DM between an agent and its stored owner for that owner")]
+    HideAgentDm {
+        #[arg(long, help = "Agent public key, npub or hex")]
+        agent: String,
     },
     /// Generate a new Nostr keypair (for bootstrapping).
     GenerateKey,
@@ -240,6 +246,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Command::RemoveMember { pubkey, role } => cmd_remove_member(pubkey, role).await,
         Command::RepublishMembers => cmd_republish_members().await,
         Command::ListMembers => cmd_list_members().await,
+        Command::HideAgentDm { agent } => agent_dm::run(agent).await,
         Command::SetAgentOwner {
             agent,
             owner,
