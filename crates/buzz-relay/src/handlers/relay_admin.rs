@@ -109,6 +109,7 @@ fn owner_refusal(assignment: AgentOwnerAssignment) -> Option<&'static str> {
         AgentOwnerAssignment::OwnerNotMember => Some("the owner is not a relay member"),
         AgentOwnerAssignment::OwnerIsAgent => Some("the owner is itself an agent"),
         AgentOwnerAssignment::AgentOwnsAgents => Some("the agent is the owner of other agents"),
+        AgentOwnerAssignment::Restricted => Some("the agent or the owner is banned or timed out"),
     }
 }
 

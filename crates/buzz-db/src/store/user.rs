@@ -531,6 +531,8 @@ pub enum AgentOwnerAssignment {
     OwnerIsAgent,
     /// The agent is the owner of other agents.
     AgentOwnsAgents,
+    /// The agent or the owner is banned or timed out.
+    Restricted,
 }
 
 impl AgentOwnerAssignment {
@@ -591,7 +593,8 @@ pub(crate) async fn assign_agent_owner_in(
         None => {}
     }
     let membership: Option<(String, Option<String>)> = sqlx::query_as(
-        "SELECT role, added_by FROM relay_members WHERE community_id = $1 AND pubkey = $2",
+        "SELECT role, added_by FROM relay_members WHERE community_id = $1 AND pubkey = $2 \
+         FOR SHARE",
     )
     .bind(community_id.as_uuid())
     .bind(hex::encode(agent_pubkey))
@@ -635,6 +638,13 @@ pub(crate) async fn assign_agent_owner_in(
     .await?;
     if agent_owns_agents {
         return Ok(AgentOwnerAssignment::AgentOwnsAgents);
+    }
+    for pubkey in [agent_pubkey, owner_pubkey] {
+        if crate::relay_invite::principal_restricted(conn, community_id, &hex::encode(pubkey))
+            .await?
+        {
+            return Ok(AgentOwnerAssignment::Restricted);
+        }
     }
     for pubkey in [owner_pubkey, agent_pubkey] {
         sqlx::query(
@@ -1303,7 +1313,7 @@ mod postgres_tests {
         let db = setup_db().await;
         let community = make_community(&db.pool).await;
         let other_community = make_community(&db.pool).await;
-        let [agent, owner, second_owner, admin, outsider, owned, foreign] =
+        let [agent, owner, second_owner, admin, outsider, owned, foreign, banned_owner, banned_agent] =
             std::array::from_fn(|_| random_pubkey());
         for (pubkey, role, community) in [
             (&agent, "member", community),
@@ -1312,6 +1322,8 @@ mod postgres_tests {
             (&admin, "admin", community),
             (&owned, "member", community),
             (&foreign, "member", other_community),
+            (&banned_owner, "member", community),
+            (&banned_agent, "member", community),
         ] {
             sqlx::query(
                 "INSERT INTO relay_members (community_id, pubkey, role) VALUES ($1, $2, $3)",
@@ -1325,6 +1337,16 @@ mod postgres_tests {
         }
         for pubkey in [&owned, &owner] {
             ensure_user(&db.pool, community, pubkey).await.unwrap();
+        }
+        for pubkey in [&banned_owner, &banned_agent] {
+            sqlx::query(
+                "INSERT INTO community_bans (community_id, pubkey, banned, actor_pubkey) VALUES ($1, $2, true, $2)",
+            )
+            .bind(community.as_uuid())
+            .bind(pubkey)
+            .execute(&db.pool)
+            .await
+            .unwrap();
         }
         assert!(set_agent_owner(&db.pool, community, &owned, &owner)
             .await
@@ -1356,6 +1378,12 @@ mod postgres_tests {
             (&agent, &foreign, AgentOwnerAssignment::OwnerNotMember),
             (&agent, &owned, AgentOwnerAssignment::OwnerIsAgent),
             (&owner, &second_owner, AgentOwnerAssignment::AgentOwnsAgents),
+            (&agent, &banned_owner, AgentOwnerAssignment::Restricted),
+            (
+                &banned_agent,
+                &second_owner,
+                AgentOwnerAssignment::Restricted,
+            ),
         ] {
             assert_eq!(assign(target, named).await, expected);
             assert_eq!(owner_of(target).await, None, "{expected:?} stores nothing");

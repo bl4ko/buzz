@@ -427,6 +427,21 @@ pub fn verify_owner_consent(
 mod tests {
     use super::*;
 
+    /// A consent made by the Hephaestus operator (`enroll::owner_consent`);
+    /// the same vector is in its tests.
+    #[test]
+    fn owner_consent_vector() {
+        let agent =
+            PublicKey::from_hex("142715675faf8da1ecc4d51e0b9e539fa0d52fdd96ed60dbe99adb15d6b05ad9")
+                .unwrap();
+        let owner = "01791e6c17e6f39eff2211a24cec91e757b9b41c6c3d1eb887e0828c19e55c6d";
+        let sig = "e4975c0794a6fb6d846c774cf088568d9a340a9e399f423324978936a5fc7b9fc9d98864fa1a46ee8018d2f89914b9c78a7b6a4d360c44f480d3b0761d100d16";
+        assert_eq!(
+            verify_owner_consent(&agent, owner, sig).unwrap().to_hex(),
+            owner
+        );
+    }
+
     /// The agent's consent names one agent and one owner. Mutations: drop the
     /// signature check, sign or verify with the owner key, or leave the agent
     /// or the owner out of the preimage → RED.
@@ -469,6 +484,9 @@ mod tests {
             verify_owner_consent(&agent.public_key(), &owner_hex.to_uppercase(), &consent).is_err()
         );
         assert!(verify_owner_consent(&agent.public_key(), &owner_hex, "00").is_err());
+        assert!(
+            verify_owner_consent(&agent.public_key(), &owner_hex, &consent.to_uppercase()).is_err()
+        );
         assert!(compute_owner_consent(&agent, &agent.public_key()).is_err());
         assert!(
             verify_owner_consent(&agent.public_key(), &agent.public_key().to_hex(), &consent)

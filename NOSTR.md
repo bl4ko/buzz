@@ -544,18 +544,28 @@ refuses the tag (`invalid: agent owner refused: <reason>`) when:
 - the consent signature is missing or wrong, or there is more than one tag;
 - the role is not `member`, or the target is already a member with another role;
 - the target already has a different owner (a stored owner never moves; a
-  repeat with the same owner succeeds and changes nothing);
+  repeat with the same owner succeeds, and adds the target again as a `member`
+  if it was removed);
 - the sender is an admin and the target was already a member that this admin
   did not add (`relay_members.added_by`); the relay owner is not bound by this;
 - the owner is not a relay member of the same community, or is itself an
   agent with an owner;
-- the target is the owner of other agents.
+- the target is the owner of other agents;
+- the target or the owner is banned or timed out.
+
+The consent names one agent and one owner, not a community: an agent that
+consents to an owner can be added with that owner in each community where the
+owner is a member and an admin adds it.
 
 `buzz-admin set-agent-owner --first --agent <pk> --owner <pk> --operator-id <id>
 --reason <text>` sets the first owner of an existing member the same way, without
-the consent (status `assigned` or `unchanged`; exit 2 `agent_not_member`,
-3 `owner_exists`, 4 for an owner that is not a member or is an agent; audit
-`agent_owner_changed` with `previous_owner: null`).
+the consent (status `assigned` or `unchanged`; exit 1 `owner_is_agent`,
+2 `agent_not_member`, 3 `owner_exists`, 4 `owner_not_member`, `owner_has_owner`,
+`agent_owns_agents` or `restricted`, 5 database error, 6 audit error, 7 the
+reconnect was not published; audit `agent_owner_changed` with
+`previous_owner: null`). It also makes the agent's live sockets that have no
+owner reconnect. Observer-frame authorization can stay cached as refused for
+up to 5 minutes after either path.
 
 After each add/remove/role-change, the relay publishes a kind:13534 membership list event
 (relay-signed, NIP-70 protected) that clients can subscribe to:

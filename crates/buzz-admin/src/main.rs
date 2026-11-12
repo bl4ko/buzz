@@ -774,6 +774,7 @@ fn first_agent_owner_result(outcome: AgentOwnerAssignment) -> (i32, &'static str
         AgentOwnerAssignment::OwnerNotMember => (4, "owner_not_member"),
         AgentOwnerAssignment::OwnerIsAgent => (4, "owner_has_owner"),
         AgentOwnerAssignment::AgentOwnsAgents => (4, "agent_owns_agents"),
+        AgentOwnerAssignment::Restricted => (4, "restricted"),
     }
 }
 
@@ -1232,6 +1233,7 @@ mod tests {
                 AgentOwnerAssignment::AgentOwnsAgents,
                 (4, "agent_owns_agents"),
             ),
+            (AgentOwnerAssignment::Restricted, (4, "restricted")),
         ];
         for (outcome, expected) in cases {
             assert_eq!(first_agent_owner_result(outcome), expected, "{outcome:?}");
