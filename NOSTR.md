@@ -499,7 +499,7 @@ the sender to be authenticated (NIP-42) as the relay owner or an admin.
 
 | Kind | Action | Required tags |
 |------|--------|---------------|
-| 9030 | Add member | `["p", "<hex-pubkey>"]`, optional `["role", "member\|admin"]` |
+| 9030 | Add member | `["p", "<hex-pubkey>"]`, optional `["role", "member\|admin"]`, optional `["owner", "<owner-hex>", "<consent-sig>"]` |
 | 9031 | Remove member | `["p", "<hex-pubkey>"]`, optional `["role", "member\|admin"]` |
 | 9032 | Change role | `["p", "<hex-pubkey>"]`, `["role", "member\|admin"]` |
 | 9033 | Set workspace profile (icon) | `["icon", "<https-url or data:image/* URL>"]` (empty clears) |
@@ -527,6 +527,35 @@ nak event -k 9032 \
   --auth --sec <owner-or-admin-privkey> \
   ws://localhost:3000
 ```
+
+#### Agent owner on kind:9030
+
+An `["owner", <owner-hex>, <consent-sig>]` tag on a kind:9030 adds the target as
+an agent of `<owner-hex>`: the relay stores the owner as a first NIP-OA link
+does (`users.agent_owner_pubkey`), so the owner-bound features (kind:44200
+turn metrics, observer frames, owner presence) work without an owner-signed
+`auth` tag. `<consent-sig>` is the target's BIP-340 signature over
+`SHA256("nostr:agent-owner:" || <target-hex> || ":" || <owner-hex>)`, lowercase
+hex. Only the holder of the agent key can make it an agent.
+
+The add and the owner are one write; a refused tag adds nothing. The relay
+refuses the tag (`invalid: agent owner refused: <reason>`) when:
+
+- the consent signature is missing or wrong, or there is more than one tag;
+- the role is not `member`, or the target is already a member with another role;
+- the target already has a different owner (a stored owner never moves; a
+  repeat with the same owner succeeds and changes nothing);
+- the sender is an admin and the target was already a member that this admin
+  did not add (`relay_members.added_by`); the relay owner is not bound by this;
+- the owner is not a relay member of the same community, or is itself an
+  agent with an owner;
+- the target is the owner of other agents.
+
+`buzz-admin set-agent-owner --first --agent <pk> --owner <pk> --operator-id <id>
+--reason <text>` sets the first owner of an existing member the same way, without
+the consent (status `assigned` or `unchanged`; exit 2 `agent_not_member`,
+3 `owner_exists`, 4 for an owner that is not a member or is an agent; audit
+`agent_owner_changed` with `previous_owner: null`).
 
 After each add/remove/role-change, the relay publishes a kind:13534 membership list event
 (relay-signed, NIP-70 protected) that clients can subscribe to:

@@ -1302,7 +1302,10 @@ mod postgres_tests {
 
     fn add_with_owner_tags(sender: &Keys, agent: &Keys, tags: &[&[&str]]) -> nostr::Event {
         let mut all = vec![Tag::public_key(agent.public_key())];
-        all.extend(tags.iter().map(|tag| Tag::parse(*tag).expect("tag")));
+        all.extend(
+            tags.iter()
+                .map(|tag| Tag::parse(tag.iter().copied()).expect("tag")),
+        );
         EventBuilder::new(Kind::Custom(RELAY_ADMIN_ADD_MEMBER as u16), "")
             .tags(all)
             .sign_with_keys(sender)
@@ -1317,16 +1320,12 @@ mod postgres_tests {
         consenting: &Keys,
     ) -> nostr::Event {
         let owner_hex = owner.public_key().to_hex();
-        let message = nostr::secp256k1::Message::from_digest(
-            <nostr::hashes::sha256::Hash as nostr::hashes::Hash>::hash(
-                format!(
-                    "nostr:agent-owner:{}:{owner_hex}",
-                    agent.public_key().to_hex()
-                )
-                .as_bytes(),
-            )
-            .to_byte_array(),
+        let preimage = format!(
+            "nostr:agent-owner:{}:{owner_hex}",
+            agent.public_key().to_hex()
         );
+        let digest: [u8; 32] = <sha2::Sha256 as sha2::Digest>::digest(preimage.as_bytes()).into();
+        let message = nostr::secp256k1::Message::from_digest(digest);
         let consent = consenting.sign_schnorr(&message).to_string();
         add_with_owner_tags(sender, agent, &[&["owner", &owner_hex, &consent]])
     }
