@@ -102,24 +102,44 @@ pub(crate) fn validate_envelope(event: &Event) -> Result<(), String> {
     Ok(())
 }
 
-/// Accept a NIP-OL event only from a relay `owner` or `admin` of the community.
+/// Accept Olympus state and results (30190, 30191, 44311) only from a configured Olympus
+/// operator key with relay role `owner` or `admin`, and a change request (44310) only from the
+/// relay `owner`, addressed to a configured operator key. Call after [`validate_envelope`].
 pub(crate) async fn authorize_author(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: &Event,
 ) -> Result<(), IngestError> {
+    let operators = &state.config.olympus_operator_pubkeys;
+    let request = buzz_core::kind::event_kind_u32(event) == KIND_OLYMPUS_CHANGE_REQUEST;
+    let listed = if request {
+        tag_values(event, "p")
+            .iter()
+            .all(|p| operators.iter().any(|operator| operator == p))
+    } else {
+        operators.contains(&event.pubkey.to_hex())
+    };
+    if !listed {
+        return Err(IngestError::AuthFailed(if request {
+            "restricted: Olympus change requests must name a configured Olympus operator".into()
+        } else {
+            "restricted: Olympus state requires a configured Olympus operator key".into()
+        }));
+    }
     let role = state
         .db
         .get_relay_member(tenant.community(), &event.pubkey.to_hex())
         .await
         .map_err(|e| IngestError::Internal(format!("error: relay role lookup: {e}")))?
         .map(|member| member.role);
-    if matches!(role.as_deref(), Some("owner" | "admin")) {
-        Ok(())
-    } else {
-        Err(IngestError::AuthFailed(
-            "restricted: Olympus events require a relay owner or admin".into(),
-        ))
+    match (request, role.as_deref()) {
+        (true, Some("owner")) | (false, Some("owner" | "admin")) => Ok(()),
+        (true, _) => Err(IngestError::AuthFailed(
+            "restricted: Olympus change requests require the relay owner".into(),
+        )),
+        (false, _) => Err(IngestError::AuthFailed(
+            "restricted: Olympus state requires a relay owner or admin".into(),
+        )),
     }
 }
 

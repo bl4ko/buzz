@@ -31,12 +31,29 @@ struct Fixture {
     owner: Keys,
     operator: Keys,
     member: Keys,
+    other_admin: Keys,
+    listed_member: Keys,
 }
 
 async fn fixture() -> Fixture {
-    let state = crate::api::bridge::postgres_tests::bridge_handler_test_state()
+    fixture_with_list(true).await
+}
+
+/// Relay owner, a listed admin (the operator), an unlisted admin, a member, and a listed member.
+/// `listed` false leaves `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` empty.
+async fn fixture_with_list(listed: bool) -> Fixture {
+    let mut state = crate::api::bridge::postgres_tests::bridge_handler_test_state()
         .await
         .expect("local Postgres and Redis");
+    let [owner, operator, member, other_admin, listed_member] =
+        std::array::from_fn(|_| Keys::generate());
+    let mut config = (*state.config).clone();
+    config.olympus_operator_pubkeys = if listed {
+        vec![hex(&operator), hex(&listed_member)]
+    } else {
+        Vec::new()
+    };
+    Arc::get_mut(&mut state).expect("fresh state").config = Arc::new(config);
     let host = format!("olympus-{}.local", Uuid::new_v4().simple());
     let community = state
         .db
@@ -44,17 +61,16 @@ async fn fixture() -> Fixture {
         .await
         .expect("ensure community")
         .id;
-    let (owner, operator, member) = (Keys::generate(), Keys::generate(), Keys::generate());
-    for (keys, role) in [(&owner, "owner"), (&operator, "admin"), (&member, "member")] {
+    for (keys, role) in [
+        (&owner, "owner"),
+        (&operator, "admin"),
+        (&other_admin, "admin"),
+        (&member, "member"),
+        (&listed_member, "member"),
+    ] {
         let _ = state
             .db
-            .add_relay_member(
-                community,
-                &keys.public_key().to_hex(),
-                role,
-                None,
-                &state.relay_keypair,
-            )
+            .add_relay_member(community, &hex(keys), role, None, &state.relay_keypair)
             .await
             .expect("add relay member");
     }
@@ -65,6 +81,8 @@ async fn fixture() -> Fixture {
         owner,
         operator,
         member,
+        other_admin,
+        listed_member,
     }
 }
 
@@ -141,12 +159,16 @@ fn workspace(f: &Fixture, author: &Keys, d: &str) -> Event {
 }
 
 fn request(f: &Fixture, author: &Keys) -> Event {
+    request_to(author, &f.operator)
+}
+
+fn request_to(author: &Keys, operator: &Keys) -> Event {
     sign(
         author,
         KIND_OLYMPUS_CHANGE_REQUEST,
         r#"{"v":1,"action":"suspend","workspace":"dev","agent":"proof"}"#,
         &[
-            ["p", &hex(&f.operator)],
+            ["p", &hex(operator)],
             ["workspace", "dev"],
             ["agent", "proof"],
             ["action", "suspend"],
@@ -180,25 +202,79 @@ fn sample(f: &Fixture, author: &Keys, kind: u32) -> Event {
     }
 }
 
-/// Mutation: drop `olympus::authorize_author` from ingest → RED (member and stranger accepted).
+fn refused(result: Result<String, IngestError>, reason: &str, case: &str) {
+    match result {
+        Err(IngestError::AuthFailed(got)) => assert!(got.contains(reason), "{case}: {got}"),
+        other => panic!("{case}: expected an auth refusal, got {other:?}"),
+    }
+}
+
+const STATE_KINDS: [u32; 3] = [
+    KIND_OLYMPUS_AGENT,
+    KIND_OLYMPUS_WORKSPACE,
+    KIND_OLYMPUS_CHANGE_RESULT,
+];
+
+/// Mutation: drop `olympus::authorize_author` from ingest, or either half of it (the operator
+/// list or the role) → RED.
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
-async fn olympus_writes_need_a_relay_owner_or_admin() {
+async fn olympus_writes_need_a_listed_operator_or_the_owner() {
     let f = fixture().await;
     let stranger = Keys::generate();
-    for kind in ALL {
-        for author in [&f.member, &stranger] {
-            match ingest(&f, sample(&f, author, kind)).await {
-                Err(IngestError::AuthFailed(reason)) => {
-                    assert!(reason.contains("relay owner or admin"), "{reason}")
-                }
-                other => panic!("kind:{kind} by a non-admin: {other:?}"),
-            }
+    for kind in STATE_KINDS {
+        for (author, reason) in [
+            (&f.owner, "configured Olympus operator"),
+            (&f.other_admin, "configured Olympus operator"),
+            (&f.member, "configured Olympus operator"),
+            (&stranger, "configured Olympus operator"),
+            (&f.listed_member, "relay owner or admin"),
+        ] {
+            let case = format!("kind:{kind} by {}", hex(author));
+            refused(ingest(&f, sample(&f, author, kind)).await, reason, &case);
         }
-        for author in [&f.owner, &f.operator] {
-            accepted(&f, sample(&f, author, kind)).await;
+        accepted(&f, sample(&f, &f.operator, kind)).await;
+    }
+
+    for (author, operator, reason) in [
+        (&f.operator, &f.operator, "the relay owner"),
+        (&f.other_admin, &f.operator, "the relay owner"),
+        (&f.member, &f.operator, "the relay owner"),
+        (&stranger, &f.operator, "the relay owner"),
+        (&f.owner, &f.other_admin, "configured Olympus operator"),
+        (&f.owner, &f.owner, "configured Olympus operator"),
+    ] {
+        let case = format!("44310 by {} to {}", hex(author), hex(operator));
+        refused(
+            ingest(&f, request_to(author, operator)).await,
+            reason,
+            &case,
+        );
+    }
+    accepted(&f, request_to(&f.owner, &f.operator)).await;
+    accepted(&f, request_to(&f.owner, &f.listed_member)).await;
+}
+
+/// An empty `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` refuses all four kinds.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn olympus_writes_fail_closed_without_an_operator_list() {
+    let f = fixture_with_list(false).await;
+    for kind in STATE_KINDS {
+        for author in [&f.operator, &f.owner] {
+            let case = format!("kind:{kind} by {}", hex(author));
+            refused(
+                ingest(&f, sample(&f, author, kind)).await,
+                "configured Olympus operator",
+                &case,
+            );
         }
     }
+    refused(
+        ingest(&f, request_to(&f.owner, &f.operator)).await,
+        "configured Olympus operator",
+        "44310 by the owner",
+    );
 }
 
 /// Mutation: drop `olympus::validate_envelope` from ingest → RED.
