@@ -39,11 +39,23 @@ All hex values are 64 lowercase hex characters.
 
 Other tags (`workspace`, `agent`, `action`) are not checked by the relay.
 
+The operator tags its own key in 30190, 30191, and 44311 so that it can read
+its events back. rust-nostr removes a `p` tag equal to the signer unless the
+builder calls `allow_self_tagging()`.
+
 ## Write rule
 
-The relay accepts these kinds only when the author has the relay role `owner`
-or `admin` in the community. The event needs the `admin:users` scope. The
-relay refuses an event with a bad tag shape.
+The relay setting `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` lists the operator keys
+(comma-separated hex). When it is unset or empty, the relay refuses all four
+kinds.
+
+- 30190, 30191, 44311: the author must be in the operator list and have the
+  relay role `owner` or `admin` in the community.
+- 44310: the author must have the relay role `owner`, and its `p` tag must be
+  in the operator list.
+
+The event needs the `admin:users` scope. The relay refuses an event with a bad
+tag shape.
 
 The relay refuses a kind 5 that names one of these kinds in a `k` tag, or
 that targets one of these events through an `e` or `a` tag. To remove an

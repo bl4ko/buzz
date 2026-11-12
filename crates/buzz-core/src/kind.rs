@@ -614,7 +614,7 @@ pub const KIND_OLYMPUS_WORKSPACE: u32 = 30191;
 pub const KIND_OLYMPUS_CHANGE_REQUEST: u32 = 44310;
 /// NIP-OL: result of an Olympus change request, signed by the operator.
 pub const KIND_OLYMPUS_CHANGE_RESULT: u32 = 44311;
-/// NIP-OL kinds: relay owner or admin authors only, `#p`-gated reads, no kind 5. See `docs/nips/NIP-OL.md`.
+/// NIP-OL kinds: configured operator and owner authors only, `#p`-gated reads, no kind 5. See `docs/nips/NIP-OL.md`.
 pub const OLYMPUS_KINDS: &[u32] = &[
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
