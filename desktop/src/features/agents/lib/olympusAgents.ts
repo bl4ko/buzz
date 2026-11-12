@@ -70,6 +70,7 @@ export type OlympusSchedule = {
   script: string | null;
   lastRunTime: string | null;
   lastResult: string | null;
+  truncated: boolean;
 };
 
 export type OlympusAgent = {
@@ -83,6 +84,7 @@ export type OlympusAgent = {
   owner: string | null;
   managedBy: string | null;
   spec: OlympusAgentSpec;
+  instructionsTruncated: boolean;
   schedules: OlympusSchedule[];
   phase: OlympusPhase;
   reason: string | null;
@@ -281,6 +283,7 @@ function parseSchedules(value: unknown): OlympusSchedule[] {
         script,
         lastRunTime: text(schedule.lastRunTime),
         lastResult: text(schedule.lastResult),
+        truncated: schedule.truncated === true,
       },
     ];
   });
@@ -323,6 +326,7 @@ export function parseOlympusAgent(event: RelayEvent): OlympusAgent | null {
     owner: hexOrNull(content.owner),
     managedBy: text(content.managedBy),
     spec,
+    instructionsTruncated: content.instructionsTruncated === true,
     schedules: parseSchedules(content.schedules),
     phase: phase as OlympusPhase,
     reason: text(status?.reason),

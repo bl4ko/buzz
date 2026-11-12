@@ -133,6 +133,17 @@ test("parses a full agent event and drops invalid nested items", () => {
   assert.equal(agent.conditions.length, 1);
 });
 
+test("reads the truncation flags", () => {
+  const plain = parseOlympusAgent(stateEvent({ id: "e1" }));
+  assert.equal(plain.instructionsTruncated, false);
+  assert.equal(plain.schedules[0].truncated, false);
+  const content = agentContent({ instructionsTruncated: true });
+  content.schedules[0].truncated = true;
+  const cut = parseOlympusAgent(stateEvent({ id: "e2", content }));
+  assert.equal(cut.instructionsTruncated, true);
+  assert.equal(cut.schedules[0].truncated, true);
+});
+
 test("ignores invalid agent content", () => {
   const invalid = [
     "not json",

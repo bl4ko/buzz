@@ -83,8 +83,11 @@ export type OlympusChangeResult = {
 export function parseOlympusChangeResult(
   event: RelayEvent,
   requestId: string,
+  operator: string,
 ): OlympusChangeResult | null {
-  if (event.kind !== KIND_OLYMPUS_CHANGE_RESULT) return null;
+  if (event.kind !== KIND_OLYMPUS_CHANGE_RESULT || event.pubkey !== operator) {
+    return null;
+  }
   const eTags = event.tags.filter((tag) => tag[0] === "e");
   if (eTags.length !== 1 || eTags[0][1] !== requestId) return null;
   const statusTags = event.tags.filter((tag) => tag[0] === "status");
@@ -200,7 +203,11 @@ export async function submitOlympusChange(
         limit: 1,
       },
       (candidate) => {
-        const result = parseOlympusChangeResult(candidate, event.id);
+        const result = parseOlympusChangeResult(
+          candidate,
+          event.id,
+          target.operator,
+        );
         if (result) {
           settle({
             phase: result.status,

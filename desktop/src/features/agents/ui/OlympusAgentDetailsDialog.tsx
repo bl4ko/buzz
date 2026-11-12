@@ -261,6 +261,11 @@ function OlympusAgentConfiguration({ agent }: { agent: OlympusAgent }) {
         ) : (
           <OlympusEmptyValue>No instructions.</OlympusEmptyValue>
         )}
+        {agent.instructionsTruncated ? (
+          <OlympusEmptyValue>
+            Shortened, see the cluster object.
+          </OlympusEmptyValue>
+        ) : null}
       </OlympusDetailSection>
     </>
   );
@@ -407,6 +412,11 @@ function OlympusAgentSchedules({ agent }: { agent: OlympusAgent }) {
                     {schedule.script ? (
                       <span className="block">
                         Script: {firstLine(schedule.script)}
+                      </span>
+                    ) : null}
+                    {schedule.truncated ? (
+                      <span className="block text-muted-foreground">
+                        Shortened, see the cluster object.
                       </span>
                     ) : null}
                     {schedule.workspace ? (

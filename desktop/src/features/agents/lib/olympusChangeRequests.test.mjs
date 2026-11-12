@@ -155,6 +155,15 @@ function resultEvent({ requestId, status, reason, eTags }) {
   };
 }
 
+test("ignores a result from another author", () => {
+  const id = "1".repeat(64);
+  const forged = {
+    ...resultEvent({ requestId: id, status: "accepted" }),
+    pubkey: ME,
+  };
+  assert.equal(parseOlympusChangeResult(forged, id, OPERATOR), null);
+});
+
 test("parses results only for the matching request", () => {
   const id = "1".repeat(64);
   assert.deepEqual(
@@ -165,6 +174,7 @@ test("parses results only for the matching request", () => {
         reason: "not the owner",
       }),
       id,
+      OPERATOR,
     ),
     { status: "refused", reason: "not the owner" },
   );
@@ -172,6 +182,7 @@ test("parses results only for the matching request", () => {
     parseOlympusChangeResult(
       resultEvent({ requestId: "2".repeat(64), status: "accepted" }),
       id,
+      OPERATOR,
     ),
     null,
   );
@@ -186,6 +197,7 @@ test("parses results only for the matching request", () => {
         ],
       }),
       id,
+      OPERATOR,
     ),
     null,
   );
