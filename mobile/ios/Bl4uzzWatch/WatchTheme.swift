@@ -72,10 +72,6 @@ struct OlympusMark: View {
     (512, 236), (405, 436), (442, 412), (468, 456), (500, 406), (524, 452), (544, 420), (574, 460), (602, 416),
     (626, 448), (658, 428), (636, 388), (606, 402),
   ]
-  private static let bolt: Points = [
-    (706, 56), (846, 56), (772, 256), (862, 256), (572, 628), (654, 346), (566, 346),
-  ]
-  private static let fold: Points = [(770, 56), (846, 56), (772, 256), (862, 256), (572, 628), (704, 304)]
 
   private static func rgb(_ hex: UInt32) -> Color {
     Color(
@@ -125,11 +121,6 @@ struct OlympusMark: View {
         ),
         lineWidth: 84
       )
-      context.translateBy(x: 716, y: 342)
-      context.scaleBy(x: 1.1, y: 1.1)
-      context.translateBy(x: -716, y: -342)
-      context.fill(Self.polygon(Self.bolt), with: Self.vertical([0xFFFDF0, 0xFFF0B8, 0xFFD866], 56, 628))
-      context.fill(Self.polygon(Self.fold), with: Self.vertical([0xFFDC5C, 0xF6B21E, 0xDC7C0C], 56, 628))
     }
     .aspectRatio(1, contentMode: .fit)
     .accessibilityHidden(true)

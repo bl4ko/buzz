@@ -2,8 +2,6 @@ import { useId } from "react";
 
 import { cn } from "@/shared/lib/cn";
 import {
-  OLYMPUS_BOLT,
-  OLYMPUS_BOLT_FOLD,
   OLYMPUS_CLOUD_BACK,
   OLYMPUS_CLOUD_FRONT,
   OLYMPUS_FACET_BRIGHT,
@@ -58,9 +56,6 @@ export function OlympusDefs({ id }: { id: string }) {
       })}
       <filter height="220%" id={`${id}-glow`} width="220%" x="-60%" y="-60%">
         <feGaussianBlur stdDeviation="30" />
-      </filter>
-      <filter height="160%" id={`${id}-blur`} width="160%" x="-30%" y="-30%">
-        <feGaussianBlur stdDeviation="8" />
       </filter>
       <clipPath id={`${id}-clip`}>
         <circle {...OLYMPUS_RING} />
@@ -128,22 +123,6 @@ export function OlympusRing({ id }: { id: string }) {
   );
 }
 
-export function OlympusBolt({ id }: { id: string }) {
-  return (
-    <>
-      <polygon
-        fill="#070B24"
-        filter={`url(#${id}-blur)`}
-        opacity=".55"
-        points={OLYMPUS_BOLT}
-        transform="translate(12 16)"
-      />
-      <polygon fill={`url(#${id}-boltl)`} points={OLYMPUS_BOLT} />
-      <polygon fill={`url(#${id}-boltr)`} points={OLYMPUS_BOLT_FOLD} />
-    </>
-  );
-}
-
 export function OlympusMark({ className }: { className?: string }) {
   const id = useOlympusId();
 
@@ -169,13 +148,6 @@ export function OlympusMark({ className }: { className?: string }) {
         strokeWidth="68"
       />
       <OlympusRing id={id} />
-      <polygon
-        fill="#FFB21C"
-        filter={`url(#${id}-glow)`}
-        opacity=".9"
-        points={OLYMPUS_BOLT}
-      />
-      <OlympusBolt id={id} />
     </svg>
   );
 }
@@ -190,30 +162,16 @@ export function OlympusGlyph({ className }: { className?: string }) {
       fill="currentColor"
       viewBox={OLYMPUS_MARK_VIEW_BOX}
     >
-      <mask
-        height="1024"
-        id={`${id}-gap`}
-        maskUnits="userSpaceOnUse"
-        width="1024"
-        x="0"
-        y="0"
-      >
-        <rect fill="#fff" height="1024" width="1024" />
-        <polygon
-          fill="#000"
-          points={OLYMPUS_BOLT}
-          stroke="#000"
-          strokeWidth="104"
-        />
-      </mask>
+      <clipPath id={`${id}-disc`}>
+        <circle {...OLYMPUS_RING} r="284" />
+      </clipPath>
       <circle
         {...OLYMPUS_RING}
         fill="none"
-        mask={`url(#${id}-gap)`}
         stroke="currentColor"
         strokeWidth="68"
       />
-      <polygon points={OLYMPUS_BOLT} />
+      <polygon clipPath={`url(#${id}-disc)`} points="130,940 512,236 894,940" />
     </svg>
   );
 }
