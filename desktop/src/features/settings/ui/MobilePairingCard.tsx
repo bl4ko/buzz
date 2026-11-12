@@ -132,7 +132,7 @@ function PairingSteps({
             className="mt-1 text-sm text-muted-foreground/70"
             data-settings-subcopy
           >
-            Open Buzz on your mobile device and scan the code shown here.
+            Open Olympus on your mobile device and scan the code shown here.
           </p>
         </div>
       </li>

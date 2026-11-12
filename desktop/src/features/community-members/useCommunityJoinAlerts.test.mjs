@@ -1176,6 +1176,50 @@ describe("useCommunityJoinAlerts — mounted subscription behaviour", () => {
     await unmount();
   });
 
+  it("joins agents and NIP-24 bots quietly and still alerts for people", async () => {
+    const relay = installRelayStub();
+    const { render, unmount } = mountHook();
+    ipcHandlers.set("get_users_batch", async ({ pubkeys }) => ({
+      profiles: Object.fromEntries(
+        pubkeys.map((pubkey) => [
+          pubkey,
+          {
+            display_name: pubkey === CAROL ? "Carol" : "scheduler",
+            avatar_url: null,
+            nip05_handle: null,
+            owner_pubkey: null,
+            is_agent: pubkey !== CAROL,
+          },
+        ]),
+      ),
+      missing: [],
+    }));
+
+    await render();
+    await settle();
+
+    relay.emitSnapshot(snapshot([VIEWER, ALICE]));
+    await settle();
+
+    relay.emitSnapshot(
+      snapshot([VIEWER, ALICE, BOB], { id: "snap-bot", createdAt: 7000 }),
+    );
+    await settleAfterNotifyWindow();
+    assert.equal(notifications.length, 0, "a bot join must not alert");
+
+    relay.emitSnapshot(
+      snapshot([VIEWER, ALICE, BOB, CAROL], {
+        id: "snap-person",
+        createdAt: 8000,
+      }),
+    );
+    await settleAfterNotifyWindow();
+    assert.equal(notifications.length, 1, "a person join still alerts");
+    assert.equal(notifications[0].body, "Carol joined");
+
+    await unmount();
+  });
+
   /**
    * Each refetch is a REQ frame billed against the same per-principal WsEvents
    * budget as the user's own sends (default 10/s over a 5s window), and a bulk

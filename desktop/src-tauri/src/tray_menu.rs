@@ -337,7 +337,7 @@ fn build_menu<R: Runtime>(
     menu.append(&MenuItem::with_id(
         app,
         OPEN_BUZZ_ID,
-        "Open Buzz",
+        "Open Olympus",
         true,
         None::<&str>,
     )?)?;
@@ -345,7 +345,7 @@ fn build_menu<R: Runtime>(
     menu.append(&MenuItem::with_id(
         app,
         QUIT_ID,
-        "Quit Buzz",
+        "Quit Olympus",
         true,
         None::<&str>,
     )?)?;

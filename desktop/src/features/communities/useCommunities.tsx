@@ -28,6 +28,7 @@ import {
   clearCommunityDestinations,
   removeCommunityDestination,
 } from "./communityNavigationStorage";
+import { useRelayCommunityNames } from "./relayCommunityName";
 
 export type UpdateCommunityResult =
   | { kind: "updated"; requiresReinit: boolean }
@@ -339,6 +340,10 @@ function useCommunitiesInternal(): UseCommunitiesReturn {
     },
     [activeId],
   );
+
+  useRelayCommunityNames(communities, (id, name) => {
+    updateCommunity(id, { name });
+  });
 
   const reorderCommunities = useCallback((orderedIds: string[]) => {
     setCommunitiesState((prev) => {

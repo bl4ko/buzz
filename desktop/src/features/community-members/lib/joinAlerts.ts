@@ -23,6 +23,7 @@
  * events at or after `lastSeenCreatedAt - skew` and can repeat a seen delta.
  */
 
+import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { setLocalStorageItemWithRecovery } from "@/shared/lib/localStorageQuota";
 
 const JOIN_ALERT_STORAGE_PREFIX = "buzz-community-join-seen.v1";
@@ -195,6 +196,17 @@ export function reconcileJoinAlertLedger({
       pubkeys: [...retained, ...fresh],
     },
   };
+}
+
+/**
+ * Joins worth a notification: agents and NIP-24 bots join quietly. A key
+ * without a resolved profile counts as a person.
+ */
+export function personJoinAlerts(
+  alerts: readonly string[],
+  profiles: UserProfileLookup | undefined,
+): string[] {
+  return alerts.filter((pubkey) => profiles?.[pubkey]?.isAgent !== true);
 }
 
 /** Notification copy for a single first join. */
