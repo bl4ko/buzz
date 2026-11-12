@@ -204,6 +204,32 @@ pub async fn release_repo_name(
     Ok(result.rows_affected())
 }
 
+/// Whether a live kind:30617 announcement of a reserved repo names
+/// `channel_id` in a `buzz-channel` tag, so the channel is the ACL of a repo.
+pub async fn channel_has_git_repo(
+    pool: &PgPool,
+    community: CommunityId,
+    channel_id: uuid::Uuid,
+) -> Result<bool> {
+    let mut connection = crate::observability::acquire_writer(
+        pool,
+        crate::observability::WriterOperation::Authorization,
+    )
+    .await?;
+    let binding = serde_json::json!([["buzz-channel", channel_id.to_string()]]);
+    let bound = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM events e JOIN git_repo_names g \
+         ON g.community_id = e.community_id AND g.repo_id = e.d_tag \
+         WHERE e.community_id = $1 AND e.kind = 30617 AND e.deleted_at IS NULL \
+         AND e.tags @> $2)",
+    )
+    .bind(community.as_uuid())
+    .bind(binding)
+    .fetch_one(&mut *connection)
+    .await?;
+    Ok(bound)
+}
+
 impl Db {
     /// Return the current owner of git repo name `repo_id` in `community`, or
     /// `None` if unreserved. See [`repo_name_owner`].
@@ -251,6 +277,16 @@ impl Db {
         owner_pubkey: &str,
     ) -> Result<u64> {
         release_repo_name(&self.pool, community, repo_id, owner_pubkey).await
+    }
+
+    /// See [`channel_has_git_repo`].
+    #[datastore_span(name = "channel_has_git_repo", system = "postgresql")]
+    pub async fn channel_has_git_repo(
+        &self,
+        community: CommunityId,
+        channel_id: uuid::Uuid,
+    ) -> Result<bool> {
+        channel_has_git_repo(&self.pool, community, channel_id).await
     }
 }
 
@@ -451,5 +487,66 @@ mod postgres_tests {
                 .expect("owner in B"),
             Some(owner_b)
         );
+    }
+
+    /// Only a live announcement of a reserved repo binds a channel. Mutations:
+    /// drop the `git_repo_names` join → the unreserved repo binds (RED); drop
+    /// `deleted_at IS NULL` → the deleted announcement binds (RED); drop the
+    /// community predicate → the other community's repo binds (RED).
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_channel_is_bound_only_by_a_live_announcement_of_a_reserved_repo() {
+        let (pool, _scratch) = crate::test_support::ScratchDb::migrated(
+            &crate::test_support::database_url(),
+            "git_channel",
+        )
+        .await;
+        let community = make_test_community(&pool).await;
+        let other = make_test_community(&pool).await;
+        let keys = nostr::Keys::generate();
+        let announce = |repo: &str, channel: Uuid| {
+            nostr::EventBuilder::new(nostr::Kind::Custom(30617), "")
+                .tags([
+                    nostr::Tag::parse(["d", repo]).unwrap(),
+                    nostr::Tag::parse(["buzz-channel", &channel.to_string()]).unwrap(),
+                ])
+                .sign_with_keys(&keys)
+                .unwrap()
+        };
+        let [bound, unreserved, deleted, foreign, free] = std::array::from_fn(|_| Uuid::new_v4());
+        for (community, repo, channel, reserve) in [
+            (community, "bound", bound, true),
+            (community, "unreserved", unreserved, false),
+            (community, "deleted", deleted, true),
+            (other, "foreign", foreign, true),
+        ] {
+            if reserve {
+                reserve_repo_name(&pool, community, repo, &keys.public_key().to_hex())
+                    .await
+                    .unwrap();
+            }
+            crate::event::insert_event(&pool, community, &announce(repo, channel), None)
+                .await
+                .unwrap();
+        }
+        sqlx::query("UPDATE events SET deleted_at = NOW() WHERE d_tag = 'deleted'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (channel, expected) in [
+            (bound, true),
+            (unreserved, false),
+            (deleted, false),
+            (foreign, false),
+            (free, false),
+        ] {
+            assert_eq!(
+                channel_has_git_repo(&pool, community, channel)
+                    .await
+                    .unwrap(),
+                expected,
+                "{channel}"
+            );
+        }
     }
 }
