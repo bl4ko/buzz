@@ -342,7 +342,12 @@ class BeeRefreshIndicator extends HookConsumerWidget {
                               Positioned.fill(
                                 child: OlympusPullKey(
                                   height: _beeHeight,
-                                  charge: pullProgress.value,
+                                  charge:
+                                      isLoading ||
+                                          status.value ==
+                                              RefreshIndicatorStatus.armed
+                                      ? 1
+                                      : pullProgress.value.clamp(0.0, 0.84),
                                   loading: isLoading,
                                 ),
                               ),
