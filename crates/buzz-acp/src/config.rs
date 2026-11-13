@@ -554,6 +554,17 @@ pub struct ChannelFilter {
     pub require_mention: bool,
 }
 
+impl ChannelFilter {
+    /// A DM channel subscribes without `#p`: untagged owner messages there
+    /// still reach the agent, and the listener rules decide what starts a turn.
+    pub fn for_dm(mut self, is_dm: bool) -> Self {
+        if is_dm {
+            self.require_mention = false;
+        }
+        self
+    }
+}
+
 #[derive(Debug)]
 pub struct Config {
     pub keys: Keys,
@@ -1673,6 +1684,18 @@ mod tests {
             assert!(kinds.contains(&buzz_core::kind::KIND_WORKFLOW_APPROVAL_REQUESTED));
             assert!(kinds.contains(&buzz_core::kind::KIND_STREAM_REMINDER));
         }
+    }
+
+    #[test]
+    fn test_dm_filter_drops_only_the_mention_requirement() {
+        let config = test_config(SubscribeMode::Mentions);
+        let filter = resolve_dynamic_channel_filter(&config, Uuid::new_v4(), &[]).unwrap();
+        let kinds = filter.kinds.clone();
+
+        assert!(filter.clone().for_dm(false).require_mention);
+        let dm = filter.for_dm(true);
+        assert!(!dm.require_mention);
+        assert_eq!(dm.kinds, kinds);
     }
 
     #[test]
