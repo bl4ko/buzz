@@ -79,11 +79,14 @@ export function buildAskDraft(seed: AskMasterSeed): string {
   const parts: string[] = [];
   if (seed.quote?.trim()) parts.push(quoteMarkdown(seed.quote));
   if (seed.link) parts.push(`${seed.link} `);
+  else if (parts.length > 0) parts.push("&nbsp;");
   return parts.join("\n\n");
 }
 
 export function mergeAskDraft(existing: string | undefined, next: string) {
-  const current = existing?.trimEnd() ?? "";
+  const current = (existing ?? "")
+    .replace(/\s*(&nbsp;|\u00a0)\s*$/, "")
+    .trimEnd();
   if (!current) return next;
   if (!next || current.includes(next.trim())) return current;
   return `${current}\n\n${next}`;

@@ -103,6 +103,7 @@ test("draft has the quote, then the link with room to type", () => {
     buildAskDraft({ quote: "why?", link: "buzz://message?channel=c&id=i" }),
     "> why?\n\nbuzz://message?channel=c&id=i ",
   );
+  assert.equal(buildAskDraft({ quote: "draft" }), "> draft\n\n&nbsp;");
   assert.equal(buildAskDraft({ quote: "  " }), "");
   assert.equal(buildAskDraft({}), "");
 });
@@ -111,4 +112,6 @@ test("a new ask is added to an existing draft once", () => {
   assert.equal(mergeAskDraft(undefined, "> a"), "> a");
   assert.equal(mergeAskDraft("hello  ", "> a"), "hello\n\n> a");
   assert.equal(mergeAskDraft("hello\n\n> a", "> a"), "hello\n\n> a");
+  assert.equal(mergeAskDraft("> a\n\n&nbsp;", "> b"), "> a\n\n> b");
+  assert.equal(mergeAskDraft("> a\n\n\u00a0", "> b"), "> a\n\n> b");
 });

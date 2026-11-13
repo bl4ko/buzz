@@ -159,11 +159,8 @@ export function AppSidebar({
   const [dmActionsMenuOpen, setDmActionsMenuOpen] = React.useState(false);
   const masterDmId = useMasterAgent()?.agent.dmChannel?.id;
   const allDirectMessages = React.useMemo(
-    () =>
-      channels.filter(
-        (channel) => channel.channelType === "dm" && channel.id !== masterDmId,
-      ),
-    [channels, masterDmId],
+    () => channels.filter((channel) => channel.channelType === "dm"),
+    [channels],
   );
   const directMessages = useProtectedVisibleDirectMessages(
     allDirectMessages,
@@ -407,11 +404,11 @@ export function AppSidebar({
   const sortedDirectMessages = React.useMemo(
     () =>
       sortDmChannelsForSidebar(
-        directMessages,
+        directMessages.filter((channel) => channel.id !== masterDmId),
         dmChannelLabels,
         sortModeFor("dms"),
       ),
-    [directMessages, dmChannelLabels, sortModeFor],
+    [directMessages, dmChannelLabels, masterDmId, sortModeFor],
   );
   const unreadDmPreviewsBelow = React.useMemo(
     () =>

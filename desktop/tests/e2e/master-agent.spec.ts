@@ -109,9 +109,12 @@ test("⌘J quotes the composer text when nothing is selected", async ({
   await page.keyboard.press("ControlOrMeta+j");
 
   await expect(page.getByTestId("chat-title")).toHaveText("mira");
-  await expect(
-    page.getByTestId("message-input").locator("blockquote"),
-  ).toHaveText("is this right?");
+  const input = page.getByTestId("message-input");
+  await expect(input.locator("blockquote")).toHaveText("is this right?");
+  await expect(input).toBeFocused();
+  await page.keyboard.type("Why?");
+  await expect(input.locator("blockquote")).toHaveText("is this right?");
+  await expect(input.locator(":scope > p").last()).toContainText("Why?");
 });
 
 test("message menu and palette ask the master without sending", async ({
