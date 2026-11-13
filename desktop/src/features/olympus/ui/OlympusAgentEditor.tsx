@@ -109,18 +109,23 @@ function OlympusFormEditor({
 }) {
   const id = React.useId();
   const base = React.useMemo(() => olympusEditableSpec(agent), [agent]);
+  const shown = React.useMemo(
+    () => olympusWithoutNulls(agent.rawSpec),
+    [agent],
+  );
   const profile = (base.profile ?? {}) as Json;
+  const shownProfile = (shown.profile ?? {}) as Json;
   const [displayName, setDisplayName] = React.useState(
-    text(profile.displayName),
+    text(shownProfile.displayName),
   );
-  const [about, setAbout] = React.useState(text(profile.about));
-  const [model, setModel] = React.useState(text(base.model));
-  const [effort, setEffort] = React.useState(text(base.effort));
+  const [about, setAbout] = React.useState(text(shownProfile.about));
+  const [model, setModel] = React.useState(text(shown.model));
+  const [effort, setEffort] = React.useState(text(shown.effort));
   const [instructions, setInstructions] = React.useState(
-    text(base.instructions),
+    text(shown.instructions),
   );
-  const [storage, setStorage] = React.useState(text(base.storage));
-  const [backup, setBackup] = React.useState(base.backup === true);
+  const [storage, setStorage] = React.useState(text(shown.storage));
+  const [backup, setBackup] = React.useState(shown.backup === true);
   const locked = (field: string) => olympusFieldLocked(agent, `spec.${field}`);
   const models = olympusModelOptions(workspace, agent.spec.pool);
   const instructionsLocked =
@@ -254,6 +259,11 @@ function OlympusFormEditor({
           disabled={instructionsLocked}
           id={`${id}-instructions`}
           onChange={(event) => setInstructions(event.target.value)}
+          placeholder={
+            agent.spec.instructionsFrom
+              ? `${agent.spec.instructionsFrom.skillsRepo}/${agent.spec.instructionsFrom.path}`
+              : undefined
+          }
           value={instructions}
         />
         {agent.spec.instructionsFrom ? (

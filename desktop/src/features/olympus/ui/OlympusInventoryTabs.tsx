@@ -162,7 +162,11 @@ function useOlympusInventory() {
 
 function AgentLinks({ agents }: { agents: OlympusAgent[] }) {
   const { goOlympusAgent } = useAppNavigation();
-  if (agents.length === 0) return <OlympusNone>Not used</OlympusNone>;
+  if (agents.length === 0) {
+    return (
+      <span className="block text-xs text-muted-foreground">Not used</span>
+    );
+  }
   return (
     <span className="flex flex-wrap gap-1">
       {agents.map((agent) => (

@@ -209,7 +209,7 @@ function OlympusAgentRow({ agent }: { agent: OlympusAgent }) {
       type="button"
     >
       <OlympusAgentAvatar agent={agent} />
-      <span className="grid min-w-0 gap-1 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] md:items-center md:gap-4">
+      <span className="grid min-w-0 gap-1 md:grid-cols-[minmax(0,1fr)_13rem_9rem] md:items-center md:gap-4">
         <span className="min-w-0">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground">
