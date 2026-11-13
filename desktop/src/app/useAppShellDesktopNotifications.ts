@@ -8,6 +8,8 @@ import {
 import { useCommunityJoinAlerts } from "@/features/community-members/useCommunityJoinAlerts";
 import { useLiveRelayMembers } from "@/features/community-members/useLiveRelayMembers";
 import { hasMentionForEvent } from "@/features/notifications/lib/shouldNotify";
+import { shouldAlertForChannelMessage } from "@/features/notifications/lib/channelLevels";
+import type { ChannelNotificationLevels } from "@/features/notifications/useChannelNotificationLevels";
 import type { NotificationSettings } from "@/features/notifications/hooks";
 import {
   listenForDesktopNotificationActions,
@@ -26,6 +28,7 @@ import { useNotificationSenderName } from "@/features/notifications/useNotificat
 import type { Channel, RelayEvent } from "@/shared/api/types";
 
 export function useAppShellDesktopNotifications({
+  channelLevels,
   channels,
   enabled,
   goChannel,
@@ -35,6 +38,7 @@ export function useAppShellDesktopNotifications({
   pubkey,
   silentChannelIds,
 }: {
+  channelLevels?: ChannelNotificationLevels | null;
   channels: Channel[];
   enabled: boolean;
   goChannel: (
@@ -62,10 +66,26 @@ export function useAppShellDesktopNotifications({
   const resolveSenderName = useNotificationSenderName();
 
   const handleChannelNotification = React.useEffectEvent(
-    (_channelId: string, event: RelayEvent) => {
+    (channelId: string, event: RelayEvent) => {
       if (!enabled) return;
       if (!shouldBounceForChannelNotification(event.tags)) return;
       if (!notificationSettings.desktopEnabled) return;
+      const channel = channels.find((c) => c.id === channelId);
+      if (
+        channelLevels &&
+        channel &&
+        !shouldAlertForChannelMessage(
+          event,
+          pubkey?.trim().toLowerCase() ?? "",
+          {
+            resolution: channelLevels.resolve(channel),
+            isDm: channel.channelType === "dm",
+            botPubkeys: channelLevels.botPubkeys,
+          },
+        )
+      ) {
+        return;
+      }
       void requestDockBounce();
     },
   );
@@ -75,7 +95,8 @@ export function useAppShellDesktopNotifications({
       if (!enabled) return;
       if (
         !notificationSettings.desktopEnabled ||
-        !notificationSettings.slotAlertsEnabled.dm
+        !notificationSettings.slotAlertsEnabled.dm ||
+        channelLevels?.resolve(channel).level === "nothing"
       ) {
         return;
       }

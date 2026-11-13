@@ -168,6 +168,7 @@ export class ChannelMuteSyncManager {
       if (
         !last ||
         last.muted !== current.muted ||
+        last.level !== current.level ||
         last.updatedAt !== current.updatedAt
       )
         return false;

@@ -1,9 +1,15 @@
+import {
+  type ChannelNotificationLevel,
+  isChannelNotificationLevel,
+} from "@/features/notifications/lib/channelLevels";
+
 const STORAGE_KEY_PREFIX = "buzz-channel-mutes.v1";
 export const MAX_CHANNEL_MUTE_ENTRIES = 500;
 
 export type ChannelMuteEntry = {
   muted: boolean;
   updatedAt: number;
+  level?: ChannelNotificationLevel;
 };
 
 export type ChannelMuteStore = {
@@ -40,7 +46,11 @@ export function parseMutePayload(json: unknown): ChannelMuteStore | null {
                 Number.isFinite(
                   (v as Record<string, unknown>).updatedAt as number,
                 ) &&
-                ((v as Record<string, unknown>).updatedAt as number) >= 0
+                ((v as Record<string, unknown>).updatedAt as number) >= 0 &&
+                ((v as Record<string, unknown>).level === undefined ||
+                  isChannelNotificationLevel(
+                    (v as Record<string, unknown>).level,
+                  ))
               );
             },
           ),
@@ -129,10 +139,39 @@ export function mergeStores(
   return boundMuteStore({ version: 1, channels: merged });
 }
 
+export function channelLevelOfEntry(
+  entry: ChannelMuteEntry | undefined,
+): ChannelNotificationLevel | null {
+  if (!entry) return null;
+  if (entry.muted) return "nothing";
+  return entry.level && entry.level !== "nothing" ? entry.level : null;
+}
+
 export function mutedChannelIdsFromStore(store: ChannelMuteStore): Set<string> {
   return new Set(
     Object.entries(store.channels)
       .filter(([, entry]) => entry.muted)
       .map(([id]) => id),
   );
+}
+
+export function channelLevelsFromStore(
+  store: ChannelMuteStore,
+): Map<string, ChannelNotificationLevel> {
+  const levels = new Map<string, ChannelNotificationLevel>();
+  for (const [id, entry] of Object.entries(store.channels)) {
+    const level = channelLevelOfEntry(entry);
+    if (level) levels.set(id, level);
+  }
+  return levels;
+}
+
+export function channelLevelEntry(
+  level: ChannelNotificationLevel | null,
+  updatedAt: number,
+): ChannelMuteEntry {
+  if (level === "nothing") return { muted: true, updatedAt, level };
+  return level
+    ? { muted: false, updatedAt, level }
+    : { muted: false, updatedAt };
 }

@@ -23,6 +23,7 @@ import {
   useUnarchiveChannelMutation,
 } from "@/features/channels/hooks";
 import { useChannelModerationCapabilities } from "@/features/channels/ui/ChannelManagementModerationActions";
+import { ChannelNotificationLevelSubmenu } from "@/features/notifications/ui/ChannelNotificationLevelSubmenu";
 import type { ChannelSection } from "@/features/sidebar/lib/useChannelSections";
 import {
   ContextMenuIconSlot,
@@ -182,6 +183,7 @@ export function ChannelContextMenuItems({
   onLeaveChannel?: (channel: Channel) => void;
 }) {
   const {
+    channelNotificationLevels,
     feedItemState,
     hasSidebarUnreadProjections,
     locallyUnreadFeedItems,
@@ -279,6 +281,12 @@ export function ChannelContextMenuItems({
         </ContextMenuItem>
       ) : null}
       {showMuteToggle || showStar ? <ContextMenuSeparator /> : null}
+      {showMuteToggle && channelNotificationLevels ? (
+        <ChannelNotificationLevelSubmenu
+          channel={channel}
+          levels={channelNotificationLevels}
+        />
+      ) : null}
       {showMuteToggle ? (
         isMuted ? (
           <ContextMenuItem

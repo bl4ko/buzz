@@ -1,8 +1,11 @@
 import * as React from "react";
 
 import { relayClient } from "@/shared/api/relayClient";
+import type { ChannelNotificationLevel } from "@/features/notifications/lib/channelLevels";
 import {
   boundMuteStore,
+  channelLevelEntry,
+  channelLevelsFromStore,
   DEFAULT_STORE,
   mergeStores,
   mutedChannelIdsFromStore,
@@ -21,8 +24,13 @@ export function useChannelMutes(
   relayUrl?: string,
 ): {
   mutedChannelIds: Set<string>;
+  channelLevels: Map<string, ChannelNotificationLevel>;
   muteChannel: (channelId: string) => void;
   unmuteChannel: (channelId: string) => void;
+  setChannelLevel: (
+    channelId: string,
+    level: ChannelNotificationLevel | null,
+  ) => void;
 } {
   const [store, setStore] = React.useState<ChannelMuteStore>(() => {
     if (!pubkey) {
@@ -187,13 +195,15 @@ export function useChannelMutes(
     [store.channels],
   );
 
-  const setMuteState = React.useCallback(
-    (channelId: string, muted: boolean) => {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: store.channels is the relevant dep
+  const channelLevels = React.useMemo(
+    () => channelLevelsFromStore(store),
+    [store.channels],
+  );
+
+  const writeEntry = React.useCallback(
+    (channelId: string, entry: ChannelMuteEntry) => {
       if (!pubkey) return;
-      const entry: ChannelMuteEntry = {
-        muted,
-        updatedAt: Math.floor(Date.now() / 1000),
-      };
       setStore((prev) => {
         const next = boundMuteStore(
           {
@@ -211,6 +221,14 @@ export function useChannelMutes(
     [pubkey],
   );
 
+  const setMuteState = React.useCallback(
+    (channelId: string, muted: boolean) =>
+      writeEntry(channelId, {
+        muted,
+        updatedAt: Math.floor(Date.now() / 1000),
+      }),
+    [writeEntry],
+  );
   const muteChannel = React.useCallback(
     (channelId: string) => setMuteState(channelId, true),
     [setMuteState],
@@ -219,10 +237,20 @@ export function useChannelMutes(
     (channelId: string) => setMuteState(channelId, false),
     [setMuteState],
   );
+  const setChannelLevel = React.useCallback(
+    (channelId: string, level: ChannelNotificationLevel | null) =>
+      writeEntry(
+        channelId,
+        channelLevelEntry(level, Math.floor(Date.now() / 1000)),
+      ),
+    [writeEntry],
+  );
 
   return {
     mutedChannelIds,
+    channelLevels,
     muteChannel,
     unmuteChannel,
+    setChannelLevel,
   };
 }

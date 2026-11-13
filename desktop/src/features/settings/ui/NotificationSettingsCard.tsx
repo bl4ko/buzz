@@ -14,6 +14,7 @@ import {
   type SoundName,
   type SoundSlot,
 } from "@/features/notifications/lib/sound";
+import { ChannelNotificationLevelsCard } from "@/features/notifications/ui/ChannelNotificationLevelsCard";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
@@ -285,6 +286,7 @@ export function NotificationSettingsCard({
             />
           </SettingsOptionRow>
         </SettingsOptionGroup>
+        <ChannelNotificationLevelsCard />
       </SettingsOptionGroupList>
 
       {permissionBlocked && (

@@ -4,6 +4,7 @@ import type { ContextParentResolver } from "@/features/channels/readState/readSt
 import type { ThreadActivityItem } from "@/features/channels/useUnreadChannels";
 import type { FeedItemState } from "@/features/home/useFeedItemState";
 import type { FeedItem } from "@/shared/api/types";
+import type { ChannelNotificationLevels } from "@/features/notifications/useChannelNotificationLevels";
 import type { SettingsSection } from "@/features/settings/ui/SettingsPanels";
 
 const EMPTY_SET = new Set<string>();
@@ -19,6 +20,7 @@ type AppShellContextValue = {
     },
   ) => void;
   markChannelUnread: (channelId: string, source?: ForcedUnreadSource) => void;
+  channelNotificationLevels: ChannelNotificationLevels | null;
   clearChannelUnreadSource: (
     channelId: string,
     source: ForcedUnreadSource,
@@ -86,6 +88,7 @@ const AppShellContext = React.createContext<AppShellContextValue>({
   markAllChannelsRead: () => {},
   markChannelRead: () => {},
   markChannelUnread: () => {},
+  channelNotificationLevels: null,
   clearChannelUnreadSource: () => {},
   openBrowseChannels: () => {},
   openCreateChannel: () => {},
