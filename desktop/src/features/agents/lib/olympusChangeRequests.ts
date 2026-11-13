@@ -36,6 +36,7 @@ export type OlympusChange =
       proposal: string;
       digest: string;
       highRisk?: true;
+      reason?: string;
     };
 
 export type OlympusChangeTarget = {
