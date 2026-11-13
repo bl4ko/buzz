@@ -30,6 +30,7 @@ import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMe
 import { getPresence, listManagedAgents } from "@/shared/api/tauri";
 import { getProfile } from "@/shared/api/tauriProfiles";
 import type { Channel, ManagedAgent, RelayEvent } from "@/shared/api/types";
+import { SHOW_WELCOME_TEAM } from "@/shared/constants/olympus";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -559,6 +560,7 @@ export function useWelcomeKickoff(
   );
   React.useEffect(() => {
     if (
+      !SHOW_WELCOME_TEAM ||
       !channelId ||
       !isActiveWelcome ||
       configLoading ||

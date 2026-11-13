@@ -26,6 +26,7 @@ import { getIdentity, importIdentity } from "@/shared/api/tauriIdentity";
 import { listPersonas } from "@/shared/api/tauriPersonas";
 import { relayClient } from "@/shared/api/relayClient";
 import type { AgentPersona } from "@/shared/api/types";
+import { SHOW_WELCOME_TEAM } from "@/shared/constants/olympus";
 import { cn } from "@/shared/lib/cn";
 import { useSystemColorScheme } from "@/shared/theme/useSystemColorScheme";
 import { Button } from "@/shared/ui/button";
@@ -210,7 +211,7 @@ export function CommunityOnboardingFlow({
     transaction?.stage === "finalizing" ||
     transaction?.stage === "entering";
   React.useEffect(() => {
-    if (!isTeamIntroVisible) return;
+    if (!isTeamIntroVisible || !SHOW_WELCOME_TEAM) return;
     void listPersonas()
       .then((personas) =>
         setStarterPersonas(
@@ -750,11 +751,14 @@ export function CommunityOnboardingFlow({
             ) : (
               <>
                 <h1 className="text-title font-normal">
-                  Meet your starter team
+                  {SHOW_WELCOME_TEAM
+                    ? "Meet your starter team"
+                    : "Welcome to Olympus"}
                 </h1>
                 <p className="mx-auto mt-3 max-w-[400px] text-sm leading-6 text-foreground/80">
-                  Olympus lets you bring multiple agents into the same
-                  workspace. Your team will help you get started using Olympus.
+                  {SHOW_WELCOME_TEAM
+                    ? "Olympus lets you bring multiple agents into the same workspace. Your team will help you get started using Olympus."
+                    : "Your people and your agents work in the same workspace. Manage your cluster agents on the Olympus page."}
                 </p>
                 <div className="flex w-full flex-1 items-center justify-center py-6">
                   {starterPersonas.length > 0 ? (
