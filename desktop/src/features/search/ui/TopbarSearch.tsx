@@ -760,7 +760,7 @@ export function TopbarSearch({
           <UserAvatar
             avatarUrl={result.action.avatarUrl ?? null}
             className="h-7 w-7"
-            displayName={result.action.title}
+            displayName={master?.agent.label ?? result.action.title}
             shape="squircle"
             size="sm"
           />
