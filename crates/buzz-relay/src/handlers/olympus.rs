@@ -1,10 +1,10 @@
-//! NIP-OL: write rules for the Olympus agent kinds (30190, 30191, 30192, 44310, 44311).
+//! NIP-OL: write rules for the Olympus agent kinds (30190-30193, 44310, 44311).
 
 use std::sync::Arc;
 
 use buzz_core::kind::{
     KIND_OLYMPUS_AGENT, KIND_OLYMPUS_CHANGE_REQUEST, KIND_OLYMPUS_CHANGE_RESULT,
-    KIND_OLYMPUS_PROPOSAL, KIND_OLYMPUS_WORKSPACE, OLYMPUS_KINDS,
+    KIND_OLYMPUS_PROPOSAL, KIND_OLYMPUS_USAGE, KIND_OLYMPUS_WORKSPACE, OLYMPUS_KINDS,
 };
 use buzz_core::tenant::TenantContext;
 use nostr::Event;
@@ -71,7 +71,10 @@ pub(crate) fn validate_envelope(event: &Event) -> Result<(), String> {
         return Err("`p` tag must be 64 lowercase hex chars".into());
     }
     match kind {
-        KIND_OLYMPUS_AGENT | KIND_OLYMPUS_WORKSPACE | KIND_OLYMPUS_PROPOSAL => {
+        KIND_OLYMPUS_AGENT
+        | KIND_OLYMPUS_WORKSPACE
+        | KIND_OLYMPUS_PROPOSAL
+        | KIND_OLYMPUS_USAGE => {
             match tag_values(event, "d").as_slice() {
                 [d] if !d.is_empty() && d.len() <= MAX_D_TAG_BYTES => {}
                 [_] => return Err(format!("`d` tag must be 1 to {MAX_D_TAG_BYTES} bytes")),
@@ -102,7 +105,7 @@ pub(crate) fn validate_envelope(event: &Event) -> Result<(), String> {
     Ok(())
 }
 
-/// Accept Olympus state, proposals, and results (30190, 30191, 30192, 44311) only from a configured Olympus
+/// Accept Olympus state, proposals, usage, and results (30190-30193, 44311) only from a configured Olympus
 /// operator key with relay role `owner` or `admin`, and a change request (44310) only from the
 /// relay `owner`, addressed to a configured operator key. Call after [`validate_envelope`].
 pub(crate) async fn authorize_author(
@@ -216,6 +219,28 @@ mod tests {
                 ok,
             ),
             (30192, &[&["p", HEX_A], &["status", "active"]], bad),
+            (
+                30193,
+                &[
+                    &["d", "olympus-dev/proof"],
+                    &["p", HEX_A],
+                    &["p", HEX_B],
+                    &["workspace", "dev"],
+                    &["status", "active"],
+                ],
+                ok,
+            ),
+            (
+                30193,
+                &[&["d", "hecate"], &["p", HEX_A], &["status", "deleted"]],
+                ok,
+            ),
+            (30193, &[&["p", HEX_A], &["status", "active"]], bad),
+            (
+                30193,
+                &[&["d", "hecate"], &["p", HEX_A], &["status", "stale"]],
+                bad,
+            ),
             (
                 30192,
                 &[&["d", "p-1"], &["p", HEX_A], &["status", "applied"]],
