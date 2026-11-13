@@ -113,7 +113,7 @@ test("lost boot offers phone recovery with a single-use QR", async ({
   await expect(page.getByTestId("identity-recovery-qr")).toBeVisible();
   await expect(
     page.getByText(
-      "Scan this code with a device where you’re currently signed in to Buzz.",
+      "Scan this code with a device where you’re currently signed in to Olympus.",
     ),
   ).toBeVisible();
   await expect(
@@ -223,7 +223,7 @@ test("phone recovery uses the desktop pairing card semantics", async ({
   ).toBeVisible();
   await expect(
     card.getByText(
-      "This gives this desktop permanent access to your Buzz identity. Only continue if you trust it.",
+      "This gives this desktop permanent access to your Olympus identity. Only continue if you trust it.",
     ),
   ).toBeVisible();
   await expect(card.getByText(/On your phone, open Settings/)).toHaveCount(0);

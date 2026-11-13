@@ -35,7 +35,7 @@ void main() {
     expect(result, DeviceAuthResult.success);
     verify(
       () => authentication.authenticate(
-        localizedReason: 'Confirm exporting your Buzz identity',
+        localizedReason: 'Confirm exporting your Olympus identity',
         authMessages: any(named: 'authMessages'),
         biometricOnly: false,
         sensitiveTransaction: true,

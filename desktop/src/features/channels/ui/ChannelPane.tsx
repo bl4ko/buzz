@@ -70,6 +70,7 @@ import { useRoutedMessageEdit } from "@/features/channels/ui/useRoutedMessageEdi
 import { Button } from "@/shared/ui/button";
 import { useRenderScopedReactionHydration } from "@/features/messages/lib/useRenderScopedReactionHydration";
 import { isWelcomeExperienceChannel as isWelcomeExperience } from "@/features/onboarding/welcome";
+import { SHOW_WELCOME_TEAM } from "@/shared/constants/olympus";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { channelChrome } from "@/shared/layout/chromeLayout";
 import { cn } from "@/shared/lib/cn";
@@ -770,7 +771,9 @@ export const ChannelPane = React.memo(function ChannelPane({
                     hasComposerBottomActivity && "composer-dock--with-activity",
                   )}
                 >
-                  {isActiveWelcomeChannel && !timeoutActive ? (
+                  {SHOW_WELCOME_TEAM &&
+                  isActiveWelcomeChannel &&
+                  !timeoutActive ? (
                     <WelcomeComposerGuidanceLayer
                       onDismiss={handleDismissWelcomeBanner}
                       settingUp={welcomeKickoffSettingUp}

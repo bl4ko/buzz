@@ -41,8 +41,8 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   },
   {
     id: "toggle-terminal",
-    label: "Buzz Term",
-    description: "Open Buzz Term or move focus between it and the app",
+    label: "Olympus Term",
+    description: "Open Olympus Term or move focus between it and the app",
     keys: "⌃`",
     keysWindows: "Ctrl+`",
     category: "Navigation",

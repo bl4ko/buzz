@@ -144,7 +144,7 @@ public struct BuzzApprovalReactionSender {
 }
 
 public enum BuzzApprovalActionHandler {
-  public static let failureBody = "Open Buzz and try again."
+  public static let failureBody = "Open Olympus and try again."
 
   public static func handle(
     target: BuzzApprovalTarget,

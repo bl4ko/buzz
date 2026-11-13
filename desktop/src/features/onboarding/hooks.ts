@@ -30,6 +30,7 @@ import {
   getChannels,
   updateChannel,
 } from "@/shared/api/tauri";
+import { SHOW_WELCOME_TEAM } from "@/shared/constants/olympus";
 
 // Adapter: resolves the full channel list without the not-modified short-circuit.
 // Onboarding paths run once and always need fresh data.
@@ -56,7 +57,9 @@ function seedWelcomeExperience(
 
   const promise = (async () => {
     try {
-      await ensureWelcomeTeam(channelId, communityScope);
+      if (SHOW_WELCOME_TEAM) {
+        await ensureWelcomeTeam(channelId, communityScope);
+      }
       await ensureWelcomeCanvas(channelId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: managedAgentsQueryKey }),

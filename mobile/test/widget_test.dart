@@ -144,7 +144,7 @@ void main() {
     expect(tester.getSize(mark), const Size.square(OlympusArt.launchExtent));
     expect(tester.getCenter(mark), tester.getCenter(find.byType(App)));
     expect(tester.binding.hasScheduledFrame, isFalse);
-    expect(find.bySemanticsLabel('Starting Buzz'), findsOneWidget);
+    expect(find.bySemanticsLabel('Starting Olympus'), findsOneWidget);
 
     auth.complete(const AuthState(status: AuthStatus.unauthenticated));
     await tester.pump();

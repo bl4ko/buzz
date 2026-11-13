@@ -154,7 +154,7 @@ final class BuzzApprovalActionTests: XCTestCase {
     XCTAssertEqual(notices.count, 2)
     let request = BuzzApprovalFailureNotice.request(body: notices[0])
     XCTAssertEqual(request.content.title, "Approval not sent")
-    XCTAssertEqual(request.content.body, "Open Buzz and try again.")
+    XCTAssertEqual(request.content.body, "Open Olympus and try again.")
   }
 
   func testRelayThatDiffersFromTheStoredOneIsRefusedBeforeSigning() async {

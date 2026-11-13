@@ -24,7 +24,7 @@ void main() {
     gate.complete();
     await loading;
     await tester.pumpAndSettle();
-    expect(find.text('Buzz identity: mismatch.'), findsOneWidget);
+    expect(find.text('Olympus identity: mismatch.'), findsOneWidget);
     expect(find.byType(CreateAgentPage), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.tap(find.byTooltip('Close agents'));

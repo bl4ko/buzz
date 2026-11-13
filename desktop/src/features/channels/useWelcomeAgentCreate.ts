@@ -31,7 +31,7 @@ export function useWelcomeAgentCreate({
   const openAddAgent = React.useCallback(
     (openRegularPicker: () => void, options?: { beforeSend?: () => void }) => {
       setError(null);
-      if (isWelcomeExperienceChannel(activeChannel)) {
+      if (welcomeGuideAgent && isWelcomeExperienceChannel(activeChannel)) {
         beforeSendRef.current = options?.beforeSend ?? null;
         setIsOpen(true);
         return;
@@ -39,7 +39,7 @@ export function useWelcomeAgentCreate({
       beforeSendRef.current = null;
       openRegularPicker();
     },
-    [activeChannel],
+    [activeChannel, welcomeGuideAgent],
   );
 
   const createManually = React.useCallback(() => {

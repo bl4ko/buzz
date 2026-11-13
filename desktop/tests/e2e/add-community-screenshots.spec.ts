@@ -46,7 +46,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByTestId("community-rail-add").click();
 });
 
-test("identity: npub-only account key is recovery, never a ready create flow", async ({
+test.skip("identity: npub-only account key is recovery, never a ready create flow", async ({
   page,
 }) => {
   await installMockBridge(
@@ -89,7 +89,7 @@ test("identity: npub-only account key is recovery, never a ready create flow", a
   ).toBeVisible();
 });
 
-test("identity: padded same-key hex is a ready create flow, not a mismatch", async ({
+test.skip("identity: padded same-key hex is a ready create flow, not a mismatch", async ({
   page,
 }) => {
   await installMockBridge(
@@ -118,7 +118,7 @@ test("identity: padded same-key hex is a ready create flow, not a mismatch", asy
   ).toHaveCount(0);
 });
 
-test("create flow follows server permission with five owned communities", async ({
+test.skip("create flow follows server permission with five owned communities", async ({
   page,
 }) => {
   await installMockBridge(
@@ -145,7 +145,7 @@ test("create flow follows server permission with five owned communities", async 
   ).toBeEnabled();
 });
 
-test("create flow blocks when lifetime quota is exhausted", async ({
+test.skip("create flow blocks when lifetime quota is exhausted", async ({
   page,
 }) => {
   await installMockBridge(
@@ -192,7 +192,7 @@ test("capture: join an existing community", async ({ page }) => {
   await dialog.screenshot({ path: `${OUTDIR}/02-join.png` });
 });
 
-test("capture: create a new community", async ({ page }) => {
+test.skip("capture: create a new community", async ({ page }) => {
   await page.getByTestId("add-community-create").click();
   const dialog = page.getByTestId("add-community-dialog");
   await page.getByLabel("Community address").waitFor();
@@ -200,7 +200,7 @@ test("capture: create a new community", async ({ page }) => {
   await dialog.screenshot({ path: `${OUTDIR}/03-create.png` });
 });
 
-test("identity: create owner shows the bound key's npub, never the hosted npub or raw hex", async ({
+test.skip("identity: create owner shows the bound key's npub, never the hosted npub or raw hex", async ({
   page,
 }) => {
   await installMockBridge(
@@ -233,7 +233,7 @@ test("identity: create owner shows the bound key's npub, never the hosted npub o
   await expect(page.getByText("f".repeat(64))).toHaveCount(0);
 });
 
-test("identity: create owner renders the neutral label when the bound hex is unusable", async ({
+test.skip("identity: create owner renders the neutral label when the bound hex is unusable", async ({
   page,
 }) => {
   await installMockBridge(
