@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { useOlympusOwnedAgents } from "@/features/agents/useOlympusOwnedAgents";
 import {
   mergeCurrentProfileIntoLookup,
   profileLookupsEqual,
@@ -50,6 +51,7 @@ export function useMessageProfiles({
   profiles: UserProfileLookup | undefined;
   relayAgents: RelayAgent[];
 }): UserProfileLookup {
+  const olympusAgents = useOlympusOwnedAgents();
   const raw = React.useMemo(() => {
     const base = mergeCurrentProfileIntoLookup(profiles, currentProfile) ?? {};
     return mergeMemberAgentFlagsIntoProfiles(
@@ -58,6 +60,7 @@ export function useMessageProfiles({
         managedAgents,
         relayAgents,
         currentPubkey,
+        olympusAgents,
       ),
       channelMembers,
     );
@@ -66,6 +69,7 @@ export function useMessageProfiles({
     currentProfile,
     currentPubkey,
     managedAgents,
+    olympusAgents,
     profiles,
     relayAgents,
   ]);

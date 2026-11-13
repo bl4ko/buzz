@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { reportChannelBotTyping } from "@/features/agents/agentWorkingSignal";
+import type { OlympusOwnedAgent } from "@/features/agents/lib/olympusOwnedAgents";
 import { useOlympusOwnedAgents } from "@/features/agents/useOlympusOwnedAgents";
 import type { TypingIndicatorEntry } from "@/features/messages/useChannelTyping";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
@@ -147,6 +148,7 @@ export function mergeAgentNamesIntoProfiles(
   managedAgents: ManagedAgent[],
   relayAgents: RelayAgent[],
   currentPubkey?: string | null,
+  olympusAgents: readonly Pick<OlympusOwnedAgent, "pubkey" | "name">[] = [],
 ): UserProfileLookup {
   const merged = { ...profiles };
   for (const agent of relayAgents) {
@@ -165,6 +167,17 @@ export function mergeAgentNamesIntoProfiles(
       ...merged[key],
       displayName: merged[key]?.displayName || agent.name,
       avatarUrl: merged[key]?.avatarUrl ?? agent.avatarUrl,
+      nip05Handle: merged[key]?.nip05Handle ?? null,
+      ownerPubkey: merged[key]?.ownerPubkey ?? currentPubkey ?? null,
+      isAgent: true,
+    };
+  }
+  for (const agent of olympusAgents) {
+    const key = normalizePubkey(agent.pubkey);
+    merged[key] = {
+      ...merged[key],
+      displayName: merged[key]?.displayName || agent.name,
+      avatarUrl: merged[key]?.avatarUrl ?? null,
       nip05Handle: merged[key]?.nip05Handle ?? null,
       ownerPubkey: merged[key]?.ownerPubkey ?? currentPubkey ?? null,
       isAgent: true,
