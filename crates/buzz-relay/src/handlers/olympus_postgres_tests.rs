@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use buzz_core::kind::{
     KIND_OLYMPUS_AGENT, KIND_OLYMPUS_CHANGE_REQUEST, KIND_OLYMPUS_CHANGE_RESULT,
-    KIND_OLYMPUS_WORKSPACE,
+    KIND_OLYMPUS_PROPOSAL, KIND_OLYMPUS_WORKSPACE,
 };
 use buzz_core::TenantContext;
 use nostr::{Event, EventBuilder, Keys, Kind, Tag};
@@ -17,9 +17,10 @@ use super::group_state_postgres_tests::test_conn;
 use crate::handlers::ingest::{ingest_event, HttpAuthMethod, IngestAuth, IngestError};
 use crate::state::AppState;
 
-const ALL: [u32; 4] = [
+const ALL: [u32; 5] = [
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
+    KIND_OLYMPUS_PROPOSAL,
     KIND_OLYMPUS_CHANGE_REQUEST,
     KIND_OLYMPUS_CHANGE_RESULT,
 ];
@@ -144,10 +145,14 @@ fn agent(f: &Fixture, author: &Keys, d: &str) -> Event {
 }
 
 fn workspace(f: &Fixture, author: &Keys, d: &str) -> Event {
+    state(f, author, KIND_OLYMPUS_WORKSPACE, d)
+}
+
+fn state(f: &Fixture, author: &Keys, kind: u32, d: &str) -> Event {
     let (owner, operator) = (hex(&f.owner), hex(&f.operator));
     sign(
         author,
-        KIND_OLYMPUS_WORKSPACE,
+        kind,
         r#"{"v":1}"#,
         &[
             ["d", d],
@@ -197,6 +202,7 @@ fn sample(f: &Fixture, author: &Keys, kind: u32) -> Event {
     match kind {
         KIND_OLYMPUS_AGENT => agent(f, author, &d),
         KIND_OLYMPUS_WORKSPACE => workspace(f, author, &d),
+        KIND_OLYMPUS_PROPOSAL => state(f, author, KIND_OLYMPUS_PROPOSAL, &d),
         KIND_OLYMPUS_CHANGE_REQUEST => request(f, author),
         _ => result(f, author, &"ab".repeat(32)),
     }
@@ -209,9 +215,10 @@ fn refused(result: Result<String, IngestError>, reason: &str, case: &str) {
     }
 }
 
-const STATE_KINDS: [u32; 3] = [
+const STATE_KINDS: [u32; 4] = [
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
+    KIND_OLYMPUS_PROPOSAL,
     KIND_OLYMPUS_CHANGE_RESULT,
 ];
 
@@ -255,7 +262,7 @@ async fn olympus_writes_need_a_listed_operator_or_the_owner() {
     accepted(&f, request_to(&f.owner, &f.listed_member)).await;
 }
 
-/// An empty `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` refuses all four kinds.
+/// An empty `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` refuses all five kinds.
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
 async fn olympus_writes_fail_closed_without_an_operator_list() {
@@ -522,12 +529,18 @@ async fn olympus_reads_reach_only_p_tagged_readers() {
         request,
     ];
     events.push(result(&f, &f.operator, &request_id));
+    events.push(state(&f, &f.operator, KIND_OLYMPUS_PROPOSAL, "p-1"));
     let mut ids = Vec::new();
     for event in events.clone() {
         ids.push(accepted(&f, event).await);
     }
     let all_ids = sorted(ids.clone());
-    let owner_ids = sorted(vec![ids[0].clone(), ids[1].clone(), ids[3].clone()]);
+    let owner_ids = sorted(vec![
+        ids[0].clone(),
+        ids[1].clone(),
+        ids[3].clone(),
+        ids[4].clone(),
+    ]);
 
     assert_eq!(live_ids(&mut owner_live).await, owner_ids);
     assert_eq!(live_ids(&mut operator_live).await, all_ids);
@@ -599,14 +612,14 @@ async fn olympus_reads_reach_only_p_tagged_readers() {
 
     let own = json!({"kinds": kinds, "#p": [hex(&f.owner)]});
     assert_eq!(req(&f, &f.owner, own.clone()).await, owner_ids);
-    assert_eq!(count(&f, &f.owner, own.clone()).await, 3);
+    assert_eq!(count(&f, &f.owner, own.clone()).await, 4);
     assert_eq!(query(&f, &f.owner, own.clone()).await, owner_ids);
-    assert_eq!(http_count(&f, &f.owner, own).await, 3);
+    assert_eq!(http_count(&f, &f.owner, own).await, 4);
     assert_eq!(req(&f, &f.owner, json!({"ids": all_ids})).await, owner_ids);
 
     let operator = json!({"kinds": kinds, "#p": [hex(&f.operator)]});
     assert_eq!(req(&f, &f.operator, operator.clone()).await, all_ids);
-    assert_eq!(count(&f, &f.operator, operator.clone()).await, 4);
+    assert_eq!(count(&f, &f.operator, operator.clone()).await, 5);
     assert_eq!(query(&f, &f.operator, operator).await, all_ids);
     assert_eq!(
         query(&f, &f.operator, json!({"ids": all_ids})).await,
