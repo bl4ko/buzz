@@ -33,6 +33,7 @@ import {
   useOlympusAgents,
 } from "@/features/agents/useOlympusAgents";
 import { cn } from "@/shared/lib/cn";
+import { formatItemTimestamp } from "@/shared/lib/datetime";
 import { useNow } from "@/shared/lib/useNow";
 import {
   AlertDialog,
@@ -94,7 +95,7 @@ function timeLine(proposal: OlympusProposal, now: number) {
 }
 
 function absoluteTime(seconds: number) {
-  return new Date(seconds * 1_000).toLocaleString();
+  return formatItemTimestamp(seconds, { withTime: true });
 }
 
 export function olympusUtf8Length(value: string) {

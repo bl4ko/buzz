@@ -19,6 +19,7 @@ import { useOlympusUsage } from "@/features/agents/useOlympusUsage";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { cn } from "@/shared/lib/cn";
+import { formatItemTimestamp } from "@/shared/lib/datetime";
 import { useNow } from "@/shared/lib/useNow";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Spinner } from "@/shared/ui/spinner";
@@ -85,8 +86,10 @@ function relative(atSeconds: number, nowMs: number) {
   return `${Math.floor(seconds / 86_400)}d ago`;
 }
 
+const EXACT_FORMAT = new Intl.NumberFormat("en-US");
+
 function formatExact(value: number) {
-  return Math.round(value).toLocaleString();
+  return EXACT_FORMAT.format(Math.round(value));
 }
 
 function ModelBar({
@@ -212,7 +215,7 @@ function LastRun({
   return (
     <span
       className="inline-flex items-center gap-1 whitespace-nowrap"
-      title={`${lastRun.schedule} · ${new Date(lastRun.at * 1_000).toLocaleString()}`}
+      title={`${lastRun.schedule} · ${formatItemTimestamp(lastRun.at, { withTime: true })}`}
     >
       <span className="text-muted-foreground">
         {relative(lastRun.at, nowMs)}
