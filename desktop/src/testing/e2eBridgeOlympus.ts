@@ -1,6 +1,8 @@
 import type { RelayEvent } from "@/shared/api/types";
 
-export const MOCK_OLYMPUS_KINDS = new Set([30190, 30191, 30192, 44310, 44311]);
+export const MOCK_OLYMPUS_KINDS = new Set([
+  30190, 30191, 30192, 30193, 44310, 44311,
+]);
 
 type OlympusFilter = {
   kinds?: readonly number[];
