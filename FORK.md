@@ -67,3 +67,7 @@ The visible brand is Olympus. Keep these overrides when you rebase onto upstream
 ## Quiet joins
 
 Desktop join alerts skip keys whose kind 0 marks an agent: a NIP-OA owner tag or NIP-24 `"bot": true` (`personJoinAlerts`). The Hephaestus operator sets `bot` on agent, scheduler, and mirror profiles.
+
+## Master agent quick access
+
+Desktop reads the kind 30190 state events and takes the agent with top-level `"role": "master"` (operator v1.17.0+); its kind 0 gives the name and picture. With no master, every entry point is hidden. Entry points (`src/features/master-agent/`): a pinned sidebar row above the sections (the master DM leaves the DM list), ⌘J from anywhere, "Ask <name>" in the ⌘K palette and in the message More menu. ⌘J and the menu put a quote (selected message text or the composer text; the menu also adds the `buzz://message` link) into the DM draft and never send. Buzz Term moved from ⌘J to ⌃`. Mobile has no master support yet.
