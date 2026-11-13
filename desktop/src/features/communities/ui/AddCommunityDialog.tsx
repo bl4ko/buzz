@@ -91,7 +91,7 @@ export function AddCommunityDialog({
       ? "Opens Builderlab in your browser."
       : mode === "join"
         ? "Use the community URL or invite link you received."
-        : "Create a new community or join one you already have.";
+        : "Join a community with its URL or an invite link.";
 
   return (
     <Dialog

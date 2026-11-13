@@ -139,8 +139,7 @@ export function WelcomeSetup({
                   Join or create a community
                 </h1>
                 <p className="mt-3 text-sm leading-6 text-foreground/80">
-                  Join with an invite, create your own community, or reconnect
-                  one you already have.
+                  Join with an invite, or reconnect one you already have.
                 </p>
               </div>
               <div className="flex w-full flex-1 translate-y-16 flex-col items-center justify-center gap-20 py-8">
