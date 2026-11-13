@@ -38,7 +38,7 @@ void main() {
           )
           .toList();
       expect(bubbles[0].color, theme.extension<ChatColors>()!.outgoing);
-      expect(bubbles[1].color, receivedMessageSurface(brightness));
+      expect(bubbles[1].color, receivedMessageSurface(theme));
       final text = tester
           .widgetList<RichText>(find.byType(RichText))
           .firstWhere((text) => text.text.toPlainText() == 'My message');
@@ -59,6 +59,37 @@ void main() {
       expect(colors, [Colors.white]);
     });
   }
+
+  testWidgets('Storm received bubbles use palette surface and link roles', (
+    tester,
+  ) async {
+    final theme = mobileAppearanceTheme(
+      Brightness.dark,
+      'neutral',
+      theme: stormThemeName,
+    );
+    final link = theme.extension<AppColors>()!.messageLink!;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: theme,
+          home: const Scaffold(
+            body: MessageContent(
+              content: 'See [docs](https://example.com)',
+              bubble: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final bubble = tester.widget<LocalSendBubbleSurface>(
+      find.byType(LocalSendBubbleSurface),
+    );
+    expect(bubble.color, theme.colorScheme.surfaceContainerHigh);
+    final inner = Theme.of(tester.element(find.byType(GptMarkdown)));
+    expect(inner.colorScheme.primary, link);
+  });
 
   for (final brightness in Brightness.values) {
     for (final choice in chatColorChoices) {

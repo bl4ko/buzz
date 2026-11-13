@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'accent_colors.dart';
+import 'app_colors.dart';
 
 /// Desktop accent families in picker order. Fills are accent-9 from buzz-app's
 /// design-system tokens (4ad00a8a).
@@ -101,7 +102,8 @@ Color chatCodeTint(Color ink, double opacity) =>
     );
 
 /// Received messages use their own surface rather than a control fill.
-Color receivedMessageSurface(Brightness brightness) =>
-    brightness == Brightness.dark
-    ? const Color(0xFF292929)
-    : const Color(0xFFF3F3F4);
+Color receivedMessageSurface(ThemeData theme) =>
+    theme.extension<AppColors>()?.messageSurface ??
+    (theme.brightness == Brightness.dark
+        ? const Color(0xFF292929)
+        : const Color(0xFFF3F3F4));

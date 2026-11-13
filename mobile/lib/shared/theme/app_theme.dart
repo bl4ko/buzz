@@ -62,6 +62,7 @@ class AppTheme {
   }) {
     final scheme = colorScheme ?? darkColorScheme;
     final storm = themeName == 'tokyo-night-storm';
+    final palette = themeName != null;
     final appColors = AppColors(
       success: const Color(0xFF3DD68C), // Desktop green-11
       warning: const Color(0xFFFFCA16), // Desktop amber-11
@@ -79,6 +80,9 @@ class AppTheme {
       messageLink: storm ? const Color(0xFF7DCFFF) : null,
       messageAuthor: storm ? const Color(0xFF7AA2F7) : null,
       sectionForeground: storm ? const Color(0xFF7AA2F7) : null,
+      messageSurface: palette ? scheme.surfaceContainerHigh : null,
+      tertiaryText: palette ? scheme.onSurfaceVariant : null,
+      controlSurface: palette ? scheme.surfaceContainerHighest : null,
     );
 
     return _buildTheme(
@@ -97,6 +101,8 @@ class AppTheme {
     required Brightness statusBarIconBrightness,
     required Brightness statusBarBrightness,
   }) {
+    final controlSurface =
+        appColors.controlSurface ?? neutralControlSurface(brightness);
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
@@ -146,7 +152,7 @@ class AppTheme {
       // Buttons: desktop uses rounded-md (8px), h-9 (36px), px-4 (16px)
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: neutralControlSurface(brightness),
+          backgroundColor: controlSurface,
           foregroundColor: scheme.onSurface,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -161,7 +167,7 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: neutralControlSurface(brightness),
+          backgroundColor: controlSurface,
           foregroundColor: scheme.onSurface,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -176,7 +182,7 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          backgroundColor: neutralControlSurface(brightness),
+          backgroundColor: controlSurface,
           foregroundColor: scheme.onSurface,
           side: BorderSide(color: scheme.outline, width: 1),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
