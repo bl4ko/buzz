@@ -974,7 +974,7 @@ test("first-community choices route join, create, owner, and member intents", as
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Create a community/ }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   const existing = page.getByRole("button", {
     name: /I already have a community/,
   });
@@ -986,7 +986,7 @@ test("first-community choices route join, create, owner, and member intents", as
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "I own the community" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "I’m a member or admin" }),
   ).toBeVisible();
@@ -1005,7 +1005,7 @@ test("first-community choices route join, create, owner, and member intents", as
   // Back from the member form returns to the role choice, then to the hub.
   await page.getByRole("button", { name: "Back" }).click();
   await expect(
-    page.getByRole("button", { name: "I own the community" }),
+    page.getByRole("button", { name: "I’m a member or admin" }),
   ).toBeVisible();
   await page.getByTestId("existing-back").click();
 
@@ -1685,7 +1685,7 @@ test("first-community shows the scenario cards for localhost", async ({
     page.getByRole("button", {
       name: /Create a community/,
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await page.getByTestId("community-choice-join").click();
   await expect(
