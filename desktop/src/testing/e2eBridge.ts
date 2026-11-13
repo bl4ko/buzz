@@ -533,6 +533,8 @@ type E2eConfig = {
     relayRequiresMembershipError?: string;
     /** Delay EOSE for membership snapshots after delivering the event. */
     relayMembershipEoseDelayMs?: number;
+    /** Stored events answered to one-shot REQs of their kind and author. */
+    extraRelayEvents?: RelayEvent[];
     relayRole?: "owner" | "admin" | "member" | null;
     // Descriptors returned by the mocked `pick_and_upload_media` /
     // `upload_media_bytes` commands. Lets a spec drive the attachment flow
@@ -11032,6 +11034,18 @@ function sendToMockSocket(args: {
     }
 
     const filter = rest[1] as MockFilter;
+    const extraEvents = (getConfig()?.mock?.extraRelayEvents ?? []).filter(
+      (event) =>
+        filter.kinds?.includes(event.kind) &&
+        (!filter.authors || filter.authors.includes(event.pubkey)),
+    );
+    if (extraEvents.length > 0) {
+      for (const event of extraEvents) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
     if (filter.kinds?.includes(13534)) {
       sendWsText(socket.handler, [
         "EVENT",

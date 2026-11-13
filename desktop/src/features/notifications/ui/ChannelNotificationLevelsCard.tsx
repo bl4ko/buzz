@@ -13,10 +13,7 @@ import { SegmentedControl } from "@/shared/ui/segmented-control";
 
 const LEVEL_OPTIONS = CHANNEL_NOTIFICATION_LEVELS.map((level) => ({
   value: level,
-  label:
-    level === "mentions"
-      ? "Mentions"
-      : CHANNEL_NOTIFICATION_LEVEL_LABELS[level],
+  label: { all: "All", mentions: "Mentions", nothing: "Nothing" }[level],
 }));
 
 export function ChannelNotificationLevelsCard() {
