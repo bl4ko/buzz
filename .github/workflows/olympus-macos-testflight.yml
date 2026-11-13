@@ -1,0 +1,120 @@
+name: Olympus macOS TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths: [desktop/package.json]
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Apple build number, or next
+        required: true
+        default: next
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Build, sign, upload and distribute
+    if: >-
+      github.repository == 'bl4ko/buzz' &&
+      (github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'chore(release): '))
+    runs-on: macos-26
+    environment: testflight
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Cache keys
+        id: keys
+        env:
+          CARGO_KEY: olympus-macos-cargo-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', 'desktop/src-tauri/Cargo.lock') }}
+        run: |
+          echo "pnpm=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+          echo "cargo=$CARGO_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        id: pnpm
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.keys.outputs.pnpm }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Restore Cargo cache
+        id: cargo
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            desktop/src-tauri/target
+            !desktop/src-tauri/target/**/release/bundle
+          key: ${{ steps.keys.outputs.cargo }}
+          restore-keys: olympus-macos-cargo-
+
+      - name: Install dependencies
+        run: just desktop-install-ci
+
+      - name: Release script tests
+        run: node --test scripts/release-bl4ko-desktop.test.mjs scripts/release-bl4ko-macos-testflight.test.mjs
+
+      - name: Build, sign, upload and distribute
+        env:
+          BUILD: ${{ inputs.build || 'next' }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          MAC_APP_CERTIFICATE: ${{ secrets.MAC_APP_CERTIFICATE }}
+          MAC_APP_CERTIFICATE_ID: ${{ secrets.MAC_APP_CERTIFICATE_ID }}
+          MAC_APP_PRIVATE_KEY: ${{ secrets.MAC_APP_PRIVATE_KEY }}
+          MAC_INSTALLER_CERTIFICATE: ${{ secrets.MAC_INSTALLER_CERTIFICATE }}
+          MAC_INSTALLER_PRIVATE_KEY: ${{ secrets.MAC_INSTALLER_PRIVATE_KEY }}
+        run: node scripts/release-bl4ko-macos-testflight.mjs "$BUILD" --upload
+
+      - name: Collect receipts
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/receipts"
+          if [ -d ../buzz-builds/macos-testflight ]; then
+            rsync -a --exclude '*.app' --include '*/' --include '*.json' --include '*.txt' --exclude '*' ../buzz-builds/macos-testflight/ "$RUNNER_TEMP/receipts/"
+          fi
+
+      - name: Upload receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: olympus-macos-testflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/receipts
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Save Cargo cache
+        if: always() && steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            desktop/src-tauri/target
+            !desktop/src-tauri/target/**/release/bundle
+          key: ${{ steps.keys.outputs.cargo }}
+
+      - name: Save pnpm store
+        if: always() && steps.pnpm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ steps.keys.outputs.pnpm }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}

@@ -22,6 +22,13 @@ const identifier = "com.bl4ko.buzz";
 const appId = "6817066676";
 const profileName = "Bl4uzz macOS App Store";
 const appleRoot = "envs/external/apple/restricted/";
+const ci = process.env.GITHUB_ACTIONS === "true";
+const ciSecretPrefixes = {
+  "api-keys/appstoreconnect": "ASC_API",
+  "signing/mac-app-distribution": "MAC_APP",
+  "signing/mac-installer-distribution": "MAC_INSTALLER",
+};
+const ciSecrets = {};
 
 export function testflightConfig(build) {
   if (!/^[1-9]\d{0,17}$/.test(build ?? ""))
@@ -111,7 +118,42 @@ function vaultEnv() {
   return env;
 }
 
+export function takeCiSecrets(env = process.env) {
+  const taken = {};
+  for (const [name, prefix] of Object.entries(ciSecretPrefixes)) {
+    taken[name] = {};
+    for (const key of Object.keys(env).filter((key) =>
+      key.startsWith(`${prefix}_`),
+    )) {
+      taken[name][
+        key.slice(prefix.length + 1).toLowerCase().replaceAll("_", "-")
+      ] = env[key];
+      delete env[key];
+    }
+  }
+  return taken;
+}
+
+export function nextBuild(requested, uploaded) {
+  const latest = Math.max(
+    0,
+    ...uploaded.map(Number).filter((value) => Number.isSafeInteger(value)),
+  );
+  const build = requested === "next" ? String(latest + 1) : requested;
+  testflightConfig(build);
+  if (!(Number(build) > latest))
+    throw new Error(
+      `Mac build ${build} is not above the latest uploaded build ${latest}`,
+    );
+  return build;
+}
+
 function secret(name) {
+  if (ci) {
+    if (!ciSecrets[name]?.["private-key"])
+      throw new Error(`Missing CI secret for ${name}`);
+    return ciSecrets[name];
+  }
   return JSON.parse(
     output("vault", ["kv", "get", "-format=json", `kv/${appleRoot}${name}`], {
       env: vaultEnv(),
@@ -119,23 +161,64 @@ function secret(name) {
   ).data.data;
 }
 
-async function release(build, upload) {
-  const config = testflightConfig(build);
+async function release(requested, upload) {
+  if (ci) Object.assign(ciSecrets, takeCiSecrets());
   if (process.platform !== "darwin" || process.arch !== "arm64")
-    throw new Error("Build on the Apple silicon Mac mini");
+    throw new Error("Build on Apple silicon macOS");
   if (upload !== undefined && upload !== "--upload")
     throw new Error("Use --upload for Apple TestFlight delivery");
   if (output("git", ["status", "--porcelain"]))
     throw new Error("Use a clean, committed checkout");
-  const identity = JSON.parse(
-    output("vault", ["token", "lookup", "-format=json"], { env: vaultEnv() }),
-  ).data;
-  if (
-    identity.path !== "auth/approle/login" ||
-    identity.meta?.role_name !== "mac-mini-temp" ||
-    identity.ttl < 3600
-  )
-    throw new Error("Use the mac-mini-temp token with one hour remaining");
+  if (!ci) {
+    const identity = JSON.parse(
+      output("vault", ["token", "lookup", "-format=json"], {
+        env: vaultEnv(),
+      }),
+    ).data;
+    if (
+      identity.path !== "auth/approle/login" ||
+      identity.meta?.role_name !== "mac-mini-temp" ||
+      identity.ttl < 3600
+    )
+      throw new Error("Use the mac-mini-temp token with one hour remaining");
+  }
+  const api = secret("api-keys/appstoreconnect");
+  const encode = (value) =>
+    Buffer.from(JSON.stringify(value)).toString("base64url");
+  async function apple(route, body) {
+    const now = Math.floor(Date.now() / 1000);
+    const input = `${encode({ alg: "ES256", kid: api["key-id"], typ: "JWT" })}.${encode({ iss: api["issuer-id"], iat: now, exp: now + 1200, aud: "appstoreconnect-v1" })}`;
+    const token = `${input}.${sign("sha256", Buffer.from(input), { key: api["private-key"], dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
+    const response = await fetch(
+      `https://api.appstoreconnect.apple.com/v1/${route}`,
+      {
+        method: body ? "POST" : "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      },
+    );
+    const result = response.status === 204 ? null : await response.json();
+    if (!response.ok)
+      throw new Error(
+        `Apple HTTP ${response.status}: ${JSON.stringify(result.errors)}`,
+      );
+    return result;
+  }
+  const macBuilds = (route) =>
+    apple(
+      `builds?filter[app]=${appId}&filter[preReleaseVersion.platform]=MAC_OS&${route}`,
+    );
+  const build = nextBuild(
+    requested,
+    (await macBuilds("sort=-uploadedDate&limit=200")).data.map(
+      (item) => item.attributes.version,
+    ),
+  );
+  const config = testflightConfig(build);
+  console.log(`Mac build number ${build}`);
   const version = JSON.parse(
     readFileSync(path.join(desktop, "package.json")),
   ).version;
@@ -170,31 +253,6 @@ async function release(build, upload) {
     .filter(existsSync);
   const signingKeychains = [];
   try {
-    const api = secret("api-keys/appstoreconnect");
-    const encode = (value) =>
-      Buffer.from(JSON.stringify(value)).toString("base64url");
-    async function apple(route, body) {
-      const now = Math.floor(Date.now() / 1000);
-      const input = `${encode({ alg: "ES256", kid: api["key-id"], typ: "JWT" })}.${encode({ iss: api["issuer-id"], iat: now, exp: now + 1200, aud: "appstoreconnect-v1" })}`;
-      const token = `${input}.${sign("sha256", Buffer.from(input), { key: api["private-key"], dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
-      const response = await fetch(
-        `https://api.appstoreconnect.apple.com/v1/${route}`,
-        {
-          method: body ? "POST" : "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: body ? JSON.stringify(body) : undefined,
-        },
-      );
-      const result = response.status === 204 ? null : await response.json();
-      if (!response.ok)
-        throw new Error(
-          `Apple HTTP ${response.status}: ${JSON.stringify(result.errors)}`,
-        );
-      return result;
-    }
     if (!existsSync(pkg)) {
       const appSigning = secret("signing/mac-app-distribution");
       const installerSigning = secret("signing/mac-installer-distribution");
@@ -485,15 +543,40 @@ async function release(build, upload) {
         ],
         { cwd: temporary },
       );
-      const builds = await apple(
-        `builds?filter[app]=${appId}&filter[version]=${build}`,
-      );
+      let uploaded;
+      for (let attempt = 0; attempt < 120; attempt++) {
+        uploaded = (await macBuilds(`filter[version]=${build}`)).data[0];
+        const state = uploaded?.attributes.processingState;
+        if (state === "VALID") break;
+        if (state === "FAILED" || state === "INVALID")
+          throw new Error(`Apple build state ${state}`);
+        await new Promise((resolve) => setTimeout(resolve, 30000));
+      }
       writeFileSync(
         path.join(directory, "testflight.json"),
-        `${JSON.stringify(builds, null, 2)}\n`,
+        `${JSON.stringify(uploaded, null, 2)}\n`,
+      );
+      if (uploaded?.attributes.processingState !== "VALID")
+        throw new Error("Apple build is not VALID after one hour");
+      const group = (
+        await apple(`betaGroups?filter[app]=${appId}&filter[name]=core`)
+      ).data.find((item) => item.attributes.name === "core");
+      if (
+        !group?.attributes.isInternalGroup ||
+        group.attributes.hasAccessToAllBuilds
+      )
+        throw new Error("Use the internal core group without automatic builds");
+      await apple(`betaGroups/${group.id}/relationships/builds`, {
+        data: [{ type: "builds", id: uploaded.id }],
+      });
+      const detail = (await apple(`builds/${uploaded.id}/buildBetaDetail`))
+        .data.attributes;
+      writeFileSync(
+        path.join(directory, "distribution.json"),
+        `${JSON.stringify({ build: uploaded.id, group: group.id, ...detail }, null, 2)}\n`,
       );
       console.log(
-        `Uploaded ${version} (${build}). Check Apple processing before adding testers.`,
+        `Uploaded ${version} (${build}), VALID, in core group, internal state ${detail.internalBuildState}.`,
       );
     } else console.log(`Signed package ready: ${pkg}`);
   } finally {
