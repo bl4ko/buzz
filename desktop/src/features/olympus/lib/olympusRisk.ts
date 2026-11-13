@@ -7,6 +7,9 @@ export const OLYMPUS_RISK_FIELDS = [
   "owner",
   "identityPath",
   "role",
+  "template",
+  "respondTo",
+  "image",
 ] as const;
 
 const LABELS: Record<string, string> = {
@@ -16,6 +19,13 @@ const LABELS: Record<string, string> = {
   owner: "owner",
   identityPath: "identity path",
   role: "agent role",
+  template: "agent template",
+  respondTo: "who the agent answers",
+  image: "container image",
+  "egress direct": "direct network egress",
+  "git write": "git write access",
+  "mcpServers credential": "a new MCP server (it can carry a credential)",
+  "services credential": "a new service (it can carry a credential)",
   "egress open": "open internet egress",
   "master agent": "the master agent",
   "master workspace": "the workspace of the master agent",
@@ -82,17 +92,55 @@ export function olympusWithoutNulls(value: Json): Json {
   return result;
 }
 
+function entries(spec: Json | null, field: string): unknown[] {
+  const value = spec?.[field];
+  return Array.isArray(value) ? value : [];
+}
+
+function added(before: Json | null, after: Json, field: string) {
+  const held = entries(before, field).map((entry) => JSON.stringify(entry));
+  return entries(after, field).filter(
+    (entry) => !held.includes(JSON.stringify(entry)),
+  );
+}
+
+function rank(access: unknown) {
+  return access === "admin" ? 2 : access === "write" ? 1 : 0;
+}
+
 export function olympusAgentRisks(
   before: Json | null,
   after: Json,
   input: { master: boolean },
 ): string[] {
   const risks: string[] = OLYMPUS_RISK_FIELDS.filter(
-    (field) =>
-      !same(before?.[field], after[field]) &&
-      (before?.[field] != null || after[field] != null),
+    (field) => !same(before?.[field], after[field]),
   );
   if (openEgress(after) && !openEgress(before)) risks.push("egress open");
+  if (
+    added(before, after, "egress").some(
+      (rule) => plain(rule) && (rule.cidr != null || rule.preset === "cluster"),
+    )
+  ) {
+    risks.push("egress direct");
+  }
+  const writes = entries(after, "gitSources").some(
+    (wanted) =>
+      plain(wanted) &&
+      rank(wanted.access) > 0 &&
+      !entries(before, "gitSources").some(
+        (held) =>
+          plain(held) &&
+          held.name === wanted.name &&
+          rank(held.access) >= rank(wanted.access),
+      ),
+  );
+  if (writes) risks.push("git write");
+  for (const field of ["mcpServers", "services"]) {
+    if (added(before, after, field).length > 0) {
+      risks.push(`${field} credential`);
+    }
+  }
   if (input.master) risks.push("master agent");
   return risks;
 }

@@ -308,6 +308,9 @@ test("creates an agent from a template and clones an agent", async ({
   await choose(page, "Harness", "claude-code");
   await choose(page, "Model", "claude-sonnet-5-5");
   await dialog.getByRole("button", { name: "Create agent" }).click();
+  const risk = page.getByTestId("olympus-risk-dialog");
+  await expect(risk).toContainText("agent template");
+  await risk.getByRole("button", { name: "Confirm high-risk change" }).click();
   const create = await waitForRequest(page, 1);
   expect(create?.tags).toEqual([
     ["p", OLYMPUS_OPERATOR],
@@ -315,8 +318,9 @@ test("creates an agent from a template and clones an agent", async ({
     ["agent", "scout"],
     ["action", "create"],
   ]);
-  expect(JSON.parse(create?.content ?? "").spec).toEqual({
-    template: "ops-base",
+  expect(JSON.parse(create?.content ?? "")).toMatchObject({
+    spec: { template: "ops-base" },
+    highRisk: true,
   });
 });
 

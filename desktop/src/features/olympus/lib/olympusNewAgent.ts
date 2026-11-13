@@ -137,6 +137,11 @@ export function olympusCreateSpec(
         ? { template: start.template.name }
         : {};
   for (const key of CLONE_DROPPED) delete base[key];
+  for (const [key, value] of Object.entries(base)) {
+    if ((Array.isArray(value) && value.length === 0) || value === false) {
+      delete base[key];
+    }
+  }
   const spec: Json = { ...base };
   const template = start.kind === "template" ? start.template : null;
   const put = (key: string, value: string, inherited: string | null) => {

@@ -82,6 +82,9 @@ test("a template agent keeps only the overrides", () => {
   const start = { kind: "template", template };
   const draft = { ...olympusStartDraft(start, workspace), name: "scout" };
   assert.deepEqual(olympusCreateSpec(start, draft), { template: "base" });
+  assert.deepEqual(olympusCreateChange(start, draft, false).risks, [
+    "template",
+  ]);
   const changed = { ...draft, model: "claude-sonnet-5-5", memory: "" };
   assert.deepEqual(olympusCreateSpec(start, changed), {
     template: "base",
@@ -123,7 +126,7 @@ test("a clone copies the spec without identity, owner, role, and profile", () =>
       egress: [{ host: "api.github.com", ports: [443] }],
     },
   });
-  assert.deepEqual(risks, ["secrets"]);
+  assert.deepEqual(risks, ["secrets", "mcpServers credential"]);
 });
 
 test("open internet egress is a high risk; the old operator gets the old create", () => {

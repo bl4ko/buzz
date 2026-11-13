@@ -47,6 +47,26 @@ test("nulls are not changes", () => {
   });
 });
 
+test("new egress, git write, and new MCP servers are high risk", () => {
+  const before = {
+    gitSources: [{ name: "agents", access: "read" }],
+    mcpServers: [{ name: "share" }],
+    egress: [],
+  };
+  assert.deepEqual(
+    olympusAgentRisks(
+      before,
+      {
+        gitSources: [{ name: "agents", access: "write" }],
+        mcpServers: [{ name: "share" }, { name: "github" }],
+        egress: [{ cidr: "10.0.0.0/8" }],
+      },
+      { master: false },
+    ),
+    ["egress direct", "git write", "mcpServers credential"],
+  );
+});
+
 test("high-risk fields follow the operator list", () => {
   const before = { model: "a", secrets: [], egress: [{ host: "x" }] };
   assert.deepEqual(
