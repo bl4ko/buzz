@@ -99,6 +99,24 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goOlympus = React.useCallback(
+    (tab?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/olympus", search: tab && tab !== "agents" ? { tab } : {} },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goOlympusAgent = React.useCallback(
+    (workspace: string, agent: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/olympus/$workspace/$agent", params: { workspace, agent } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -474,6 +492,8 @@ export function useAppNavigation() {
     goNewMessage,
     goNewWorkflow,
     goNewWorkflowForChannel,
+    goOlympus,
+    goOlympusAgent,
     goProject,
     goProjects,
     goPulse,

@@ -52,6 +52,10 @@ const ACTION_LABELS: Record<string, string> = {
   delete: "Delete",
   approve: "Approve",
   reject: "Reject",
+  patch: "Change",
+  "suspend-schedule": "Suspend schedule",
+  "resume-schedule": "Resume schedule",
+  "run-now": "Run now",
 };
 
 export function OlympusRequestStatus({

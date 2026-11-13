@@ -1,7 +1,16 @@
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useRemindersQuery } from "@/features/reminders/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { Activity, Bookmark, Bot, Folders, Inbox, Zap } from "lucide-react";
+import {
+  Activity,
+  Bookmark,
+  Bot,
+  Folders,
+  Inbox,
+  MountainSnow,
+  Zap,
+} from "lucide-react";
+import { useOlympusPendingProposalCount } from "@/features/olympus/useOlympusPendingProposalCount";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
@@ -23,6 +32,7 @@ type SidebarSelectedView =
   | "channel"
   | "messages"
   | "agents"
+  | "olympus"
   | "workflows"
   | "pulse"
   | "projects";
@@ -104,7 +114,8 @@ export function AppSidebarPrimaryMenu({
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
   const pubkey = useIdentityQuery().data?.pubkey;
-  const { goLater } = useAppNavigation();
+  const { goLater, goOlympus } = useAppNavigation();
+  const olympusPending = useOlympusPendingProposalCount();
   const reminders = useRemindersQuery(pubkey);
   const count = (reminders.data ?? []).filter(
     (item) => item.content.status === "pending",
@@ -194,6 +205,28 @@ export function AppSidebarPrimaryMenu({
               <Bot className="h-4 w-4" />
               <SidebarMenuLabel>Agents</SidebarMenuLabel>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="data-[active=true]:font-normal"
+              data-testid="open-olympus-view"
+              isActive={selectedView === "olympus"}
+              onClick={() => void goOlympus()}
+              tooltip="Olympus"
+              type="button"
+            >
+              <MountainSnow className="h-4 w-4" />
+              <SidebarMenuLabel>Olympus</SidebarMenuLabel>
+            </SidebarMenuButton>
+            {olympusPending > 0 ? (
+              <SidebarMenuBadge
+                aria-label={`${olympusPending} pending change ${olympusPending === 1 ? "proposal" : "proposals"}`}
+                className="right-2 rounded-full bg-primary/15 px-1.5 text-2xs text-primary peer-data-[active=true]/menu-button:bg-sidebar-active-foreground/20 peer-data-[active=true]/menu-button:text-sidebar-active-foreground"
+                data-testid="sidebar-olympus-pending"
+              >
+                {Math.min(olympusPending, 99)}
+              </SidebarMenuBadge>
+            ) : null}
           </SidebarMenuItem>
           <ProtectedBestieSidebarEntry />
           <FeatureGate feature="workflows">
