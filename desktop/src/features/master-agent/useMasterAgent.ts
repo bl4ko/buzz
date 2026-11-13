@@ -11,6 +11,7 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { Channel, PresenceStatus } from "@/shared/api/types";
 import { hasPrimaryShortcutModifier } from "@/shared/lib/platform";
 import { composerSeed, focusComposer, selectionSeed } from "./lib/askSeed";
+import { useProposalAlerts } from "./useProposalAlerts";
 import {
   type AskMasterSeed,
   buildAskDraft,
@@ -79,6 +80,7 @@ function seedDraft(channelId: string, seed: AskMasterSeed) {
 }
 
 export function useMasterAgentController({
+  alertsEnabled,
   channels,
   currentChannelId,
   currentPubkey,
@@ -86,6 +88,7 @@ export function useMasterAgentController({
   openDm,
   shortcutDisabled,
 }: {
+  alertsEnabled: boolean;
   channels: readonly Channel[];
   currentChannelId: string | null;
   currentPubkey: string | undefined;
@@ -93,7 +96,7 @@ export function useMasterAgentController({
   openDm: (input: { pubkeys: string[] }) => Promise<Channel>;
   shortcutDisabled: boolean;
 }) {
-  const { groups } = useOlympusAgents();
+  const { groups, proposals } = useOlympusAgents();
   const record = React.useMemo(() => findMasterAgent(groups), [groups]);
   const pubkey = record?.publicKey ?? null;
   const keys = React.useMemo(() => (pubkey ? [pubkey] : []), [pubkey]);
@@ -122,6 +125,15 @@ export function useMasterAgentController({
         : null,
     [dmChannel, presence, profile, pubkey, record],
   );
+
+  useProposalAlerts({
+    channels,
+    currentPubkey,
+    enabled: alertsEnabled,
+    masterLabel: agent?.label ?? null,
+    masterPubkey: pubkey,
+    proposals,
+  });
 
   const ask = React.useCallback(
     async (seed?: AskMasterSeed | null) => {

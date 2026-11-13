@@ -1,4 +1,7 @@
+import { ShieldCheck } from "lucide-react";
+
 import type { ActiveChannelTurnSummary } from "@/features/agents/activeAgentTurnsStore";
+import { usePendingOlympusProposalCount } from "@/features/agents/ui/OlympusProposalsPanel";
 import {
   DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
   ProfileAvatarWithStatus,
@@ -37,6 +40,7 @@ export function MasterAgentSidebarEntry({
   unreadChannelIds: ReadonlySet<string>;
 }) {
   const master = useMasterAgent();
+  const pending = usePendingOlympusProposalCount(master?.agent.pubkey ?? null);
   if (!master) return null;
   const { agent, ask } = master;
   const dm = agent.dmChannel;
@@ -93,12 +97,30 @@ export function MasterAgentSidebarEntry({
               </span>
             </SidebarMenuButton>
           )}
-          {hasUnread && !isActive && dm ? (
-            <SidebarMenuBadge
-              className="right-2 rounded-full bg-primary px-1.5 text-2xs font-semibold text-primary-foreground"
-              data-testid="master-agent-unread"
-            >
-              {Math.min(unreadChannelCounts.get(dm.id) ?? 1, 99)}
+          {pending > 0 || (hasUnread && !isActive && dm) ? (
+            <SidebarMenuBadge className="right-2 gap-1 px-0">
+              {pending > 0 ? (
+                <span
+                  className="flex h-5 items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 text-2xs font-semibold text-amber-700 dark:text-amber-300"
+                  data-testid="master-agent-pending"
+                >
+                  <ShieldCheck aria-hidden className="h-3 w-3" />
+                  {Math.min(pending, 99)}
+                  <span className="sr-only">
+                    {pending === 1
+                      ? " proposal waits for your approval"
+                      : " proposals wait for your approval"}
+                  </span>
+                </span>
+              ) : null}
+              {hasUnread && !isActive && dm ? (
+                <span
+                  className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-2xs font-semibold text-primary-foreground"
+                  data-testid="master-agent-unread"
+                >
+                  {Math.min(unreadChannelCounts.get(dm.id) ?? 1, 99)}
+                </span>
+              ) : null}
             </SidebarMenuBadge>
           ) : !activeWorking ? (
             <SidebarMenuBadge

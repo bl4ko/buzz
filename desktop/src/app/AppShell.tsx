@@ -752,6 +752,8 @@ export function AppShell() {
     onSearchEverything: handleOpenSearch,
   });
   useMasterAgentController({
+    alertsEnabled:
+      !isHuddleRoom && notificationSettings.settings.desktopEnabled,
     channels,
     currentChannelId: selectedView === "channel" ? selectedChannelId : null,
     currentPubkey: identityQuery.data?.pubkey,
