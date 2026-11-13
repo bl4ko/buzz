@@ -6,6 +6,8 @@ import path from "node:path";
 import test from "node:test";
 import {
   brandAppBundle,
+  nextBuild,
+  takeCiSecrets,
   testflightConfig,
   validateDistributionProfile,
 } from "./release-bl4ko-macos-testflight.mjs";
@@ -126,4 +128,36 @@ test("Mac bundle keeps the Bl4uzz.app file and shows Olympus", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("Mac build number stays above the uploaded builds", () => {
+  assert.equal(nextBuild("next", ["44", "45", "9"]), "46");
+  assert.equal(nextBuild("next", []), "1");
+  assert.equal(nextBuild("50", ["45"]), "50");
+  assert.throws(() => nextBuild("45", ["45"]), /not above/);
+  assert.throws(() => nextBuild("1;echo", ["45"]));
+});
+
+test("CI signing secrets leave the environment of child processes", () => {
+  const env = {
+    ASC_API_KEY_ID: "key",
+    ASC_API_PRIVATE_KEY: "api-private",
+    MAC_APP_CERTIFICATE_ID: "cert-id",
+    MAC_INSTALLER_PRIVATE_KEY: "installer-private",
+    PATH: "/usr/bin",
+  };
+  const secrets = takeCiSecrets(env);
+  assert.deepEqual(env, { PATH: "/usr/bin" });
+  assert.deepEqual(secrets["api-keys/appstoreconnect"], {
+    "key-id": "key",
+    "private-key": "api-private",
+  });
+  assert.equal(
+    secrets["signing/mac-app-distribution"]["certificate-id"],
+    "cert-id",
+  );
+  assert.equal(
+    secrets["signing/mac-installer-distribution"]["private-key"],
+    "installer-private",
+  );
 });
