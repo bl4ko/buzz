@@ -92,6 +92,9 @@ class ChannelMutesNotifier extends Notifier<ChannelMutesState> {
 
   void unmuteChannel(String channelId) => _manager?.unmuteChannel(channelId);
 
+  void setChannelLevel(String channelId, ChannelNotificationLevel? level) =>
+      _manager?.setChannelLevel(channelId, level);
+
   void _emitManagerState(ChannelMutesManager manager) {
     if (_manager != manager) return;
     state = ChannelMutesState(

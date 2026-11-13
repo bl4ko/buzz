@@ -30,6 +30,7 @@ import 'add_members_sheet.dart';
 import 'channel_identity_names_provider.dart';
 import 'channel_management_provider.dart';
 import 'channel_mutes/channel_mutes_provider.dart';
+import 'channel_mutes/channel_notification_level_sheet.dart';
 import 'channel_sections/channel_sections_provider.dart';
 import 'channel_stars/channel_stars_provider.dart';
 import 'channels_provider.dart';
@@ -217,6 +218,27 @@ class ChannelActionsSheet extends HookConsumerWidget {
                       isMuted
                           ? notifier.unmuteChannel(channel.id)
                           : notifier.muteChannel(channel.id);
+                    },
+                  ),
+                  ListTile(
+                    key: const ValueKey('channel-actions-notification-level'),
+                    leading: const Icon(BuzzIcons.bellRing),
+                    title: const Text('Notify me about'),
+                    subtitle: Text(
+                      channelNotificationLevelSummary(ref, channel),
+                    ),
+                    onTap: () async {
+                      final pageContext = Navigator.of(
+                        context,
+                        rootNavigator: true,
+                      ).context;
+                      final container = ProviderScope.containerOf(context);
+                      close();
+                      await showChannelNotificationLevelSheet(
+                        pageContext,
+                        container,
+                        channel,
+                      );
                     },
                   ),
                   if (!channel.isDm)

@@ -1,4 +1,6 @@
 import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/channel_mutes/channel_mutes_storage.dart';
+import 'package:buzz/features/channels/channel_mutes/channel_notification_levels.dart';
 import 'package:buzz/shared/community/community.dart';
 import 'package:buzz/shared/push/push_subscription.dart';
 import 'package:buzz/shared/push/push_subscription_provider.dart';
@@ -22,7 +24,7 @@ void main() {
         channel(archivedID),
         channel(nonMemberID, isMember: false, type: 'stream'),
       ],
-      mutedChannelIds: const [],
+      explicitLevels: const {},
     );
 
     expect(subscriptions, hasLength(2));
@@ -50,7 +52,10 @@ void main() {
           channel(archivedID, archived: true, type: 'stream'),
           channel(nonMemberID, isMember: false, type: 'stream'),
         ],
-        mutedChannelIds: const [activeID, archivedID],
+        explicitLevels: const {
+          activeID: ChannelNotificationLevel.nothing,
+          archivedID: ChannelNotificationLevel.nothing,
+        },
       );
 
       expect(subscriptions, isNotNull);
@@ -62,6 +67,68 @@ void main() {
     },
   );
 
+  group('notification levels', () {
+    const workspaceID = '4801fa7c-c7a0-526a-8ed8-39623259952e';
+    const alertsID = '22a08d0a-02dd-49dc-8510-2d2b2eb47bbd';
+    const quietID = '123e4567-e89b-42d3-a456-426614174003';
+    const dmID = '123e4567-e89b-42d3-a456-426614174004';
+    final bot = 'b' * 64;
+    final keys = NotificationAgentKeys(
+      botPubkeys: {bot},
+      agentChannelIds: {workspaceID},
+    );
+    List<BuzzPushSubscription> lease(
+      Map<String, ChannelNotificationLevel> explicit,
+    ) => desiredBuzzPushSubscriptions(
+      community: Community.create(
+        name: 'Team',
+        relayUrl: 'https://relay.example.com',
+        nsec: nostr.Keys.generate().nsec,
+      ),
+      channels: [
+        channel(workspaceID, type: 'stream'),
+        channel(alertsID, type: 'stream'),
+        channel(quietID, type: 'stream'),
+        channel(dmID),
+      ],
+      explicitLevels: explicit,
+      agentKeys: keys,
+    )!;
+
+    test('agent channels get mentions only; bot posts are quiet elsewhere', () {
+      final subscriptions = lease(const {});
+      expect(subscriptions, hasLength(3));
+      final mentions = subscriptions.first;
+      expect(mentions.filter.hTags, isNull);
+      expect(
+        mentions.ignore.expand((f) => f.authors ?? []),
+        isNot(contains(bot)),
+      );
+      final loud = subscriptions[1];
+      expect(loud.filter.hTags, [dmID]);
+      expect(loud.ignore.expand((f) => f.authors ?? []), isNot(contains(bot)));
+      final quiet = subscriptions[2];
+      expect(quiet.filter.hTags, [alertsID, quietID]..sort());
+      expect(quiet.ignore.last.authors, [bot]);
+      expect(quiet.ignore.last.kinds, [9]);
+    });
+
+    test('explicit levels override the defaults', () {
+      final subscriptions = lease(const {
+        workspaceID: ChannelNotificationLevel.all,
+        alertsID: ChannelNotificationLevel.mentions,
+        quietID: ChannelNotificationLevel.nothing,
+      });
+      expect(subscriptions, hasLength(2));
+      expect(subscriptions.first.ignore.last.hTags, [quietID]);
+      expect(subscriptions.last.filter.hTags, [dmID, workspaceID]..sort());
+      expect(
+        subscriptions.last.ignore.expand((f) => f.authors ?? []),
+        isNot(contains(bot)),
+      );
+    });
+  });
+
   test('returns no desired subscriptions without a signing identity', () {
     final subscriptions = desiredBuzzPushSubscriptions(
       community: Community.create(
@@ -69,7 +136,7 @@ void main() {
         relayUrl: 'https://relay.example.com',
       ),
       channels: [channel(activeID)],
-      mutedChannelIds: const [],
+      explicitLevels: const {},
     );
 
     expect(subscriptions, isNull);

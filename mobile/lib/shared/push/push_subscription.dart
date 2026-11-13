@@ -8,6 +8,7 @@ const buzzPushSelfDirectedKinds = buzzPushEligibleKinds;
 const buzzPushRenderableKinds = buzzPushEligibleKinds;
 const buzzPushChannelKinds = [9];
 const buzzPushChannelChunkSize = 50;
+const buzzPushQuietAuthorChunkSize = 20;
 const buzzPushMaxSubscriptions = 16;
 const buzzPushMaxIgnoreFilters = 8;
 const buzzPushHellthreadParticipantLimit = 20;
@@ -447,10 +448,16 @@ class BuzzPushLeaseSubscriptionState {
   }
 }
 
+/// [mutedChannelIds] get nothing, also no mentions. [mentionsOnlyChannelIds]
+/// get only `#p` mentions. [loudChannelIds] get every message. Other channels
+/// get every message except those by [quietAuthorPubkeys].
 List<BuzzPushSubscription> buildDesiredBuzzPushSubscriptions({
   required String myPubkey,
   Iterable<String> channelIds = const [],
   Iterable<String> mutedChannelIds = const [],
+  Iterable<String> mentionsOnlyChannelIds = const [],
+  Iterable<String> loudChannelIds = const [],
+  Iterable<String> quietAuthorPubkeys = const [],
 }) {
   final normalizedPubkey = myPubkey.toLowerCase();
   if (!_exactHexPattern.hasMatch(normalizedPubkey)) {
@@ -494,17 +501,44 @@ List<BuzzPushSubscription> buildDesiredBuzzPushSubscriptions({
     ),
   ];
 
-  final channels = normalizedChannelIds.difference(activeMuted.toSet()).toList()
-    ..sort();
-  for (final chunk in _chunks(channels, buzzPushChannelChunkSize)) {
-    subscriptions.add(
-      BuzzPushSubscription(
-        filter: BuzzPushFilter(kinds: buzzPushChannelKinds, hTags: chunk),
-        notificationClass: 'default',
-        ignore: ignores,
-        suppress: suppression,
-      ),
-    );
+  final quietAuthors = {
+    for (final pubkey in quietAuthorPubkeys)
+      if (_exactHexPattern.hasMatch(pubkey.toLowerCase()) &&
+          pubkey.toLowerCase() != normalizedPubkey)
+        pubkey.toLowerCase(),
+  }.toList()..sort();
+  final quietIgnores = [
+    ...ignores,
+    for (final chunk in _chunks(quietAuthors, buzzPushQuietAuthorChunkSize))
+      BuzzPushFilter(kinds: buzzPushChannelKinds, authors: chunk),
+  ];
+  if (quietIgnores.length > buzzPushMaxIgnoreFilters) {
+    throw const FormatException('Too many quiet authors for a push lease.');
+  }
+  final mentionsOnly = mentionsOnlyChannelIds
+      .map((id) => id.toLowerCase())
+      .toSet();
+  final loud = loudChannelIds.map((id) => id.toLowerCase()).toSet();
+  final channels = normalizedChannelIds
+      .difference(activeMuted.toSet())
+      .difference(mentionsOnly);
+  final groups = quietAuthors.isEmpty
+      ? [(channels.toList()..sort(), ignores)]
+      : [
+          (channels.intersection(loud).toList()..sort(), ignores),
+          (channels.difference(loud).toList()..sort(), quietIgnores),
+        ];
+  for (final (group, groupIgnores) in groups) {
+    for (final chunk in _chunks(group, buzzPushChannelChunkSize)) {
+      subscriptions.add(
+        BuzzPushSubscription(
+          filter: BuzzPushFilter(kinds: buzzPushChannelKinds, hTags: chunk),
+          notificationClass: 'default',
+          ignore: groupIgnores,
+          suppress: suppression,
+        ),
+      );
+    }
   }
   if (subscriptions.length > buzzPushMaxSubscriptions) {
     throw const FormatException('Too many channels for a push lease.');

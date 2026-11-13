@@ -202,6 +202,15 @@ class ChannelMutesManager {
     markDirty();
   }
 
+  void setChannelLevel(String channelId, ChannelNotificationLevel? level) {
+    if (_disposed) return;
+    final entry = ChannelMuteEntry.forLevel(level, currentUnixSeconds());
+    _store = ChannelMuteStore(channels: {..._store.channels, channelId: entry});
+    unawaited(_persist());
+    _onChanged();
+    markDirty();
+  }
+
   void markDirty() {
     if (!_remoteEnabled || _disposed) return;
     _localRevision++;
@@ -330,6 +339,7 @@ class ChannelMutesManager {
       final currentEntry = _store.channels[key];
       if (lastEntry == null ||
           lastEntry.muted != currentEntry!.muted ||
+          lastEntry.level != currentEntry.level ||
           lastEntry.updatedAt != currentEntry.updatedAt) {
         return false;
       }
