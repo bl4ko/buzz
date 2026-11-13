@@ -133,6 +133,20 @@ test("parses a full agent event and drops invalid nested items", () => {
   assert.equal(agent.conditions.length, 1);
 });
 
+test("reads the role and the agent profile", () => {
+  const plain = parseOlympusAgent(stateEvent({ id: "e1" }));
+  assert.equal(plain.role, null);
+  assert.equal(plain.spec.profile, null);
+  const content = agentContent({ role: "master" });
+  content.spec.profile = { displayName: "Zeus", picture: "https://p/z.png" };
+  const master = parseOlympusAgent(stateEvent({ id: "e2", content }));
+  assert.equal(master.role, "master");
+  assert.deepEqual(master.spec.profile, {
+    displayName: "Zeus",
+    picture: "https://p/z.png",
+  });
+});
+
 test("reads the truncation flags", () => {
   const plain = parseOlympusAgent(stateEvent({ id: "e1" }));
   assert.equal(plain.instructionsTruncated, false);

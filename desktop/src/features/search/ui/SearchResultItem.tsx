@@ -24,8 +24,13 @@ export type SearchResult =
   | {
       kind: "action";
       action: {
+        avatarUrl?: string | null;
         description?: string;
-        id: "browse-channels" | "create-agent" | "create-channel";
+        id:
+          | "ask-master"
+          | "browse-channels"
+          | "create-agent"
+          | "create-channel";
         title: string;
       };
     }

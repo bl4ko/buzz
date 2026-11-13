@@ -58,6 +58,7 @@ export type OlympusAgentSpec = {
   gitSources: { name: string; access: string }[];
   skills: { repo: string; name: string }[];
   egress: OlympusEgressRule[];
+  profile: { displayName: string | null; picture: string | null } | null;
 };
 
 export type OlympusSchedule = {
@@ -83,6 +84,7 @@ export type OlympusAgent = {
   name: string;
   owner: string | null;
   managedBy: string | null;
+  role: string | null;
   spec: OlympusAgentSpec;
   instructionsTruncated: boolean;
   schedules: OlympusSchedule[];
@@ -261,6 +263,12 @@ function parseSpec(value: unknown): OlympusAgentSpec | null {
         ? rule.ports.filter((port): port is number => Number.isInteger(port))
         : [],
     })),
+    profile: isObject(value.profile)
+      ? {
+          displayName: text(value.profile.displayName),
+          picture: text(value.profile.picture),
+        }
+      : null,
   };
 }
 
@@ -325,6 +333,7 @@ export function parseOlympusAgent(event: RelayEvent): OlympusAgent | null {
     name,
     owner: hexOrNull(content.owner),
     managedBy: text(content.managedBy),
+    role: text(content.role),
     spec,
     instructionsTruncated: content.instructionsTruncated === true,
     schedules: parseSchedules(content.schedules),

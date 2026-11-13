@@ -151,7 +151,7 @@ async function reveal(page: Page) {
   // no session spawns and the chord is inert.
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
-  await page.keyboard.press("Meta+j");
+  await page.keyboard.press("Control+Backquote");
   await expect(page.locator(TERM)).toHaveAttribute(
     "data-terminal-owner",
     "terminal",
@@ -245,7 +245,7 @@ test("concealed terminal viewport does not steal Buzz focus", async ({
   page,
 }) => {
   await reveal(page);
-  await page.keyboard.press("Meta+j");
+  await page.keyboard.press("Control+Backquote");
   await expect(page.locator(TERM)).toHaveCount(0);
 
   const input = page.getByLabel("Terminal input");

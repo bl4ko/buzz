@@ -32,6 +32,22 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "Navigation",
   },
   {
+    id: "ask-master-agent",
+    label: "Ask the master agent",
+    description: "Open its direct message with the selection or draft quoted",
+    keys: "⌘J",
+    keysWindows: "Ctrl+J",
+    category: "Navigation",
+  },
+  {
+    id: "toggle-terminal",
+    label: "Buzz Term",
+    description: "Open Buzz Term or move focus between it and the app",
+    keys: "⌃`",
+    keysWindows: "Ctrl+`",
+    category: "Navigation",
+  },
+  {
     id: "browse-channels",
     label: "Browse channels",
     description: "Open the channel browser",

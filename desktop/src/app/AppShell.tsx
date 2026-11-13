@@ -111,6 +111,7 @@ import { AppShellTrayMenu } from "@/app/useAppShellTrayMenu";
 import { AppProfilePanelProvider } from "@/app/AppProfilePanelProvider";
 import { AppWorkflowEditorOverlayProvider } from "@/app/AppWorkflowEditorOverlayProvider";
 import { LazySettingsScreen } from "@/app/LazySettingsScreen";
+import { useMasterAgentController } from "@/features/master-agent/useMasterAgent";
 const EMPTY_CHANNELS: Channel[] = [];
 export function AppShell() {
   useWebviewZoomShortcuts();
@@ -735,6 +736,14 @@ export function AppShell() {
     onNewMessage: goNewMessage,
     onSearchCurrentChannel: handleOpenChannelSearch,
     onSearchEverything: handleOpenSearch,
+  });
+  useMasterAgentController({
+    channels,
+    currentChannelId: selectedView === "channel" ? selectedChannelId : null,
+    currentPubkey: identityQuery.data?.pubkey,
+    goChannel,
+    openDm: openDmMutation.mutateAsync,
+    shortcutDisabled: settingsOpen || isHuddleRoom,
   });
   useSettingsShortcuts({
     onClose: handleCloseSettings,

@@ -93,7 +93,7 @@ export function ChannelScreenHeader({
       }
       onClick={toggleTerminalPanel}
       size="icon"
-      title="Buzz Term (⌘J)"
+      title="Buzz Term (⌃`)"
       type="button"
       variant={terminalPanel.mode === "closed" ? "outline" : "secondary"}
     >

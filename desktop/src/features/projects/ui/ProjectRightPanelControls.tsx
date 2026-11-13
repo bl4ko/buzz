@@ -86,7 +86,7 @@ export function ProjectRightPanelControls({
         disabled={!terminalAvailable}
         onClick={toggleTerminalPanel}
         size="icon"
-        title="Buzz Term (⌘J)"
+        title="Buzz Term (⌃`)"
         type="button"
         variant="ghost"
       >

@@ -222,3 +222,22 @@ export function olympusResultEvent(input: {
     sig: "0".repeat(128),
   };
 }
+
+export const MASTER_PUBLIC_KEY =
+  "8f83d6b7f3d74f7d933ae3a54dd8c6cc85c7f98e531c16e5a827b953441a8d67";
+
+export function olympusMasterEvent() {
+  const event = olympusProofEvent();
+  const content = JSON.parse(event.content);
+  content.name = "boss";
+  content.role = "master";
+  content.status.publicKey = MASTER_PUBLIC_KEY;
+  content.spec.profile = { displayName: "Spec name", picture: null };
+  return {
+    ...event,
+    content: JSON.stringify(content),
+    tags: event.tags.map((tag) =>
+      tag[0] === "d" ? ["d", "olympus-dev/boss"] : tag,
+    ),
+  };
+}

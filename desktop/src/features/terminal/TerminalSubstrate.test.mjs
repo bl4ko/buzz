@@ -177,9 +177,9 @@ async function ready(view) {
 function toggleChord(composing = false) {
   const init = {
     bubbles: true,
-    code: "KeyJ",
+    code: "Backquote",
+    ctrlKey: true,
     isComposing: composing,
-    metaKey: true,
   };
   act(() => {
     window.dispatchEvent(new KeyboardEvent("keydown", init));

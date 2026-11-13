@@ -21,6 +21,8 @@ import { toast } from "sonner";
 
 import { buildMessageLink } from "@/features/messages/lib/messageLink";
 import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
+import { useMasterAgent } from "@/features/master-agent/useMasterAgent";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { EmojiPicker } from "@/features/custom-emoji/ui/EmojiPicker";
 import { useCustomEmoji } from "@/features/custom-emoji/hooks";
 import { buildMentionClipboardHtml } from "@/features/messages/lib/mentionClipboard";
@@ -127,6 +129,23 @@ function MoreActionsMenu({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const { saveForLater } = useRemindLater();
   const pinToggle = useMessagePinToggle(channelId, message);
+  const master = useMasterAgent();
+  const askMaster =
+    master &&
+    canCopyMessageLink(message, channelId) &&
+    channelId !== master.agent.dmChannel?.id
+      ? () => {
+          const { rootId } = getThreadReference(message.tags ?? []);
+          void master.ask({
+            quote: message.body,
+            link: buildMessageLink({
+              channelId,
+              messageId: message.id,
+              threadRootId: rootId,
+            }),
+          });
+        }
+      : null;
   const [isReportDialogOpen, setIsReportDialogOpen] = React.useState(false);
   // Transfer focus ownership only after the menu has finished closing.
   // During its exit animation Radix's pointer-leave handler can still focus
@@ -182,6 +201,25 @@ function MoreActionsMenu({
             }
           }}
         >
+          {master && askMaster ? (
+            <>
+              <DropdownMenuItem
+                data-testid={`ask-master-${message.id}`}
+                onClick={askMaster}
+              >
+                <UserAvatar
+                  avatarUrl={master.agent.avatarUrl}
+                  className="h-4 w-4"
+                  displayName={master.agent.label}
+                  shape="squircle"
+                  size="xs"
+                />
+                Ask {master.agent.label}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+
           {onEdit ? (
             <DropdownMenuItem
               data-testid={`edit-message-${message.id}`}

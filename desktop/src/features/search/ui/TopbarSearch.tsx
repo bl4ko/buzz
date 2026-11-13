@@ -18,8 +18,10 @@ import {
 } from "@/features/search/ui/SearchScopeControls";
 import { HighlightedSearchText } from "@/features/search/ui/HighlightedSearchText";
 import { useSearchMenuKeyboardNavigation } from "@/features/search/ui/useSearchMenuKeyboardNavigation";
+import { useMasterAgent } from "@/features/master-agent/useMasterAgent";
 import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
+import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
@@ -390,6 +392,7 @@ export function TopbarSearch({
   suggestionChannels,
   variant = "bar",
 }: TopbarSearchProps) {
+  const master = useMasterAgent();
   const [isOpen, setIsOpen] = React.useState(false);
   const [scopeChannelId, setScopeChannelId] = React.useState<string | null>(
     null,
@@ -442,6 +445,18 @@ export function TopbarSearch({
   const suggestionActionResults = React.useMemo(() => {
     const actions: SearchResult[] = [];
 
+    if (master) {
+      actions.push({
+        kind: "action",
+        action: {
+          avatarUrl: master.agent.avatarUrl,
+          description: "Open your direct message",
+          id: "ask-master",
+          title: `Ask ${master.agent.label}`,
+        },
+      });
+    }
+
     if (onBrowseChannels) {
       actions.push({
         kind: "action",
@@ -473,7 +488,7 @@ export function TopbarSearch({
     }
 
     return actions;
-  }, [onBrowseChannels, onCreateAgent, onCreateChannel]);
+  }, [master, onBrowseChannels, onCreateAgent, onCreateChannel]);
   const suggestionResults = React.useMemo(
     () => [...suggestedResults, ...suggestionActionResults],
     [suggestedResults, suggestionActionResults],
@@ -555,7 +570,9 @@ export function TopbarSearch({
 
       if (result.kind === "action") {
         setSelectedMenuIndex(0);
-        if (result.action.id === "browse-channels") {
+        if (result.action.id === "ask-master") {
+          void master?.ask();
+        } else if (result.action.id === "browse-channels") {
           openAfterExit(() => {
             void onBrowseChannels?.();
           });
@@ -574,6 +591,7 @@ export function TopbarSearch({
       onOpenResult(result.hit, resultQuery);
     },
     [
+      master,
       onBrowseChannels,
       onCreateAgent,
       onCreateChannel,
@@ -694,7 +712,9 @@ export function TopbarSearch({
         ? getChannelSuggestionMeta(result.channel)
         : result.kind === "message"
           ? formatRelativeTime(result.hit.createdAt)
-          : null;
+          : result.kind === "action" && result.action.id === "ask-master"
+            ? getPlatformKeysById("ask-master-agent")
+            : null;
 
     return (
       <button
@@ -735,6 +755,14 @@ export function TopbarSearch({
                 : "circle"
             }
             size="md"
+          />
+        ) : result.kind === "action" && result.action.id === "ask-master" ? (
+          <UserAvatar
+            avatarUrl={result.action.avatarUrl ?? null}
+            className="h-7 w-7"
+            displayName={master?.agent.label ?? result.action.title}
+            shape="squircle"
+            size="sm"
           />
         ) : result.kind === "user" ? (
           <UserAvatar

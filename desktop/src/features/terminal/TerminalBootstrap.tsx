@@ -148,8 +148,9 @@ export function TerminalBootstrap({
       if (
         !context ||
         panel.mode !== "closed" ||
-        event.code !== "KeyJ" ||
-        (!event.metaKey && !event.ctrlKey) ||
+        event.code !== "Backquote" ||
+        !event.ctrlKey ||
+        event.metaKey ||
         event.altKey ||
         event.shiftKey ||
         event.isComposing
