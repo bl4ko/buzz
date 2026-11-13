@@ -352,7 +352,7 @@ fn push_descriptor(
             "current": true
         }],
         "push_kinds": crate::handlers::push_lease::PUSH_KINDS,
-        "h_grammar": "uuid-v4-lowercase",
+        "h_grammar": "uuid-lowercase",
         "class_support": {"apns": ["default"]},
         "limitation": {
             "max_lease_ttl": 2592000,
