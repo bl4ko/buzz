@@ -12,6 +12,10 @@ import {
   type OlympusChangeTransport,
   submitOlympusChange,
 } from "@/features/agents/lib/olympusChangeRequests";
+import {
+  listOlympusProposals,
+  olympusOperators,
+} from "@/features/agents/lib/olympusProposals";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -116,6 +120,10 @@ export function useOlympusAgents() {
     () => groupOlympusAgents(query.data ?? []),
     [query.data],
   );
+  const proposals = React.useMemo(
+    () => listOlympusProposals(query.data ?? [], olympusOperators(groups)),
+    [groups, query.data],
+  );
 
   const submitChange = React.useCallback(
     (key: string, target: OlympusChangeTarget, change: OlympusChange) =>
@@ -131,6 +139,7 @@ export function useOlympusAgents() {
     error: query.error instanceof Error ? query.error : null,
     isLoading: enabled && query.isLoading,
     me: pubkey,
+    proposals,
     submitChange,
   };
 }

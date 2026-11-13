@@ -50,6 +50,8 @@ const ACTION_LABELS: Record<string, string> = {
   "set-memory": "Memory change",
   create: "New agent",
   delete: "Delete",
+  approve: "Approve",
+  reject: "Reject",
 };
 
 export function OlympusRequestStatus({

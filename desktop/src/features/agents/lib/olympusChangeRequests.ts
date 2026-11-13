@@ -27,6 +27,12 @@ export type OlympusChange =
       model: string;
       effort?: string;
       instructions?: string;
+    }
+  | {
+      action: "approve" | "reject";
+      proposal: string;
+      digest: string;
+      highRisk?: true;
     };
 
 export type OlympusChangeTarget = {
@@ -51,8 +57,18 @@ export function buildOlympusChangeRequest(
     throw new Error("The operator key is not valid.");
   }
   if (!target.workspace) throw new Error("The workspace is missing.");
-  if (!target.agent && !WORKSPACE_ACTIONS.has(change.action)) {
+  const isProposal = "proposal" in change;
+  if (isProposal && target.agent) {
+    throw new Error(`The ${change.action} action has no agent.`);
+  }
+  if (!target.agent && !WORKSPACE_ACTIONS.has(change.action) && !isProposal) {
     throw new Error(`The ${change.action} action needs an agent.`);
+  }
+  if (
+    isProposal &&
+    (!change.proposal || !/^[0-9a-f]{64}$/.test(change.digest))
+  ) {
+    throw new Error("The proposal name or digest is not valid.");
   }
   const tags = [
     ["p", target.operator],
@@ -60,6 +76,7 @@ export function buildOlympusChangeRequest(
   ];
   if (target.agent) tags.push(["agent", target.agent]);
   tags.push(["action", change.action]);
+  if (isProposal) tags.push(["proposal", change.proposal]);
   const { action, ...params } = change;
   const content = {
     v: 1,
@@ -127,10 +144,12 @@ const states = new Map<string, OlympusRequestState>();
 const listeners = new Set<() => void>();
 const cleanups = new Set<() => void>();
 let generation = 0;
+let version = 0;
 
 function setState(key: string, state: OlympusRequestState | null) {
   if (state) states.set(key, state);
   else states.delete(key);
+  version += 1;
   for (const listener of listeners) listener();
 }
 
@@ -151,6 +170,7 @@ export function resetOlympusChangeRequests() {
   for (const cleanup of cleanups) cleanup();
   cleanups.clear();
   states.clear();
+  version += 1;
   for (const listener of listeners) listener();
 }
 
@@ -263,5 +283,13 @@ export function useOlympusRequestState(key: string) {
     subscribeStates,
     () => getOlympusRequestState(key),
     () => null,
+  );
+}
+
+export function useOlympusRequestVersion() {
+  return React.useSyncExternalStore(
+    subscribeStates,
+    () => version,
+    () => 0,
   );
 }

@@ -32,6 +32,7 @@ export default defineConfig({
         "**/olympus-motion.spec.ts",
         "**/olympus-agents.spec.ts",
         "**/master-agent.spec.ts",
+        "**/olympus-proposals.spec.ts",
         "**/exact-key-profile.spec.ts",
         "**/key-import-reveal.spec.ts",
         "**/navigation.spec.ts",

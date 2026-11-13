@@ -1,12 +1,14 @@
 import type { RelayEvent } from "@/shared/api/types";
 import {
   KIND_OLYMPUS_AGENT,
+  KIND_OLYMPUS_PROPOSAL,
   KIND_OLYMPUS_WORKSPACE,
 } from "@/shared/constants/kinds";
 
 export const OLYMPUS_STATE_KINDS = [
   KIND_OLYMPUS_AGENT,
   KIND_OLYMPUS_WORKSPACE,
+  KIND_OLYMPUS_PROPOSAL,
 ] as const;
 
 export const OLYMPUS_PHASES = [

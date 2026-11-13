@@ -71,3 +71,7 @@ Desktop join alerts skip keys whose kind 0 marks an agent: a NIP-OA owner tag or
 ## Master agent quick access
 
 Desktop reads the kind 30190 state events and takes the agent with top-level `"role": "master"` (operator v1.17.0+); its kind 0 gives the name and picture. With no master, every entry point is hidden. Entry points (`src/features/master-agent/`): a pinned sidebar row above the sections (the master DM leaves the DM list), ⌘J from anywhere, "Ask <name>" in the ⌘K palette and in the message More menu. ⌘J and the menu put a quote (selected message text or the composer text; the menu also adds the `buzz://message` link) into the DM draft and never send. Buzz Term moved from ⌘J to ⌃`. Mobile has no master support yet.
+
+## Agent change proposals
+
+Desktop reads kind 30192 with the 30190/30191 state (`#p` = owner) and accepts it only from an author of those state events. A pending, not expired proposal shows as a card above the composer in the DM with its requester (`requester` key) and in the Agents page "Olympus agents" section: target, operation, reason as plain text, diff, age, expiry, and high-risk marks. Approve and Reject send kind 44310 (`action` approve|reject, `proposal` tag, digest; no `agent` tag). Approve of a proposal with high-risk marks needs a second confirmation and then adds `"highRisk": true`. The card shows the 44311 result and the republished phase until dismissed.
