@@ -1,7 +1,11 @@
 import { expect, type Page, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { olympusDevEvents, olympusMasterEvent } from "../helpers/olympus";
+import {
+  MASTER_PUBLIC_KEY,
+  olympusDevEvents,
+  olympusMasterEvent,
+} from "../helpers/olympus";
 
 const GENERAL_ROOT_ID = "c".repeat(64);
 
@@ -146,4 +150,44 @@ test("message menu and palette ask the master without sending", async ({
   await expect(action).toContainText("Ask mira");
   await action.click();
   await expect(page.getByTestId("chat-title")).toHaveText("mira");
+});
+
+test("the master agent's typing shows as agent work in its DM", async ({
+  page,
+}) => {
+  await openGeneral(page, true);
+  const entry = page.getByTestId("master-agent-entry");
+  await expect(entry).toContainText("mira", { timeout: 15_000 });
+  await entry.getByRole("button").first().click();
+  await expect(page.getByTestId("chat-title")).toHaveText("mira");
+  await expect(page).toHaveURL(/\/channels\/[^/?#]+/);
+  const channelId = decodeURIComponent(
+    page.url().match(/\/channels\/([^/?#]+)/)?.[1] ?? "",
+  );
+
+  const trigger = page.getByTestId("bot-activity-composer-trigger");
+  await expect(async () => {
+    await page.evaluate(
+      ({ channelId, pubkey }) => {
+        window.__BUZZ_E2E_EMIT_MOCK_TYPING__?.({
+          channelId,
+          channelName: "",
+          pubkey,
+        });
+      },
+      { channelId, pubkey: MASTER_PUBLIC_KEY },
+    );
+    await expect(trigger).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(page.getByTestId("message-typing-indicator")).toHaveCount(0);
+
+  await trigger.click();
+  const item = page.getByTestId(
+    `bot-activity-composer-item-${MASTER_PUBLIC_KEY}`,
+  );
+  await expect(item).toContainText("View activity");
+  await item.click({ force: true });
+  await expect(page.getByTestId("agent-session-thread-panel")).toContainText(
+    "mira",
+  );
 });

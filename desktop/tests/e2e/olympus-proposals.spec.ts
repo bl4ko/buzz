@@ -5,9 +5,11 @@ import {
   OLYMPUS_OPERATOR,
   OLYMPUS_OWNER,
   olympusDevEvents,
+  olympusHecateEvent,
   olympusMasterEvent,
   olympusProposalEvent,
   olympusResultEvent,
+  olympusUsageEvent,
   PROPOSAL_DIGEST,
 } from "../helpers/olympus";
 
@@ -69,11 +71,21 @@ test("the master DM shows the proposal card and reject sends a 44310", async ({
   );
   await expect(card.locator("b, strong")).toHaveCount(0);
   await expect(card.getByTestId("olympus-proposal-diff")).toHaveText(
-    "spec.suspend: false → true",
+    "spec.suspend-false→+true",
   );
   await expect(card.getByTestId("olympus-proposal-high-risk")).toHaveCount(0);
 
   await card.getByRole("button", { name: "Reject" }).click();
+  const rejectDialog = page.getByTestId("olympus-reject-dialog");
+  await expect(rejectDialog).toContainText("Reject this proposal?");
+  await rejectDialog
+    .getByTestId("olympus-reject-reason")
+    .fill("  Keep proof running for the demo.  ");
+  await expect(rejectDialog.getByTestId("olympus-reject-counter")).toHaveText(
+    "32/1000",
+  );
+  await rejectDialog.getByRole("button", { name: "Reject proposal" }).click();
+  await expect(rejectDialog).toBeHidden();
   await expect(
     card.getByTestId("olympus-proposal-request-p-aada7279a890"),
   ).toContainText("Reject: waiting for Hephaestus");
@@ -94,6 +106,7 @@ test("the master DM shows the proposal card and reject sends a 44310", async ({
     workspace: "dev",
     proposal: "p-aada7279a890",
     digest: PROPOSAL_DIGEST,
+    reason: "Keep proof running for the demo.",
   });
 
   await emitOlympusEvent(
@@ -125,7 +138,9 @@ test("the master DM shows the proposal card and reject sends a 44310", async ({
   await expect(card).toHaveAttribute("data-phase", "rejected");
   await expect(card.getByRole("button", { name: "Approve" })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Reject" })).toHaveCount(0);
-  await expect(card).toContainText("Result: rejected");
+  await expect(card.getByTestId("olympus-proposal-result")).toContainText(
+    "rejected",
+  );
 
   await card
     .getByRole("button", { name: "Dismiss proposal p-aada7279a890" })
@@ -150,7 +165,7 @@ test("a high-risk approve needs the extra confirmation and sends highRisk", asyn
   await page.goto("/");
   await page.getByTestId("open-olympus-view").click();
   await page.getByTestId("olympus-tab-proposals").click();
-  const list = page.getByTestId("olympus-proposals");
+  const list = page.getByTestId("olympus-proposals-panel");
   await expect(list).toBeVisible({ timeout: 10_000 });
   await expect(list.getByTestId("olympus-proposal-p-expired00000")).toHaveCount(
     0,
@@ -219,5 +234,146 @@ test("a high-risk approve needs the extra confirmation and sends highRisk", asyn
   );
   await expect(card).toHaveAttribute("data-phase", "failed");
   await expect(card.getByRole("button", { name: "Approve" })).toHaveCount(0);
-  await expect(card).toContainText("Result: the target changed");
+  await expect(card.getByTestId("olympus-proposal-result")).toContainText(
+    "the target changed",
+  );
+});
+
+test("the master row counts its open proposals until they are decided", async ({
+  page,
+}) => {
+  const now = Math.floor(Date.now() / 1000);
+  await installMockBridge(page, {
+    olympusEvents: [
+      ...olympusDevEvents(),
+      olympusMasterEvent(),
+      olympusProposalEvent({ name: "p-000000000001" }),
+      olympusProposalEvent({ name: "p-000000000002", createdAt: now - 60 }),
+      olympusProposalEvent({
+        name: "p-000000000003",
+        requesterKey: "ab".repeat(32),
+      }),
+      olympusProposalEvent({
+        name: "p-000000000004",
+        createdAt: now - 90_000,
+      }),
+    ],
+  });
+  await page.goto("/");
+  const entry = page.getByTestId("master-agent-entry");
+  await expect(entry).toContainText("mira", { timeout: 15_000 });
+  const pending = entry.getByTestId("master-agent-pending");
+  await expect(pending).toHaveText("2 proposals wait for your approval");
+
+  await waitForProposalSubscription(page);
+  await emitOlympusEvent(
+    page,
+    olympusProposalEvent({
+      name: "p-000000000001",
+      phase: "applied",
+      result: { reason: "applied", request: "f".repeat(64), at: now },
+      eventCreatedAt: now,
+    }),
+  );
+  await expect(pending).toHaveText("1 proposal waits for your approval");
+  await emitOlympusEvent(
+    page,
+    olympusProposalEvent({
+      name: "p-000000000002",
+      createdAt: now - 60,
+      phase: "rejected",
+      result: { reason: "rejected", request: "e".repeat(64), at: now },
+      eventCreatedAt: now + 1,
+    }),
+  );
+  await expect(pending).toHaveCount(0);
+});
+
+test("a long value in the DM card shows a line diff with markers", async ({
+  page,
+}) => {
+  const proposal = olympusProposalEvent({ name: "p-0000000000aa" });
+  const content = JSON.parse(proposal.content);
+  content.diff = [
+    {
+      path: "spec.instructions",
+      from: JSON.stringify(
+        "You are proof, the Olympus test agent.\nAnswer pings in the workspace channel.\nKeep answers short.",
+      ),
+      to: JSON.stringify(
+        "You are proof, the Olympus test agent.\nAnswer pings and status questions in the workspace channel.\nKeep answers short.",
+      ),
+    },
+  ];
+  await installMockBridge(page, {
+    olympusEvents: [
+      ...olympusDevEvents(),
+      olympusMasterEvent(),
+      { ...proposal, content: JSON.stringify(content) },
+    ],
+  });
+  await page.goto("/");
+  const entry = page.getByTestId("master-agent-entry");
+  await expect(entry).toContainText("mira", { timeout: 15_000 });
+  await entry.getByRole("button").first().click();
+  const card = page
+    .getByTestId("olympus-dm-proposals")
+    .getByTestId("olympus-proposal-p-0000000000aa");
+  const lines = card
+    .getByTestId("olympus-proposal-line-diff")
+    .locator("[data-line]");
+  await expect(lines).toHaveCount(4);
+  await expect(lines.nth(0)).toHaveAttribute("data-line", "same");
+  await expect(lines.nth(1)).toHaveAttribute("data-line", "del");
+  await expect(lines.nth(1)).toContainText(
+    "-removed: Answer pings in the workspace channel.",
+  );
+  await expect(lines.nth(2)).toHaveAttribute("data-line", "add");
+  await expect(lines.nth(2)).toContainText(
+    "+added: Answer pings and status questions in the workspace channel.",
+  );
+});
+
+test("the Olympus page mounts the proposals and usage panels", async ({
+  page,
+}) => {
+  const window24h = {
+    tokens: { "claude-haiku-5-5": { input: 1_200, output: 300 } },
+    turns: 2,
+    apiErrors: 0,
+    runs: 1,
+    failedRuns: 0,
+    share: 1,
+  };
+  await installMockBridge(page, {
+    olympusEvents: [
+      ...olympusDevEvents(),
+      olympusProposalEvent(),
+      olympusUsageEvent({
+        workspace: "dev",
+        name: "proof",
+        windows: { "24h": window24h, "7d": window24h },
+      }),
+      olympusHecateEvent([
+        {
+          provider: "claude",
+          credential: "primary",
+          window: "five-hour",
+          usedRatio: 0.4,
+        },
+      ]),
+    ],
+  });
+  await page.goto("/");
+  await page.getByTestId("open-olympus-view").click();
+  await page.getByTestId("olympus-tab-proposals").click();
+  await expect(page.getByTestId("olympus-proposals-panel")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("olympus-proposal-filters")).toBeVisible();
+  await page.getByTestId("olympus-tab-usage").click();
+  await expect(page.getByTestId("olympus-usage-row-dev-proof")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("olympus-usage-accounts")).toBeVisible();
 });

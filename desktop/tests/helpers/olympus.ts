@@ -297,3 +297,57 @@ export function olympusProposalEvent(
     sig: "0".repeat(128),
   };
 }
+
+type UsageWindow = {
+  tokens: Record<string, Record<string, number>>;
+  turns: number;
+  apiErrors: number;
+  runs: number;
+  failedRuns: number;
+  share: number;
+};
+
+export function olympusUsageEvent(input: {
+  workspace: string;
+  name: string;
+  harness?: string;
+  windows: { "24h"?: UsageWindow; "7d"?: UsageWindow };
+  lastRun?: { schedule: string; at: number; result: string } | null;
+}): RelayEvent {
+  const now = Math.floor(Date.now() / 1000);
+  const namespace = `olympus-${input.workspace}`;
+  return stateEvent(
+    30193,
+    `${namespace}/${input.name}`,
+    {
+      v: 1,
+      workspace: input.workspace,
+      namespace,
+      name: input.name,
+      harness: input.harness ?? "claude-code",
+      at: now - 240,
+      windows: input.windows,
+      lastRun: input.lastRun ?? null,
+    },
+    [["workspace", input.workspace]],
+    now - 240,
+  );
+}
+
+export function olympusHecateEvent(
+  accounts: {
+    provider: string;
+    credential: string;
+    window: string;
+    usedRatio: number;
+  }[],
+): RelayEvent {
+  const now = Math.floor(Date.now() / 1000);
+  return stateEvent(
+    30193,
+    "hecate",
+    { v: 1, at: now - 240, accounts },
+    [],
+    now - 240,
+  );
+}

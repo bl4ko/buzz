@@ -2,6 +2,7 @@ import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { startBootWarm } from "@/features/agents/acpRuntimesQuery";
+import { usePendingOlympusProposalCount } from "@/features/agents/ui/OlympusProposalsPanel";
 import { setDesktopAppBadge } from "@/features/notifications/lib/desktop";
 import { useForegroundQueryRefresh } from "@/features/workflows/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -37,6 +38,7 @@ export function useAppShellLifecycleEffects({
   // and swallows the probe's own errors so a failure leaves the last good
   // catalog in place without an unhandled rejection.
   const queryClient = useQueryClient();
+  const pendingProposalCount = usePendingOlympusProposalCount();
   React.useEffect(() => {
     void startBootWarm(queryClient);
   }, [queryClient]);
@@ -76,7 +78,9 @@ export function useAppShellLifecycleEffects({
     }
 
     const count =
-      unreadChannelNotificationCount + homeBadgeCountExcludingHighPriority;
+      unreadChannelNotificationCount +
+      homeBadgeCountExcludingHighPriority +
+      pendingProposalCount;
     void setDesktopAppBadge(
       count
         ? { kind: "count", count }
@@ -85,6 +89,7 @@ export function useAppShellLifecycleEffects({
   }, [
     desktopBadgeEnabled,
     homeBadgeCountExcludingHighPriority,
+    pendingProposalCount,
     topLevelUnreadChannelIds,
     unreadChannelNotificationCount,
   ]);

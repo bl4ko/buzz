@@ -86,3 +86,29 @@ describe("combineObserverIngestionAgents", () => {
     assert.deepEqual(result, [{ pubkey: AGENT_LOCAL, status: "running" }]);
   });
 });
+
+describe("combineObserverIngestionAgents with Olympus agents", () => {
+  it("adds owned Olympus agents as deployed once", () => {
+    const result = combineObserverIngestionAgents(
+      [{ pubkey: AGENT_LOCAL, status: "running" }],
+      [AGENT_REMOTE],
+      new Map([[AGENT_REMOTE, ME]]),
+      ME,
+      [AGENT_FOREIGN, AGENT_LOCAL, AGENT_REMOTE.toUpperCase()],
+    );
+    assert.deepEqual(result, [
+      { pubkey: AGENT_LOCAL, status: "running" },
+      { pubkey: AGENT_REMOTE, status: "deployed" },
+      { pubkey: AGENT_FOREIGN, status: "deployed" },
+    ]);
+  });
+
+  it("waits for the identity before it adds Olympus agents", () => {
+    assert.deepEqual(
+      combineObserverIngestionAgents([], [], new Map(), undefined, [
+        AGENT_FOREIGN,
+      ]),
+      [],
+    );
+  });
+});

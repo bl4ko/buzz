@@ -6,6 +6,7 @@ import {
   useRelayAgentsQuery,
 } from "@/features/agents/hooks";
 import { useManagedAgentObserverBridge } from "@/features/agents/observerRelayStore";
+import { useOlympusOwnedAgents } from "@/features/agents/useOlympusOwnedAgents";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { ManagedAgent } from "@/shared/api/types";
@@ -15,7 +16,8 @@ type IngestionAgent = Pick<ManagedAgent, "pubkey" | "status">;
 
 /**
  * Combine locally managed agents with relay agents the current identity
- * declared-owns (NIP-OA `ownerPubkey == me`) into one ingestion list.
+ * declared-owns (NIP-OA `ownerPubkey == me`) and Olympus agents it owns
+ * (kind 30190 `owner == me`) into one ingestion list.
  *
  * Managed agents keep their real status; owned relay agents that are not
  * managed locally are treated as `deployed` so the observer subscription
@@ -28,6 +30,7 @@ export function combineObserverIngestionAgents(
   relayAgentPubkeys: readonly string[],
   ownerByPubkey: ReadonlyMap<string, string>,
   currentPubkey: string | null | undefined,
+  olympusOwnedPubkeys: readonly string[] = [],
 ): IngestionAgent[] {
   const managed = managedAgents.map((agent) => ({
     pubkey: agent.pubkey,
@@ -37,21 +40,20 @@ export function combineObserverIngestionAgents(
     return managed;
   }
 
-  const managedSet = new Set(
-    managed.map((agent) => normalizePubkey(agent.pubkey)),
-  );
+  const seen = new Set(managed.map((agent) => normalizePubkey(agent.pubkey)));
   const me = normalizePubkey(currentPubkey);
   const owned: IngestionAgent[] = [];
-  for (const pubkey of relayAgentPubkeys) {
+  const addOwned = (pubkey: string) => {
     const key = normalizePubkey(pubkey);
-    if (managedSet.has(key)) {
-      continue;
-    }
-    const owner = ownerByPubkey.get(key);
-    if (owner && normalizePubkey(owner) === me) {
-      owned.push({ pubkey, status: "deployed" as const });
-    }
+    if (seen.has(key)) return;
+    seen.add(key);
+    owned.push({ pubkey, status: "deployed" as const });
+  };
+  for (const pubkey of relayAgentPubkeys) {
+    const owner = ownerByPubkey.get(normalizePubkey(pubkey));
+    if (owner && normalizePubkey(owner) === me) addOwned(pubkey);
   }
+  for (const pubkey of olympusOwnedPubkeys) addOwned(pubkey);
   return [...managed, ...owned];
 }
 
@@ -86,6 +88,12 @@ export function useAgentObserverIngestion() {
     [relayAgentsQuery.data],
   );
 
+  const olympusAgents = useOlympusOwnedAgents();
+  const olympusPubkeys = React.useMemo(
+    () => olympusAgents.map((agent) => agent.pubkey),
+    [olympusAgents],
+  );
+
   const profilesQuery = useUsersBatchQuery(relayAgentPubkeys, {
     enabled: Boolean(currentPubkey) && relayAgentPubkeys.length > 0,
   });
@@ -108,8 +116,15 @@ export function useAgentObserverIngestion() {
       relayAgentPubkeys,
       ownerByPubkey,
       currentPubkey,
+      olympusPubkeys,
     );
-  }, [currentPubkey, managedAgents, profiles, relayAgentPubkeys]);
+  }, [
+    currentPubkey,
+    managedAgents,
+    olympusPubkeys,
+    profiles,
+    relayAgentPubkeys,
+  ]);
 
   useManagedAgentObserverBridge(ingestionAgents);
   useActiveAgentTurnsBridge(ingestionAgents);

@@ -6,7 +6,7 @@ import { useChannelReferences } from "@/features/channels/openChannelDirectory";
 import { useAgentSession } from "@/shared/context/AgentSessionContext";
 import type { Channel } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import { getAgentWorkingState } from "./agentWorkingSignal";
+import { getAgentWorkingState, useWorkingChannels } from "./agentWorkingSignal";
 import { useRelayAgentsQuery } from "./hooks";
 
 const INACCESSIBLE_ACTIVITY_MESSAGE =
@@ -80,16 +80,13 @@ export function useOpenAgentActivity() {
   // Agent metadata and the working-signal snapshot are both finite id sources.
   // Resolve them by id, never by scanning the all-open directory, so an agent
   // can link to a readable open channel the viewer has not browsed this session.
+  const workingChannels = useWorkingChannels();
   const activityChannelIds = React.useMemo(
     () => [
       ...(relayAgents ?? []).flatMap((agent) => agent.channelIds),
-      ...(relayAgents ?? []).flatMap((agent) =>
-        getAgentWorkingState(agent.pubkey).channels.map(
-          (working) => working.channelId,
-        ),
-      ),
+      ...workingChannels.map((working) => working.channelId),
     ],
-    [relayAgents],
+    [relayAgents, workingChannels],
   );
   const { channelsById, isReady: areChannelsReady } =
     useChannelReferences(activityChannelIds);

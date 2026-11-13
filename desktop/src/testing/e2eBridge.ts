@@ -1355,6 +1355,7 @@ declare global {
       emit?: boolean;
     }) => RelayEvent[];
     __BUZZ_E2E_EMIT_MOCK_TYPING__?: (input: {
+      channelId?: string;
       channelName: string;
       createdAt?: number;
       pubkey?: string;
@@ -11768,13 +11769,14 @@ export function maybeInstallE2eTauriMocks() {
   };
   window.__BUZZ_E2E_PREPEND_MOCK_HISTORY__ = prependMockHistory;
   window.__BUZZ_E2E_EMIT_MOCK_TYPING__ = ({
+    channelId,
     channelName,
     createdAt,
     pubkey,
     threadHeadId,
   }) => {
-    const channel = mockChannels.find(
-      (candidate) => candidate.name === channelName,
+    const channel = mockChannels.find((candidate) =>
+      channelId ? candidate.id === channelId : candidate.name === channelName,
     );
     if (!channel) {
       throw new Error(`Mock channel ${channelName} not found.`);

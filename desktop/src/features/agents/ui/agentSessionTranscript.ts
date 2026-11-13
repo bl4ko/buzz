@@ -1046,20 +1046,12 @@ export function processTranscriptEvent(
         const used = typeof update.used === "number" ? update.used : null;
         const size = typeof update.size === "number" ? update.size : null;
         if (used !== null && size !== null) {
-          const costRecord = asRecord(update.cost);
-          const costAmount =
-            typeof costRecord.amount === "number" ? costRecord.amount : null;
-          const costCurrency = asString(costRecord.currency);
-          const costStr =
-            costAmount !== null && costCurrency
-              ? ` ($${costAmount.toFixed(4)} ${costCurrency})`
-              : "";
           replaceLifecycleItem(
             d,
             `usage:${ch}:${turnKey}`,
             "status",
             "Usage",
-            `Tokens: ${used}/${size}${costStr}`,
+            `Tokens: ${used}/${size}`,
             event.timestamp,
             ctx,
             updateType,

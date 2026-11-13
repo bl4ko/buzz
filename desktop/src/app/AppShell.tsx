@@ -756,6 +756,7 @@ export function AppShell() {
     currentChannelId: selectedView === "channel" ? selectedChannelId : null,
     currentPubkey: identityQuery.data?.pubkey,
     goChannel,
+    notificationSettings: isHuddleRoom ? null : notificationSettings.settings,
     openDm: openDmMutation.mutateAsync,
     shortcutDisabled: settingsOpen || isHuddleRoom,
   });

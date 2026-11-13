@@ -958,7 +958,7 @@ test("buildTranscript renders usage_update as a lifecycle status line with token
   assert.equal(item.acpSource, "usage_update");
 });
 
-test("buildTranscript renders usage_update with cost when present", () => {
+test("buildTranscript never shows a cost in the usage line", () => {
   const transcript = buildTranscript([
     acpToolUpdate(1, {
       sessionUpdate: "usage_update",
@@ -969,7 +969,7 @@ test("buildTranscript renders usage_update with cost when present", () => {
   ]);
 
   assert.equal(transcript.length, 1);
-  assert.equal(transcript[0].text, "Tokens: 800/4096 ($0.0025 USD)");
+  assert.equal(transcript[0].text, "Tokens: 800/4096");
 });
 
 test("buildTranscript coalesces usage_update to latest-per-turn (replace, not append)", () => {

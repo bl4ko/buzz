@@ -10,8 +10,13 @@ import {
 import { resetActiveAgentTurnsStore } from "../../agents/activeAgentTurnsStore.ts";
 import {
   channelScopedBotTypingPubkeyKey,
+  classifyChannelTyping,
   mergeMemberAgentFlagsIntoProfiles,
 } from "./useChannelActivityTyping.ts";
+import {
+  buildChannelAgentSessionCandidates,
+  getChannelAgentSessionAgents,
+} from "./useChannelAgentSessions.ts";
 
 const AGENT =
   "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
@@ -154,5 +159,77 @@ describe("mergeMemberAgentFlagsIntoProfiles", () => {
       isAgent: true,
     });
     assert.equal(profiles[AGENT].isAgent, undefined);
+  });
+});
+
+describe("Olympus agents in channel typing", () => {
+  const ME = "a".repeat(64);
+  const ZEUS = "9".repeat(64);
+  const HUMAN = "4".repeat(64);
+  const dm = {
+    id: "dm-zeus",
+    name: "zeus",
+    channelType: "dm",
+    participantPubkeys: [ME, ZEUS],
+  };
+  const members = [
+    { pubkey: ME, role: "owner", isAgent: false, displayName: "me" },
+    { pubkey: ZEUS, role: "member", isAgent: false, displayName: "Zeus" },
+    { pubkey: HUMAN, role: "member", isAgent: false, displayName: "Ana" },
+  ];
+  const typing = [
+    { pubkey: ZEUS, threadHeadId: null },
+    { pubkey: ZEUS, threadHeadId: "thread-1" },
+    { pubkey: HUMAN, threadHeadId: null },
+  ];
+
+  function classify(olympusAgents) {
+    const agents = getChannelAgentSessionAgents({
+      activeChannel: dm,
+      activeChannelId: dm.id,
+      agents: buildChannelAgentSessionCandidates({
+        channelMembers: members,
+        managedAgents: [],
+        olympusAgents,
+        relayAgents: [],
+      }),
+      channelMembers: members,
+    });
+    return {
+      agents,
+      ...classifyChannelTyping({
+        channelAgentPubkeys: new Set(agents.map((agent) => agent.pubkey)),
+        openThreadHeadId: "thread-1",
+        typingEntries: typing,
+      }),
+    };
+  }
+
+  it("treats an owned Olympus agent's typing as agent work, also in a thread", () => {
+    const result = classify([
+      { pubkey: ZEUS, name: "Zeus", status: "deployed" },
+    ]);
+    assert.deepEqual(
+      result.agents.map((agent) => [agent.pubkey, agent.agentSource]),
+      [[ZEUS, "relay"]],
+    );
+    assert.deepEqual(result.botTypingEntries, typing.slice(0, 2));
+    assert.deepEqual(result.humanTypingPubkeys, [HUMAN]);
+    assert.deepEqual(result.threadTypingPubkeys, []);
+  });
+
+  it("without the Olympus agent the same typing is human typing", () => {
+    const result = classify([]);
+    assert.deepEqual(result.agents, []);
+    assert.deepEqual(result.botTypingEntries, []);
+    assert.deepEqual(result.humanTypingPubkeys, [ZEUS, HUMAN]);
+    assert.deepEqual(result.threadTypingPubkeys, [ZEUS]);
+  });
+
+  it("does not count an Olympus agent that is not a member of the channel", () => {
+    const result = classify([
+      { pubkey: "7".repeat(64), name: "Argus", status: "deployed" },
+    ]);
+    assert.deepEqual(result.agents, []);
   });
 });

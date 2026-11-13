@@ -2,8 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  countOlympusProposals,
+  countPendingOlympusProposals,
+  decodeOlympusDiffValue,
+  filterOlympusProposals,
+  isOlympusLongDiff,
   isOlympusProposalOpen,
   listOlympusProposals,
+  nextOlympusProposalExpiry,
+  olympusLineDiff,
+  olympusProposalStatus,
   parseOlympusProposal,
 } from "./olympusProposals.ts";
 
@@ -125,6 +133,7 @@ test("keeps high-risk marks, null diff values, a truncated diff, and the result"
   assert.deepEqual(proposal?.result, {
     reason: "applied",
     request: "f".repeat(64),
+    at: 2_000,
   });
   assert.equal(isOlympusProposalOpen(proposal, 2_000), false);
 
@@ -206,4 +215,154 @@ test("lists the newest state of each proposal, newest first", () => {
     listOlympusProposals([pending, tombstone], TRUSTED).map((p) => p.name),
     [],
   );
+});
+
+function proposalAt(name, overrides = {}) {
+  return parseOlympusProposal(
+    proposalEvent({ d: name, body: content({ name, ...overrides }) }),
+    TRUSTED,
+  );
+}
+
+test("status, filters, and counts treat a pending proposal past expiresAt as expired", () => {
+  const now = 100_000;
+  const proposals = [
+    proposalAt("p-open", { createdAt: now - 60, expiresAt: now + 60 }),
+    proposalAt("p-late", { createdAt: now - 90_000, expiresAt: now - 1 }),
+    proposalAt("p-edge", { createdAt: now - 86_400, expiresAt: now }),
+    proposalAt("p-applied", { createdAt: now - 30, phase: "applied" }),
+    proposalAt("p-rejected", { createdAt: now - 20, phase: "rejected" }),
+    proposalAt("p-refused", { createdAt: now - 10, phase: "refused" }),
+    proposalAt("p-failed", { createdAt: now - 5, phase: "failed" }),
+    proposalAt("p-expired", { createdAt: now - 100, phase: "expired" }),
+  ];
+  const table = [
+    ["p-open", "pending"],
+    ["p-late", "expired"],
+    ["p-edge", "expired"],
+    ["p-applied", "applied"],
+    ["p-expired", "expired"],
+  ];
+  for (const [name, expected] of table) {
+    const proposal = proposals.find((item) => item.name === name);
+    assert.equal(olympusProposalStatus(proposal, now), expected, name);
+  }
+  assert.deepEqual(countOlympusProposals(proposals, now), {
+    pending: 1,
+    applied: 1,
+    rejected: 1,
+    refused: 1,
+    failed: 1,
+    expired: 3,
+    all: 8,
+  });
+  assert.deepEqual(
+    filterOlympusProposals(proposals, "expired", now).map((p) => p.name),
+    ["p-expired", "p-edge", "p-late"],
+  );
+  assert.deepEqual(
+    filterOlympusProposals(proposals, "all", now).map((p) => p.name),
+    [
+      "p-failed",
+      "p-refused",
+      "p-rejected",
+      "p-applied",
+      "p-open",
+      "p-expired",
+      "p-edge",
+      "p-late",
+    ],
+  );
+});
+
+test("counts open proposals for one requester and finds the next expiry", () => {
+  const now = 100_000;
+  const proposals = [
+    proposalAt("p-a", { requesterKey: ZEUS, expiresAt: now + 500 }),
+    proposalAt("p-b", { requesterKey: STRANGER, expiresAt: now + 100 }),
+    proposalAt("p-c", { requesterKey: ZEUS, expiresAt: now - 1 }),
+    proposalAt("p-d", {
+      requesterKey: ZEUS,
+      phase: "applied",
+      expiresAt: now + 9,
+    }),
+  ];
+  assert.equal(countPendingOlympusProposals(proposals, now), 2);
+  assert.equal(countPendingOlympusProposals(proposals, now, ZEUS), 1);
+  assert.equal(countPendingOlympusProposals(proposals, now, OWNER), 0);
+  assert.equal(nextOlympusProposalExpiry(proposals, now), now + 100);
+  assert.equal(nextOlympusProposalExpiry([], now), null);
+});
+
+test("decodes JSON diff values, also when the operator cut them", () => {
+  assert.deepEqual(decodeOlympusDiffValue("true"), {
+    text: "true",
+    truncated: false,
+  });
+  assert.deepEqual(decodeOlympusDiffValue('"a\\nb"'), {
+    text: "a\nb",
+    truncated: false,
+  });
+  assert.deepEqual(decodeOlympusDiffValue('"line 1\\nline 2'), {
+    text: "line 1\nline 2",
+    truncated: true,
+  });
+  assert.deepEqual(decodeOlympusDiffValue('"cut at an escape\\'), {
+    text: "cut at an escape",
+    truncated: true,
+  });
+  assert.deepEqual(decodeOlympusDiffValue('{"cpu":…'), {
+    text: '{"cpu":…',
+    truncated: false,
+  });
+  const object = decodeOlympusDiffValue(
+    JSON.stringify({
+      name: "share",
+      tools: [
+        "upload_file",
+        "list_files",
+        "read_file",
+        "delete_file",
+        "move_file",
+      ],
+    }),
+  );
+  assert.ok(object.text.includes('\n  "tools": ['));
+  assert.equal(decodeOlympusDiffValue(null), null);
+});
+
+test("long diff: a newline or more than 80 characters on either side", () => {
+  const short = { text: "x".repeat(80), truncated: false };
+  const long = { text: "x".repeat(81), truncated: false };
+  const multi = { text: "a\nb", truncated: false };
+  assert.equal(isOlympusLongDiff(short, short), false);
+  assert.equal(isOlympusLongDiff(short, null), false);
+  assert.equal(isOlympusLongDiff(null, long), true);
+  assert.equal(isOlympusLongDiff(multi, short), true);
+});
+
+test("line diff keeps unchanged lines and marks removed and added ones", () => {
+  assert.deepEqual(olympusLineDiff("a\nb\nc\nd", "a\nB\nc\nd\ne"), [
+    { type: "same", text: "a" },
+    { type: "del", text: "b" },
+    { type: "add", text: "B" },
+    { type: "same", text: "c" },
+    { type: "same", text: "d" },
+    { type: "add", text: "e" },
+  ]);
+  assert.deepEqual(olympusLineDiff(null, "x\ny"), [
+    { type: "add", text: "x" },
+    { type: "add", text: "y" },
+  ]);
+  assert.deepEqual(olympusLineDiff("x", null), [{ type: "del", text: "x" }]);
+  assert.deepEqual(olympusLineDiff("same", "same"), [
+    { type: "same", text: "same" },
+  ]);
+  const big = Array.from({ length: 600 }, (_, index) => `l${index}`);
+  const changed = olympusLineDiff(
+    big.join("\n"),
+    [...big].reverse().join("\n"),
+  );
+  assert.equal(changed.filter((line) => line.type === "del").length, 600);
+  assert.equal(changed.filter((line) => line.type === "add").length, 600);
 });
