@@ -36,6 +36,7 @@ use acp::{AcpClient, EnvVar, McpServer};
 use anyhow::{ensure, Context, Result};
 use buzz_core::kind::{
     KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_EDIT,
 };
 use buzz_core::observer::{
     decrypt_observer_payload, encrypt_observer_payload, OBSERVER_FRAME_TELEMETRY,
@@ -799,13 +800,17 @@ impl AuthorizedNormalListenerEvent {
         self,
         rules: &[SubscriptionRule],
         agent_pubkey_hex: &str,
+        owner: Option<&str>,
+        channel_info: &pool::ChannelInfoResolver,
     ) -> Option<NormalListenerIngress> {
         let (buzz_event, effective_author) = self.0.into_parts();
-        let matched = filter::match_event(
+        let addressed = is_owner_message_in_dm(&buzz_event, owner, channel_info).await;
+        let matched = filter::match_event_addressed(
             &buzz_event.event,
             buzz_event.channel_id,
             rules,
             agent_pubkey_hex,
+            addressed,
         )
         .await?;
         Some(NormalListenerIngress {
@@ -948,6 +953,26 @@ impl NormalListenerIngress {
             channel_is_dm,
         }
     }
+}
+
+/// An owner message or edit in a known DM channel needs no `p` tag: the DM
+/// itself addresses the agent. Unresolved channels keep the mention rule.
+async fn is_owner_message_in_dm(
+    buzz_event: &relay::BuzzEvent,
+    owner: Option<&str>,
+    channel_info: &pool::ChannelInfoResolver,
+) -> bool {
+    let kind = buzz_event.event.kind.as_u16() as u32;
+    if kind != KIND_STREAM_MESSAGE && kind != KIND_STREAM_MESSAGE_EDIT {
+        return false;
+    }
+    if owner != Some(buzz_event.event.pubkey.to_hex().as_str()) {
+        return false;
+    }
+    channel_info
+        .resolve_channel_metadata(buzz_event.channel_id)
+        .await
+        .is_some_and(|info| info.channel_type == "dm")
 }
 
 /// Apply the complete normal-listener author boundary for one relay event.
@@ -3007,7 +3032,16 @@ async fn run_harness(
 
     let rules = startup_subscription_rules(config)?;
 
-    let channel_filters = config::resolve_channel_filters(config, &channel_ids, &rules);
+    let channel_filters: HashMap<Uuid, config::ChannelFilter> =
+        config::resolve_channel_filters(config, &channel_ids, &rules)
+            .into_iter()
+            .map(|(id, filter)| {
+                let is_dm = channel_info_map
+                    .get(&id)
+                    .is_some_and(|info| info.channel_type == "dm");
+                (id, filter.for_dm(is_dm))
+            })
+            .collect();
     if channel_filters.is_empty() {
         tracing::warn!("no channel subscriptions resolved — agent will sit idle");
     }
@@ -3526,6 +3560,12 @@ async fn run_harness(
                                     if subscribed_channel_ids.contains(&ch) {
                                         tracing::debug!(channel_id = %ch, "membership notification: channel already subscribed");
                                     } else if let Some(filter) = config::resolve_dynamic_channel_filter(config, ch, &rules) {
+                                        let is_dm = ctx
+                                            .channel_info
+                                            .resolve_channel_metadata(ch)
+                                            .await
+                                            .is_some_and(|info| info.channel_type == "dm");
+                                        let filter = filter.for_dm(is_dm);
                                         tracing::info!(channel_id = %ch, "membership notification: subscribing to new channel");
                                         if let Err(e) = relay.subscribe_channel_from(ch, filter, Some(ts)).await {
                                             tracing::warn!("failed to subscribe to new channel {ch}: {e}");
@@ -3760,7 +3800,12 @@ async fn run_harness(
                             };
                             let Some(ingress) =
                                 AuthorizedNormalListenerEvent(authorized_event)
-                                    .match_subscription(&rules, &pubkey_hex)
+                                    .match_subscription(
+                                        &rules,
+                                        &pubkey_hex,
+                                        owner_cache.get(),
+                                        &ctx.channel_info,
+                                    )
                                     .await
                             else {
                                 tracing::debug!("authorized event matched no rule — dropping");
@@ -9049,6 +9094,46 @@ mod author_gate_tests {
         let resolver = resolver(startup);
         assert!(is_dm_channel(dm_id, &resolver).await);
         assert!(!is_dm_channel(stream_id, &resolver).await);
+    }
+
+    #[tokio::test]
+    async fn owner_message_in_dm_is_addressed_without_a_tag() {
+        let dm_id = Uuid::new_v4();
+        let stream_id = Uuid::new_v4();
+        let unknown_id = Uuid::new_v4();
+        let info = |channel_type: &str| relay::ChannelInfo {
+            name: channel_type.into(),
+            channel_type: channel_type.into(),
+            description: None,
+        };
+        let resolver = resolver(HashMap::from([
+            (dm_id, info("dm")),
+            (stream_id, info("stream")),
+        ]));
+        let owner = nostr::Keys::generate();
+        let other = nostr::Keys::generate();
+        let owner_hex = owner.public_key().to_hex();
+        let me = Some(owner_hex.as_str());
+        let event = |keys: &nostr::Keys, kind: u32, channel_id: Uuid| relay::BuzzEvent {
+            connection_generation: 0,
+            channel_id,
+            event: nostr::EventBuilder::new(nostr::Kind::Custom(kind as u16), "hi")
+                .sign_with_keys(keys)
+                .unwrap(),
+        };
+        let addressed = |keys, kind, channel_id, owner| {
+            let event = event(keys, kind, channel_id);
+            let resolver = &resolver;
+            async move { is_owner_message_in_dm(&event, owner, resolver).await }
+        };
+
+        assert!(addressed(&owner, KIND_STREAM_MESSAGE, dm_id, me).await);
+        assert!(addressed(&owner, KIND_STREAM_MESSAGE_EDIT, dm_id, me).await);
+        assert!(!addressed(&owner, 7, dm_id, me).await);
+        assert!(!addressed(&owner, KIND_STREAM_MESSAGE, stream_id, me).await);
+        assert!(!addressed(&owner, KIND_STREAM_MESSAGE, unknown_id, me).await);
+        assert!(!addressed(&other, KIND_STREAM_MESSAGE, dm_id, me).await);
+        assert!(!addressed(&owner, KIND_STREAM_MESSAGE, dm_id, None).await);
     }
 
     #[tokio::test]

@@ -371,6 +371,18 @@ pub async fn match_event(
     rules: &[SubscriptionRule],
     agent_pubkey_hex: &str,
 ) -> Option<MatchedRule> {
+    match_event_addressed(event, channel_id, rules, agent_pubkey_hex, false).await
+}
+
+/// [`match_event`], where `addressed` satisfies `require_mention` without a
+/// `p` tag (an owner message in a direct message with the agent).
+pub async fn match_event_addressed(
+    event: &nostr::Event,
+    channel_id: uuid::Uuid,
+    rules: &[SubscriptionRule],
+    agent_pubkey_hex: &str,
+    addressed: bool,
+) -> Option<MatchedRule> {
     let filter_ctx = FilterContext::from_event(event, channel_id);
 
     for (index, rule) in rules.iter().enumerate() {
@@ -387,7 +399,7 @@ pub async fn match_event(
         // 3. Mention check — look for a `p` tag whose first element equals
         //    agent_pubkey_hex. Uses tag.as_slice() for stable, library-independent
         //    access — avoids relying on the Display impl of tag kind.
-        if rule.require_mention {
+        if rule.require_mention && !addressed {
             let mentioned = event.tags.iter().any(|tag| {
                 let s = tag.as_slice();
                 s.first().map(|k| k.as_str()) == Some("p")
@@ -661,6 +673,45 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(matched.prompt_tag, "mentioned");
+
+        let addressed =
+            match_event_addressed(&event_no_mention, channel_id, &rules, agent_pubkey, true)
+                .await
+                .unwrap();
+        assert_eq!(addressed.prompt_tag, "mentioned");
+    }
+
+    #[tokio::test]
+    async fn test_addressed_event_still_obeys_kinds_and_filter() {
+        let agent_pubkey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+        let channel_id = any_channel();
+        let rules = vec![make_rule(
+            "mention-only",
+            ChannelScope::All("all".into()),
+            vec![9],
+            true,
+            Some("content == \"go\""),
+            None,
+        )];
+
+        let wrong_kind = make_event(7, "go");
+        assert!(
+            match_event_addressed(&wrong_kind, channel_id, &rules, agent_pubkey, true)
+                .await
+                .is_none()
+        );
+        let wrong_content = make_event(9, "stop");
+        assert!(
+            match_event_addressed(&wrong_content, channel_id, &rules, agent_pubkey, true)
+                .await
+                .is_none()
+        );
+        let ok = make_event(9, "go");
+        assert!(
+            match_event_addressed(&ok, channel_id, &rules, agent_pubkey, true)
+                .await
+                .is_some()
+        );
     }
 
     #[tokio::test]
