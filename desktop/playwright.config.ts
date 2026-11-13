@@ -31,6 +31,7 @@ export default defineConfig({
         "**/identity-key-help.spec.ts",
         "**/olympus-motion.spec.ts",
         "**/olympus-agents.spec.ts",
+        "**/master-agent.spec.ts",
         "**/exact-key-profile.spec.ts",
         "**/key-import-reveal.spec.ts",
         "**/navigation.spec.ts",
