@@ -1,7 +1,15 @@
 import * as React from "react";
 
 import type { OlympusProposal } from "@/features/agents/lib/olympusProposals";
-import { sendDesktopNotification } from "@/features/notifications/lib/desktop";
+import type { NotificationSettings } from "@/features/notifications/hooks";
+import {
+  requestDockBounce,
+  sendDesktopNotification,
+} from "@/features/notifications/lib/desktop";
+import {
+  playNotificationSound,
+  resolveSlotSound,
+} from "@/features/notifications/lib/sound";
 import type { Channel } from "@/shared/api/types";
 import { KIND_OLYMPUS_PROPOSAL } from "@/shared/constants/kinds";
 import { normalizePubkey } from "@/shared/lib/pubkey";
@@ -24,19 +32,25 @@ function storage(): Storage | null {
 export function useProposalAlerts({
   channels,
   currentPubkey,
-  enabled,
   masterLabel,
   masterPubkey,
+  notificationSettings,
   proposals,
 }: {
   channels: readonly Channel[];
   currentPubkey: string | undefined;
-  enabled: boolean;
+  notificationSettings: NotificationSettings | null;
   masterLabel: string | null;
   masterPubkey: string | null;
   proposals: readonly OlympusProposal[];
 }) {
   const me = currentPubkey ? normalizePubkey(currentPubkey) : "";
+  const enabled = Boolean(
+    notificationSettings?.desktopEnabled &&
+      notificationSettings.slotAlertsEnabled.needs_action,
+  );
+  const settings = React.useRef(notificationSettings);
+  settings.current = notificationSettings;
   const [tick, setTick] = React.useState(0);
   const ledger = React.useRef<{
     me: string;
@@ -75,6 +89,12 @@ export function useProposalAlerts({
       })
         .then((sent) => {
           if (!sent || ledger.current?.me !== me) return;
+          if (settings.current) {
+            playNotificationSound(
+              resolveSlotSound(settings.current, "needs_action"),
+            );
+          }
+          void requestDockBounce();
           ledger.current.value = recordProposalAlert(
             ledger.current.value,
             alert,

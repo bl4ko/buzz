@@ -7,6 +7,7 @@ import {
   saveDraftEntry,
 } from "@/features/messages/lib/useDrafts";
 import { usePresenceQuery } from "@/features/presence/hooks";
+import type { NotificationSettings } from "@/features/notifications/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { Channel, PresenceStatus } from "@/shared/api/types";
 import { hasPrimaryShortcutModifier } from "@/shared/lib/platform";
@@ -80,19 +81,19 @@ function seedDraft(channelId: string, seed: AskMasterSeed) {
 }
 
 export function useMasterAgentController({
-  alertsEnabled,
   channels,
   currentChannelId,
   currentPubkey,
   goChannel,
+  notificationSettings,
   openDm,
   shortcutDisabled,
 }: {
-  alertsEnabled: boolean;
   channels: readonly Channel[];
   currentChannelId: string | null;
   currentPubkey: string | undefined;
   goChannel: (channelId: string) => unknown;
+  notificationSettings: NotificationSettings | null;
   openDm: (input: { pubkeys: string[] }) => Promise<Channel>;
   shortcutDisabled: boolean;
 }) {
@@ -129,9 +130,9 @@ export function useMasterAgentController({
   useProposalAlerts({
     channels,
     currentPubkey,
-    enabled: alertsEnabled,
     masterLabel: agent?.label ?? null,
     masterPubkey: pubkey,
+    notificationSettings,
     proposals,
   });
 
