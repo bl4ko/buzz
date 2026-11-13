@@ -8,6 +8,7 @@ import {
   scaleProfileAvatarStatusGeometry,
 } from "@/features/profile/ui/ProfileAvatarWithStatus";
 import { ChannelMenuButton } from "@/features/sidebar/ui/SidebarSection";
+import { cn } from "@/shared/lib/cn";
 import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
 import {
   SidebarGroup,
@@ -48,11 +49,20 @@ export function MasterAgentSidebarEntry({
   const hasUnread = Boolean(dm && unreadChannelIds.has(dm.id));
   const activeWorking = dm ? activeWorkingByChannelId.get(dm.id) : undefined;
   const open = () => void ask();
+  const showUnread = Boolean(hasUnread && !isActive && dm);
 
   return (
     <SidebarGroup className="py-0" data-testid="master-agent-entry">
       <SidebarMenu>
-        <SidebarMenuItem className="group/menu-item">
+        <SidebarMenuItem
+          className={cn(
+            "group/menu-item",
+            pending > 0 &&
+              (showUnread
+                ? "[&_[data-sidebar=menu-button]]:pr-[4.75rem]"
+                : "[&_[data-sidebar=menu-button]]:pr-11"),
+          )}
+        >
           {dm ? (
             <ChannelMenuButton
               activeWorking={activeWorking}
@@ -97,8 +107,8 @@ export function MasterAgentSidebarEntry({
               </span>
             </SidebarMenuButton>
           )}
-          {pending > 0 || (hasUnread && !isActive && dm) ? (
-            <SidebarMenuBadge className="right-2 gap-1 px-0">
+          {pending > 0 || showUnread ? (
+            <SidebarMenuBadge className="right-2 top-1/2 -translate-y-1/2 gap-1 px-0">
               {pending > 0 ? (
                 <span
                   className="flex h-5 items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 text-2xs font-semibold text-amber-700 dark:text-amber-300"
@@ -113,7 +123,7 @@ export function MasterAgentSidebarEntry({
                   </span>
                 </span>
               ) : null}
-              {hasUnread && !isActive && dm ? (
+              {showUnread && dm ? (
                 <span
                   className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-2xs font-semibold text-primary-foreground"
                   data-testid="master-agent-unread"

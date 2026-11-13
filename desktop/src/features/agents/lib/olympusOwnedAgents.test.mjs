@@ -59,3 +59,14 @@ test("the key changes with the key set, the status, and the name", () => {
     olympusOwnedAgentsKey([{ ...base[0], status: "deployed" }, base[1]]),
   );
 });
+
+test("the kind 0 display name wins over the spec name", () => {
+  const named = olympusOwnedAgents(groups, ME, {
+    [ZEUS]: { displayName: "Zeus Prime", name: "zeus" },
+    [ARGUS]: { displayName: null, name: "Argus" },
+  });
+  assert.deepEqual(
+    named.map((agent) => agent.name),
+    ["Argus", "Zeus Prime"],
+  );
+});

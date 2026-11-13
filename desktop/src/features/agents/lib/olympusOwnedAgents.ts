@@ -6,9 +6,14 @@ export type OlympusOwnedAgent = {
   status: "deployed" | "stopped";
 };
 
+type ProfileNames = Readonly<
+  Record<string, { displayName?: string | null; name?: string | null }>
+>;
+
 export function olympusOwnedAgents(
   groups: readonly OlympusWorkspaceGroup[],
   me: string | null | undefined,
+  profiles: ProfileNames = {},
 ): OlympusOwnedAgent[] {
   const owner = me?.toLowerCase();
   if (!owner) return [];
@@ -19,7 +24,11 @@ export function olympusOwnedAgents(
       if (byKey.has(agent.publicKey)) continue;
       byKey.set(agent.publicKey, {
         pubkey: agent.publicKey,
-        name: agent.spec.profile?.displayName?.trim() || agent.name,
+        name:
+          profiles[agent.publicKey]?.displayName?.trim() ||
+          agent.spec.profile?.displayName?.trim() ||
+          profiles[agent.publicKey]?.name?.trim() ||
+          agent.name,
         status: agent.phase === "Suspended" ? "stopped" : "deployed",
       });
     }

@@ -140,7 +140,7 @@ test("a decided proposal shows its result reason and decided time, no buttons", 
   const card = byTestId(container, "olympus-proposal-p-rejected");
   assert.equal(
     byTestId(card, "olympus-proposal-result").textContent,
-    "rejected by the owner: keep Argus runningDecided 1m ago",
+    "Result:rejected by the owner: keep Argus running· decided 1m ago",
   );
   assert.equal(
     byTestId(card, "olympus-proposal-phase").textContent,

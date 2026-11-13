@@ -608,7 +608,7 @@ function Stat({
 }) {
   return (
     <div className="min-w-0 space-y-0.5">
-      <dt className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+      <dt className="whitespace-nowrap text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </dt>
       <dd

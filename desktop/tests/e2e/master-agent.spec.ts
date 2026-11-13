@@ -162,7 +162,7 @@ test("the master agent's typing shows as agent work in its DM", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("mira");
   await expect(page).toHaveURL(/\/channels\/[^/?#]+/);
   const channelId = decodeURIComponent(
-    new URL(page.url()).pathname.split("/")[2] ?? "",
+    page.url().match(/\/channels\/([^/?#]+)/)?.[1] ?? "",
   );
 
   const trigger = page.getByTestId("bot-activity-composer-trigger");
