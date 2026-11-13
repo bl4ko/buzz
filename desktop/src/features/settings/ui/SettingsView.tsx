@@ -7,6 +7,7 @@ import {
   canManageCommunityMembers,
   shouldWarnMissingMembershipSnapshot,
 } from "@/shared/api/relayMembers";
+import { SHOW_BLOCK_HOSTED_COMMUNITIES } from "@/shared/constants/olympus";
 import {
   getFeature,
   resolveEnabled,
@@ -146,6 +147,9 @@ export function SettingsView({
       }
       // Invites and member management require a discovered owner/admin role.
       // Open relays have no membership snapshot or invite controls.
+      if (s.value === "hosted-communities") {
+        return SHOW_BLOCK_HOSTED_COMMUNITIES;
+      }
       if (s.value === "community-members") {
         return canManageCommunityMembers(myMembershipQuery.data);
       }

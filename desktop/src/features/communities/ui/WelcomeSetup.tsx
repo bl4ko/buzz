@@ -11,6 +11,7 @@ import {
   OnboardingSlideTransition,
 } from "@/features/onboarding/ui/OnboardingSlideTransition";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { SHOW_BLOCK_HOSTED_COMMUNITIES } from "@/shared/constants/olympus";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { pubkeyToNpub } from "@/shared/lib/nostrUtils";
 import { useSystemColorScheme } from "@/shared/theme/useSystemColorScheme";
@@ -156,19 +157,21 @@ export function WelcomeSetup({
                     Join a community
                   </button>
                 </Card>
-                <Card
-                  asChild
-                  className={COMMUNITY_OPTION_CARD_CLASS}
-                  variant="textured"
-                >
-                  <button
-                    data-testid="community-choice-create"
-                    onClick={beginHostedCommunity}
-                    type="button"
+                {SHOW_BLOCK_HOSTED_COMMUNITIES ? (
+                  <Card
+                    asChild
+                    className={COMMUNITY_OPTION_CARD_CLASS}
+                    variant="textured"
                   >
-                    Create a community
-                  </button>
-                </Card>
+                    <button
+                      data-testid="community-choice-create"
+                      onClick={beginHostedCommunity}
+                      type="button"
+                    >
+                      Create a community
+                    </button>
+                  </Card>
+                ) : null}
                 <Card
                   asChild
                   className={COMMUNITY_OPTION_CARD_CLASS}
@@ -200,19 +203,21 @@ export function WelcomeSetup({
                 </p>
               </div>
               <div className="flex w-full flex-1 translate-y-16 flex-col items-center justify-center gap-20 py-8">
-                <Card
-                  asChild
-                  className={COMMUNITY_OPTION_CARD_CLASS}
-                  variant="textured"
-                >
-                  <button
-                    data-testid="existing-choice-owner"
-                    onClick={beginHostedCommunity}
-                    type="button"
+                {SHOW_BLOCK_HOSTED_COMMUNITIES ? (
+                  <Card
+                    asChild
+                    className={COMMUNITY_OPTION_CARD_CLASS}
+                    variant="textured"
                   >
-                    I own the community
-                  </button>
-                </Card>
+                    <button
+                      data-testid="existing-choice-owner"
+                      onClick={beginHostedCommunity}
+                      type="button"
+                    >
+                      I own the community
+                    </button>
+                  </Card>
+                ) : null}
                 <Card
                   asChild
                   className={COMMUNITY_OPTION_CARD_CLASS}

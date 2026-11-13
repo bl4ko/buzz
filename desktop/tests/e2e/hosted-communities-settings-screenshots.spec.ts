@@ -5,6 +5,8 @@ import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings } from "../helpers/settings";
 
+test.skip(() => true, "Olympus hides Block hosted communities");
+
 const OUTDIR = "test-results/hosted-communities";
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 /** A second valid identity key, used only as a contradictory hosted npub. */

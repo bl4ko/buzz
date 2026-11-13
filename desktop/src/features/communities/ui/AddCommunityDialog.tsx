@@ -5,6 +5,7 @@ import type { AddCommunityPrefillRequest } from "@/features/communities/addCommu
 import { HostedCommunityCreateFlow } from "@/features/communities/ui/HostedCommunityCreateFlow";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
+import { SHOW_BLOCK_HOSTED_COMMUNITIES } from "@/shared/constants/olympus";
 import {
   Dialog,
   DialogContent,
@@ -132,25 +133,27 @@ export function AddCommunityDialog({
         <div className="px-6 pb-6 pt-3">
           {mode === "choose" ? (
             <div className="space-y-3">
-              <button
-                className={OPTION_CLASS}
-                data-testid="add-community-create"
-                onClick={() => setMode("create")}
-                type="button"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Plus className="h-4 w-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-foreground">
-                    Create a new community
+              {SHOW_BLOCK_HOSTED_COMMUNITIES ? (
+                <button
+                  className={OPTION_CLASS}
+                  data-testid="add-community-create"
+                  onClick={() => setMode("create")}
+                  type="button"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Plus className="h-4 w-4" />
                   </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                    Claim a Buzz address for your team.
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground">
+                      Create a new community
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                      Claim a Buzz address for your team.
+                    </span>
                   </span>
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
-              </button>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+                </button>
+              ) : null}
 
               <button
                 className={OPTION_CLASS}
