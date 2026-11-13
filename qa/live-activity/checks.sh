@@ -62,7 +62,7 @@ consent_live_activities() {
   sleep 1
 }
 
-app_started() { ! ax_has "Starting Buzz"; }
+app_started() { ! ax_has "Starting Olympus"; }
 
 fresh() {
   kill_app
@@ -132,7 +132,13 @@ live_activities_switch() {
   if ! ax_has_exact "Live Activities"; then
     idb ui swipe --udid "$(udid)" 200 750 200 200 --duration 0.4 >/dev/null
     wait_for 10 ax_has_exact "Apps" && tap_ax_exact "Apps" || return 1
-    wait_for 10 ax_has_exact "Buzz" && tap_ax_exact "Buzz" || return 1
+    wait_for 10 ax_has_exact "Contacts" || return 1
+    for _ in 1 2 3; do
+      ax_has_exact "Olympus" && break
+      idb ui swipe --udid "$(udid)" 200 700 200 250 --duration 0.4 >/dev/null
+      sleep 1
+    done
+    wait_for 10 ax_has_exact "Olympus" && tap_ax_exact "Olympus" || return 1
     wait_for 10 ax_has_exact "Live Activities" || return 1
   fi
   live_activity_is "$1" || tap_switch "Live Activities"
@@ -360,7 +366,7 @@ check_11() {
   expect "relay recorded not_registered" wait_for 30 result_is not_registered
   expect "gateway still pushed the approval alert" wait_apns "$mark" '.type == "alert"' 30
   expect "no Live Activity push was sent" apns_none "$mark" '.type == "liveactivity"'
-  expect "Buzz notification is on the Lock Screen" wait_ax "BUZZ"
+  expect "Olympus notification is on the Lock Screen" wait_ax "OLYMPUS"
   expect "turn Live Activities on again" live_activities_switch 1
   kill_app
   open_app
