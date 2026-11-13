@@ -175,7 +175,7 @@ function OlympusWorkspaceAgents({ group }: { group: OlympusWorkspaceGroup }) {
       ) : (
         <ul className="divide-y divide-border/50">
           {group.agents.map((agent) => (
-            <li key={`${agent.author}:${agent.d}`}>
+            <li className="@container" key={`${agent.author}:${agent.d}`}>
               <OlympusAgentRow agent={agent} />
             </li>
           ))}
@@ -209,18 +209,23 @@ function OlympusAgentRow({ agent }: { agent: OlympusAgent }) {
       type="button"
     >
       <OlympusAgentAvatar agent={agent} />
-      <span className="grid min-w-0 gap-1 md:grid-cols-[minmax(0,1fr)_13rem_9rem] md:items-center md:gap-4">
-        <span className="min-w-0">
+      <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 @2xl:grid-cols-[minmax(0,1fr)_13rem_9rem] @2xl:gap-x-4">
+        <span className="col-span-2 min-w-0 @2xl:col-span-1">
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">
+            <span
+              className="min-w-[2.5rem] truncate text-sm font-medium text-foreground"
+              data-testid="olympus-agent-label"
+            >
               {label}
             </span>
             {label !== agent.name ? (
-              <span className="truncate font-mono text-xs text-muted-foreground">
+              <span className="min-w-0 shrink-[4] truncate font-mono text-xs text-muted-foreground">
                 {agent.name}
               </span>
             ) : null}
-            {agent.role === "master" ? <OlympusMasterChip /> : null}
+            {agent.role === "master" ? (
+              <OlympusMasterChip data-testid="olympus-master-chip" />
+            ) : null}
           </span>
           <span className="block truncate text-xs text-muted-foreground">
             {spec.harness} · {spec.model}
@@ -235,7 +240,7 @@ function OlympusAgentRow({ agent }: { agent: OlympusAgent }) {
             </OlympusChip>
           ) : null}
         </span>
-        <span className="text-xs text-muted-foreground md:text-right">
+        <span className="whitespace-nowrap text-right text-xs text-muted-foreground">
           {lastActivity ? `Active ${lastActivity}` : "No activity"}
         </span>
       </span>

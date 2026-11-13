@@ -410,6 +410,8 @@ function EmptyUsage({ children }: { children: React.ReactNode }) {
 const HEAD_CELL =
   "px-3 py-2 text-left text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground";
 const NUMBER_CELL = "px-3 py-2.5 text-right tabular-nums";
+const MEDIUM = "hidden @xl:table-cell";
+const WIDE = "hidden @3xl:table-cell";
 
 function defaultIdentity(usage: OlympusAgentUsage): AgentIdentity {
   return { label: usage.name, avatarUrl: null };
@@ -460,11 +462,8 @@ export function OlympusUsageTable({
 
       <ModelLegend agents={agents} palette={palette} />
 
-      <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card">
-        <table
-          className="w-full min-w-[720px] text-sm"
-          data-testid="olympus-usage-table"
-        >
+      <div className="@container overflow-hidden rounded-2xl border border-border/70 bg-card">
+        <table className="w-full text-sm" data-testid="olympus-usage-table">
           <thead className="border-b border-border/70">
             <tr>
               <th className={HEAD_CELL} scope="col">
@@ -473,7 +472,7 @@ export function OlympusUsageTable({
               <th className={cn(HEAD_CELL, "w-[28%]")} scope="col">
                 Tokens
               </th>
-              <th className={cn(HEAD_CELL, "text-right")} scope="col">
+              <th className={cn(HEAD_CELL, WIDE, "text-right")} scope="col">
                 Turns
               </th>
               <th className={cn(HEAD_CELL, "text-right")} scope="col">
@@ -482,10 +481,10 @@ export function OlympusUsageTable({
               <th className={cn(HEAD_CELL, "text-right")} scope="col">
                 Failed
               </th>
-              <th className={HEAD_CELL} scope="col">
+              <th className={cn(HEAD_CELL, MEDIUM)} scope="col">
                 Last run
               </th>
-              <th className={cn(HEAD_CELL, "text-right")} scope="col">
+              <th className={cn(HEAD_CELL, WIDE, "text-right")} scope="col">
                 Share
               </th>
             </tr>
@@ -515,6 +514,14 @@ export function OlympusUsageTable({
                           {row.usage.workspace}
                           {row.usage.harness ? ` · ${row.usage.harness}` : ""}
                         </span>
+                        {row.usage.lastRun ? (
+                          <span className="block text-xs @xl:hidden">
+                            <LastRun
+                              lastRun={row.usage.lastRun}
+                              nowMs={nowMs}
+                            />
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   </th>
@@ -534,7 +541,7 @@ export function OlympusUsageTable({
                       />
                     </div>
                   </td>
-                  <td className={NUMBER_CELL}>
+                  <td className={cn(NUMBER_CELL, WIDE)}>
                     {formatCompactCount(row.window?.turns ?? 0)}
                   </td>
                   <td className={NUMBER_CELL}>
@@ -543,10 +550,12 @@ export function OlympusUsageTable({
                   <td className={NUMBER_CELL}>
                     <FailedRuns count={row.window?.failedRuns ?? 0} />
                   </td>
-                  <td className="px-3 py-2.5 text-xs">
+                  <td className={cn("px-3 py-2.5 text-xs", MEDIUM)}>
                     <LastRun lastRun={row.usage.lastRun} nowMs={nowMs} />
                   </td>
-                  <td className={cn(NUMBER_CELL, "text-muted-foreground")}>
+                  <td
+                    className={cn(NUMBER_CELL, WIDE, "text-muted-foreground")}
+                  >
                     {formatShare(row.window?.share ?? null)}
                   </td>
                 </tr>
@@ -577,7 +586,7 @@ export function OlympusUsageTable({
                   />
                 </div>
               </td>
-              <td className={cn(NUMBER_CELL, "font-semibold")}>
+              <td className={cn(NUMBER_CELL, WIDE, "font-semibold")}>
                 {formatCompactCount(summary.total.turns)}
               </td>
               <td className={cn(NUMBER_CELL, "font-semibold")}>
@@ -586,8 +595,8 @@ export function OlympusUsageTable({
               <td className={cn(NUMBER_CELL, "font-semibold")}>
                 <FailedRuns count={summary.total.failedRuns} />
               </td>
-              <td className="px-3 py-2.5" />
-              <td className={cn(NUMBER_CELL, "text-muted-foreground")}>
+              <td className={cn("px-3 py-2.5", MEDIUM)} />
+              <td className={cn(NUMBER_CELL, WIDE, "text-muted-foreground")}>
                 {summary.total.tokens > 0 ? "100%" : "–"}
               </td>
             </tr>

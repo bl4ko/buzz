@@ -30,6 +30,7 @@ export default defineConfig({
         "**/onboarding-docked-cta-screenshots.spec.ts",
         "**/identity-key-help.spec.ts",
         "**/olympus-motion.spec.ts",
+        "**/olympus-responsive.spec.ts",
         "**/olympus-agents.spec.ts",
         "**/master-agent.spec.ts",
         "**/olympus-proposals.spec.ts",

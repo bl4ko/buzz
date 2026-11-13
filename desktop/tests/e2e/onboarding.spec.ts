@@ -2240,7 +2240,7 @@ test("connected first-community profile keeps navigation inside the card and bal
   });
   expect(saveStyles).toEqual({
     backgroundColor: "rgb(23, 23, 23)",
-    color: "rgb(240, 240, 205)",
+    color: "rgb(245, 235, 208)",
   });
   const defaultDialogHeight = imageDialogHeight;
   await page.getByRole("tab", { name: "Emoji" }).click();
@@ -2292,7 +2292,7 @@ test("connected first-community profile keeps navigation inside the card and bal
   });
   expect(captureButtonStyles).toMatchObject({
     backgroundColor: "rgb(23, 23, 23)",
-    color: "rgb(240, 240, 205)",
+    color: "rgb(245, 235, 208)",
     height: "38px",
   });
   expect(captureButtonStyles.borderRadius).toBeGreaterThan(1_000);

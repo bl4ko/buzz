@@ -107,9 +107,11 @@ export function OlympusRunResult({ result }: { result: string | null }) {
   );
 }
 
-export function OlympusMasterChip() {
+export function OlympusMasterChip(
+  props: React.HTMLAttributes<HTMLSpanElement>,
+) {
   return (
-    <OlympusChip icon={Crown} tone="warn">
+    <OlympusChip icon={Crown} tone="warn" {...props}>
       Master
     </OlympusChip>
   );

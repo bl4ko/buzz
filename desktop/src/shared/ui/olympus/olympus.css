@@ -28,6 +28,35 @@
     display: inline-block;
     flex-shrink: 0;
   }
+
+  .buzz-onboarding-neutral-theme,
+  .buzz-onboarding-neutral-theme[data-system-color-scheme="light"],
+  .dark
+    .buzz-onboarding-neutral-theme[data-system-color-scheme="light"]:not(
+      .buzz-startup-shell
+    ) {
+    --buzz-welcome-chartreuse: var(--olympus-marble);
+    --buzz-onboarding-backup-ink: #8a4b06;
+    --buzz-onboarding-avatar-accent-bg: 245 235 208;
+    --buzz-onboarding-avatar-accent-fg: 138 75 6;
+    --buzz-onboarding-avatar-action-fg: 245 235 208;
+    --buzz-onboarding-avatar-control-fg: 138 75 6;
+  }
+
+  .buzz-onboarding-neutral-theme:not(.buzz-onboarding-security-theme) {
+    --buzz-onboarding-shell-bottom: #eef2ff;
+    --buzz-onboarding-cta-label: var(--olympus-marble);
+  }
+
+  .dark .buzz-onboarding-neutral-theme:not(.buzz-startup-shell),
+  .buzz-onboarding-neutral-theme[data-system-color-scheme="dark"]:not(
+    .buzz-startup-shell
+  ) {
+    --buzz-onboarding-avatar-accent-bg: 247 194 52;
+    --buzz-onboarding-avatar-action-bg: 138 75 6;
+    --buzz-onboarding-avatar-action-fg: 245 235 208;
+    --buzz-onboarding-avatar-control-fg: 245 235 208;
+  }
 }
 
 .olympus-bolt svg {
