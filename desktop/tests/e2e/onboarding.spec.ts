@@ -1823,7 +1823,7 @@ test("community onboarding reuses an existing relay profile", async ({
     )
     .toBeGreaterThan(0);
   await expect(
-    page.getByRole("heading", { name: "Meet your starter team" }),
+    page.getByRole("heading", { name: "Welcome to Olympus" }),
   ).toBeVisible();
   await expect(
     page
