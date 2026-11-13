@@ -11,6 +11,7 @@ import { resetActiveAgentTurnsStore } from "../../agents/activeAgentTurnsStore.t
 import {
   channelScopedBotTypingPubkeyKey,
   classifyChannelTyping,
+  mergeAgentNamesIntoProfiles,
   mergeMemberAgentFlagsIntoProfiles,
 } from "./useChannelActivityTyping.ts";
 import {
@@ -231,5 +232,33 @@ describe("Olympus agents in channel typing", () => {
       { pubkey: "7".repeat(64), name: "Argus", status: "deployed" },
     ]);
     assert.deepEqual(result.agents, []);
+  });
+});
+
+describe("mergeAgentNamesIntoProfiles with owned Olympus agents", () => {
+  it("marks them as agents owned by the viewer and keeps a profile name", () => {
+    const me = "ee".repeat(32);
+    const merged = mergeAgentNamesIntoProfiles(
+      {
+        [AGENT_2]: {
+          displayName: "Zeus",
+          avatarUrl: "https://x/z.png",
+          nip05Handle: null,
+        },
+      },
+      [],
+      [],
+      me,
+      [
+        { pubkey: AGENT, name: "obsproof" },
+        { pubkey: AGENT_2, name: "zeus" },
+      ],
+    );
+    assert.equal(merged[AGENT].isAgent, true);
+    assert.equal(merged[AGENT].ownerPubkey, me);
+    assert.equal(merged[AGENT].displayName, "obsproof");
+    assert.equal(merged[AGENT_2].displayName, "Zeus");
+    assert.equal(merged[AGENT_2].avatarUrl, "https://x/z.png");
+    assert.equal(merged[AGENT_2].ownerPubkey, me);
   });
 });
