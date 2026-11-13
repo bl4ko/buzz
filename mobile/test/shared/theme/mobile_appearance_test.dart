@@ -31,4 +31,61 @@ void main() {
       }
     });
   }
+
+  test('Storm message surfaces and roles come from its palette', () {
+    double contrast(Color a, Color b) {
+      final x = a.computeLuminance();
+      final y = b.computeLuminance();
+      return x > y ? (x + .05) / (y + .05) : (y + .05) / (x + .05);
+    }
+
+    final storm = mobileAppearanceTheme(
+      Brightness.dark,
+      'neutral',
+      theme: stormThemeName,
+    );
+    final scheme = storm.colorScheme;
+    final colors = storm.extension<AppColors>()!;
+    final bubble = receivedMessageSurface(storm);
+    expect(bubble, scheme.surfaceContainerHigh);
+    expect(colors.tertiaryText, scheme.onSurfaceVariant);
+    expect(colors.controlSurface, scheme.surfaceContainerHighest);
+    for (final surface in [bubble, colors.controlSurface!]) {
+      expect(surface.b, greaterThan(surface.r), reason: '$surface');
+    }
+    for (final ink in [
+      scheme.onSurface,
+      colors.messageLink!,
+      colors.messageCode!,
+      colors.messageStrong!,
+    ]) {
+      expect(contrast(ink, bubble), greaterThanOrEqualTo(4.5), reason: '$ink');
+    }
+    for (final ink in [colors.messageAuthor!, colors.tertiaryText!]) {
+      expect(
+        contrast(ink, scheme.surface),
+        greaterThanOrEqualTo(4.5),
+        reason: '$ink',
+      );
+    }
+    final mentionFill = Color.alphaBlend(
+      colors.messageLink!.withValues(alpha: 0.15),
+      bubble,
+    );
+    expect(
+      contrast(colors.messageLink!, mentionFill),
+      greaterThanOrEqualTo(4.5),
+    );
+
+    for (final brightness in Brightness.values) {
+      final theme = mobileAppearanceTheme(brightness, 'neutral');
+      expect(
+        receivedMessageSurface(theme),
+        brightness == Brightness.dark
+            ? const Color(0xFF292929)
+            : const Color(0xFFF3F3F4),
+      );
+      expect(theme.extension<AppColors>()!.controlSurface, isNull);
+    }
+  });
 }

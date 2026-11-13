@@ -220,7 +220,10 @@ class MessageContent extends HookConsumerWidget {
     final chatColors = ChatColors.of(context);
     final ownTextColor = chatColors.foreground;
     // Own-bubble links share the bubble ink; markdown marks them by underline.
-    final linkColor = ownMessage ? ownTextColor : context.colors.tertiary;
+    final linkColor = ownMessage
+        ? ownTextColor
+        : context.theme.extension<AppColors>()?.messageLink ??
+              context.colors.tertiary;
     final bubbleInk = ownMessage ? ownTextColor : context.colors.onSurface;
     final onSurface = context.colors.onSurface;
     // GptMarkdownTheme notifies its dependents whenever the data object
@@ -516,9 +519,7 @@ class MessageContent extends HookConsumerWidget {
                         child: LocalSendBubbleSurface(
                           color: ownMessage
                               ? chatColors.outgoing
-                              : receivedMessageSurface(
-                                  context.colors.brightness,
-                                ),
+                              : receivedMessageSurface(context.theme),
                           shape: const _MessageBubbleShape(),
                           child: Padding(
                             padding: EdgeInsets.fromLTRB(

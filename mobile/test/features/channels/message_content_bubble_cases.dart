@@ -57,7 +57,7 @@ void bubbleContentTests() {
             surface.color,
             own
                 ? theme.extension<ChatColors>()!.outgoing
-                : receivedMessageSurface(brightness),
+                : receivedMessageSurface(theme),
           );
         }
       }

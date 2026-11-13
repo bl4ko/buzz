@@ -14,6 +14,9 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color? messageLink;
   final Color? messageAuthor;
   final Color? sectionForeground;
+  final Color? messageSurface;
+  final Color? tertiaryText;
+  final Color? controlSurface;
 
   /// Gradient for the app's top section, non-null only under the Buzz themes.
   /// Carried on the theme rather than read from a provider so any surface can
@@ -34,6 +37,9 @@ class AppColors extends ThemeExtension<AppColors> {
     this.messageLink,
     this.messageAuthor,
     this.sectionForeground,
+    this.messageSurface,
+    this.tertiaryText,
+    this.controlSurface,
   });
 
   @override
@@ -51,6 +57,9 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? messageLink,
     Color? messageAuthor,
     Color? sectionForeground,
+    Color? messageSurface,
+    Color? tertiaryText,
+    Color? controlSurface,
   }) => AppColors(
     success: success ?? this.success,
     warning: warning ?? this.warning,
@@ -65,6 +74,9 @@ class AppColors extends ThemeExtension<AppColors> {
     messageLink: messageLink ?? this.messageLink,
     messageAuthor: messageAuthor ?? this.messageAuthor,
     sectionForeground: sectionForeground ?? this.sectionForeground,
+    messageSurface: messageSurface ?? this.messageSurface,
+    tertiaryText: tertiaryText ?? this.tertiaryText,
+    controlSurface: controlSurface ?? this.controlSurface,
   );
 
   @override
@@ -100,6 +112,9 @@ class AppColors extends ThemeExtension<AppColors> {
         other.sectionForeground,
         t,
       ),
+      messageSurface: Color.lerp(messageSurface, other.messageSurface, t),
+      tertiaryText: Color.lerp(tertiaryText, other.tertiaryText, t),
+      controlSurface: Color.lerp(controlSurface, other.controlSurface, t),
     );
   }
 }
