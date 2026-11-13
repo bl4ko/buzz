@@ -148,7 +148,8 @@ test("a high-risk approve needs the extra confirmation and sends highRisk", asyn
     olympusEvents: [...olympusDevEvents(), highRisk, expired],
   });
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await page.getByTestId("open-olympus-view").click();
+  await page.getByTestId("olympus-tab-proposals").click();
   const list = page.getByTestId("olympus-proposals");
   await expect(list).toBeVisible({ timeout: 10_000 });
   await expect(list.getByTestId("olympus-proposal-p-expired00000")).toHaveCount(

@@ -18,7 +18,7 @@ import { TeamSnapshotImportDialog } from "./TeamSnapshotImportDialog";
 import { TeamShareDialog } from "./TeamShareDialog";
 import { TeamDeleteDialog } from "./TeamDeleteDialog";
 import { TeamDialog } from "./TeamDialog";
-import { OlympusAgentsSection } from "./OlympusAgentsSection";
+import { OlympusAgentsLink } from "@/features/olympus/ui/OlympusAgentsLink";
 import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
 import { useManagedAgentActions } from "./useManagedAgentActions";
@@ -219,6 +219,7 @@ export function AgentsView() {
             title="Agents"
           />
           <div className="flex flex-col gap-8">
+            <OlympusAgentsLink />
             <UnifiedAgentsSection
               getAvailability={agents.getAvailability}
               defaultModel={inheritedDefaults.model.value}
@@ -277,12 +278,6 @@ export function AgentsView() {
                 void personas.handleSetActive(persona, false, "library");
               }}
               onDeletePersona={personas.openDelete}
-            />
-
-            <OlympusAgentsSection
-              onOpenProfile={(pubkey) => {
-                openProfilePanel?.(pubkey);
-              }}
             />
 
             <TeamsSection

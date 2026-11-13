@@ -144,7 +144,76 @@ test("reads the role and the agent profile", () => {
   assert.deepEqual(master.spec.profile, {
     displayName: "Zeus",
     picture: "https://p/z.png",
+    about: null,
   });
+});
+
+test("reads ownership, runtime, access fields, and the effective spec", () => {
+  const plain = parseOlympusAgent(stateEvent({ id: "e1" }));
+  assert.equal(plain.gitopsFields, null);
+  assert.equal(plain.effectiveSpec, null);
+  assert.equal(plain.schedules[0].gitopsFields, null);
+  const content = agentContent({
+    gitopsFields: ["spec.model", "spec.profile.displayName", 3],
+    effectiveSpec: {
+      template: "base",
+      harness: "codex",
+      model: "gpt-5.5",
+      pool: "codex",
+    },
+  });
+  Object.assign(content.spec, {
+    template: "base",
+    harness: null,
+    model: null,
+    pool: null,
+    secrets: [{ name: "github-token", env: "GH_TOKEN" }, { env: "X" }],
+    kubernetesRole: "reader",
+    runtimeClass: "gvisor",
+    respondTo: [OWNER],
+    resources: { limits: { memory: "2Gi", cpu: 1 } },
+    storage: "10Gi",
+    backup: true,
+    instructionsFrom: { skillsRepo: "agents", path: "zeus/agents/zeus.md" },
+  });
+  content.schedules[0].asAgent = true;
+  content.schedules[0].gitopsFields = ["spec.cron"];
+  content.schedules[0].script = { gitSource: "agents", path: "jobs/run.sh" };
+  content.status.template = { name: "base", namespace: "olympus" };
+  content.status.egressMode = "hosts";
+  content.status.egressProxy = true;
+  const agent = parseOlympusAgent(stateEvent({ id: "e2", content }));
+  assert.deepEqual(agent.gitopsFields, [
+    "spec.model",
+    "spec.profile.displayName",
+  ]);
+  assert.equal(agent.spec.harness, "");
+  assert.equal(agent.effectiveSpec.harness, "codex");
+  assert.deepEqual(agent.spec.secrets, [
+    { name: "github-token", env: "GH_TOKEN" },
+  ]);
+  assert.equal(agent.spec.kubernetesRole, "reader");
+  assert.equal(agent.spec.runtimeClass, "gvisor");
+  assert.deepEqual(agent.spec.respondTo, [OWNER]);
+  assert.deepEqual(agent.spec.resources, {
+    limits: { memory: "2Gi", cpu: "1" },
+  });
+  assert.equal(agent.spec.backup, true);
+  assert.deepEqual(agent.spec.instructionsFrom, {
+    skillsRepo: "agents",
+    path: "zeus/agents/zeus.md",
+  });
+  assert.equal(agent.schedules[0].asAgent, true);
+  assert.deepEqual(agent.schedules[0].gitopsFields, ["spec.cron"]);
+  assert.equal(agent.schedules[0].script, "agents:jobs/run.sh");
+  assert.deepEqual(agent.runtime, {
+    template: { name: "base", namespace: "olympus" },
+    egressMode: "hosts",
+    egressProxy: true,
+    backup: false,
+    kubernetesRole: null,
+  });
+  assert.equal(agent.rawSpec.template, "base");
 });
 
 test("reads the truncation flags", () => {
@@ -292,4 +361,47 @@ test("lists models of the pool and addable MCP servers", () => {
   assert.deepEqual(olympusModelOptions(workspace, "local"), []);
   assert.deepEqual(olympusModelOptions(null, "anthropic"), []);
   assert.deepEqual(olympusAddableMcpServers(workspace, agent), ["search"]);
+});
+
+test("reads workspace ownership, templates, quota, and channel", () => {
+  const event = workspaceEvent();
+  const content = JSON.parse(event.content);
+  Object.assign(content, {
+    gitopsFields: [],
+    templates: [
+      {
+        name: "base",
+        namespace: "olympus",
+        harness: "claude-code",
+        pool: "claude",
+        model: "claude-opus-5-5",
+        effort: null,
+        mcpServers: ["share"],
+        memory: { bank: "private" },
+      },
+      { harness: "codex" },
+    ],
+  });
+  content.spec.quota = { cpu: "4", memory: "8Gi", pods: 10 };
+  content.status.channelId = "c0ffee";
+  content.status.schedulerPublicKey = AGENT_KEY;
+  event.content = JSON.stringify(content);
+  const workspace = parseOlympusWorkspace(event);
+  assert.deepEqual(workspace.gitopsFields, []);
+  assert.deepEqual(workspace.quota, { cpu: "4", memory: "8Gi", pods: "10" });
+  assert.equal(workspace.channelId, "c0ffee");
+  assert.equal(workspace.schedulerPublicKey, AGENT_KEY);
+  assert.deepEqual(workspace.templates, [
+    {
+      name: "base",
+      namespace: "olympus",
+      harness: "claude-code",
+      pool: "claude",
+      model: "claude-opus-5-5",
+      effort: null,
+      mcpServers: ["share"],
+      memory: { bank: "private" },
+    },
+  ]);
+  assert.equal(parseOlympusWorkspace(workspaceEvent()).gitopsFields, null);
 });

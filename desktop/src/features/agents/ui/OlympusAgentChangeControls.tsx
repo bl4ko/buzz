@@ -22,6 +22,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
+import { OlympusSelect } from "@/features/olympus/ui/OlympusParts";
 import { OLYMPUS_SELECT_CLASS } from "./OlympusAgentParts";
 
 type Send = (change: OlympusChange) => void;
@@ -335,19 +336,14 @@ export function OlympusMcpControls({
             <label className="text-xs text-muted-foreground" htmlFor={selectId}>
               MCP server to add
             </label>
-            <select
-              className={OLYMPUS_SELECT_CLASS}
+            <OlympusSelect
               disabled={disabled}
               id={selectId}
-              onChange={(event) => setServer(event.target.value)}
+              label="MCP server to add"
+              onChange={setServer}
+              options={addable.map((name) => ({ value: name, label: name }))}
               value={selected}
-            >
-              {addable.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <Button
             disabled={disabled || !selected}
@@ -393,16 +389,17 @@ export function OlympusMemoryControls({
           <label className="text-xs text-muted-foreground" htmlFor={selectId}>
             Memory bank
           </label>
-          <select
-            className={OLYMPUS_SELECT_CLASS}
+          <OlympusSelect
             disabled={disabled}
             id={selectId}
-            onChange={(event) => setBank(event.target.value)}
+            label="Memory bank"
+            onChange={setBank}
+            options={[
+              { value: "private", label: "private" },
+              { value: "workspace", label: "workspace" },
+            ]}
             value={bank}
-          >
-            <option value="private">private</option>
-            <option value="workspace">workspace</option>
-          </select>
+          />
         </div>
         <Button
           disabled={disabled || bank === current}

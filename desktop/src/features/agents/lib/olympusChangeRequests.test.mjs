@@ -368,3 +368,77 @@ test("a reset drops a pending request and its late result", async () => {
   assert.equal(await pending, null);
   assert.equal(getOlympusRequestState("dev/proof"), null);
 });
+
+test("schedule actions carry a schedule tag and no agent", () => {
+  const target = {
+    operator: OPERATOR,
+    workspace: "ops",
+    agent: null,
+    schedule: "daily-os-updates",
+  };
+  for (const action of ["suspend-schedule", "resume-schedule", "run-now"]) {
+    const template = buildOlympusChangeRequest(target, { action });
+    assert.deepEqual(template.tags, [
+      ["p", OPERATOR],
+      ["workspace", "ops"],
+      ["schedule", "daily-os-updates"],
+      ["action", action],
+    ]);
+    assert.deepEqual(JSON.parse(template.content), {
+      v: 1,
+      action,
+      workspace: "ops",
+      schedule: "daily-os-updates",
+    });
+  }
+  assert.throws(() =>
+    buildOlympusChangeRequest(
+      { ...target, schedule: null },
+      { action: "run-now" },
+    ),
+  );
+  assert.throws(() =>
+    buildOlympusChangeRequest(
+      { ...target, agent: "argus" },
+      { action: "run-now" },
+    ),
+  );
+  assert.throws(() => buildOlympusChangeRequest(target, { action: "delete" }));
+});
+
+test("patch and create with a spec carry the spec and the high-risk flag", () => {
+  const agent = { operator: OPERATOR, workspace: "ops", agent: "argus" };
+  const patch = buildOlympusChangeRequest(agent, {
+    action: "patch",
+    patch: { egress: [{ preset: "internet" }] },
+    highRisk: true,
+  });
+  assert.deepEqual(JSON.parse(patch.content), {
+    v: 1,
+    action: "patch",
+    workspace: "ops",
+    agent: "argus",
+    patch: { egress: [{ preset: "internet" }] },
+    highRisk: true,
+  });
+  const workspacePatch = buildOlympusChangeRequest(
+    { operator: OPERATOR, workspace: "ops", agent: null },
+    { action: "patch", patch: { suspend: true } },
+  );
+  assert.deepEqual(workspacePatch.tags, [
+    ["p", OPERATOR],
+    ["workspace", "ops"],
+    ["action", "patch"],
+  ]);
+  const create = buildOlympusChangeRequest(
+    { operator: OPERATOR, workspace: "ops", agent: "scout" },
+    { action: "create", spec: { template: "base" } },
+  );
+  assert.deepEqual(JSON.parse(create.content), {
+    v: 1,
+    action: "create",
+    workspace: "ops",
+    agent: "scout",
+    spec: { template: "base" },
+  });
+});

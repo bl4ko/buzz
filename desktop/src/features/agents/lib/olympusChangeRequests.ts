@@ -28,6 +28,9 @@ export type OlympusChange =
       effort?: string;
       instructions?: string;
     }
+  | { action: "create"; spec: Record<string, unknown>; highRisk?: true }
+  | { action: "patch"; patch: Record<string, unknown>; highRisk?: true }
+  | { action: "suspend-schedule" | "resume-schedule" | "run-now" }
   | {
       action: "approve" | "reject";
       proposal: string;
@@ -39,6 +42,7 @@ export type OlympusChangeTarget = {
   operator: string;
   workspace: string;
   agent: string | null;
+  schedule?: string | null;
 };
 
 export type OlympusEventTemplate = {
@@ -47,7 +51,13 @@ export type OlympusEventTemplate = {
   tags: string[][];
 };
 
-const WORKSPACE_ACTIONS = new Set(["suspend", "resume"]);
+const WORKSPACE_ACTIONS = new Set(["suspend", "resume", "patch"]);
+const SCHEDULE_ACTIONS = new Set([
+  "suspend-schedule",
+  "resume-schedule",
+  "run-now",
+  "patch",
+]);
 
 export function buildOlympusChangeRequest(
   target: OlympusChangeTarget,
@@ -61,7 +71,22 @@ export function buildOlympusChangeRequest(
   if (isProposal && target.agent) {
     throw new Error(`The ${change.action} action has no agent.`);
   }
-  if (!target.agent && !WORKSPACE_ACTIONS.has(change.action) && !isProposal) {
+  const schedule = target.schedule ?? null;
+  if (schedule && (target.agent || !SCHEDULE_ACTIONS.has(change.action))) {
+    throw new Error(`The ${change.action} action has no schedule.`);
+  }
+  if (!schedule && change.action.endsWith("-schedule")) {
+    throw new Error(`The ${change.action} action needs a schedule.`);
+  }
+  if (!schedule && change.action === "run-now") {
+    throw new Error("The run-now action needs a schedule.");
+  }
+  if (
+    !target.agent &&
+    !schedule &&
+    !WORKSPACE_ACTIONS.has(change.action) &&
+    !isProposal
+  ) {
     throw new Error(`The ${change.action} action needs an agent.`);
   }
   if (
@@ -75,6 +100,7 @@ export function buildOlympusChangeRequest(
     ["workspace", target.workspace],
   ];
   if (target.agent) tags.push(["agent", target.agent]);
+  if (schedule) tags.push(["schedule", schedule]);
   tags.push(["action", change.action]);
   if (isProposal) tags.push(["proposal", change.proposal]);
   const { action, ...params } = change;
@@ -83,6 +109,7 @@ export function buildOlympusChangeRequest(
     action,
     workspace: target.workspace,
     ...(target.agent ? { agent: target.agent } : {}),
+    ...(schedule ? { schedule } : {}),
     ...params,
   };
   return {
@@ -155,6 +182,10 @@ function setState(key: string, state: OlympusRequestState | null) {
 
 export function olympusRequestKey(workspace: string, agent: string | null) {
   return agent ? `${workspace}/${agent}` : workspace;
+}
+
+export function olympusScheduleRequestKey(workspace: string, schedule: string) {
+  return `${workspace}#schedule/${schedule}`;
 }
 
 export function getOlympusRequestState(key: string) {

@@ -44,6 +44,7 @@ export type AppSidebarProps = {
     | "channel"
     | "messages"
     | "agents"
+    | "olympus"
     | "workflows"
     | "pulse"
     | "projects";

@@ -6,7 +6,7 @@ import { Badge, type BadgeProps } from "@/shared/ui/badge";
 import { Spinner } from "@/shared/ui/spinner";
 
 export const OLYMPUS_SELECT_CLASS =
-  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs disabled:opacity-50";
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs disabled:opacity-50 dark:[color-scheme:dark]";
 
 const PHASE_VARIANTS: Record<string, BadgeProps["variant"]> = {
   Online: "success",
@@ -52,6 +52,10 @@ const ACTION_LABELS: Record<string, string> = {
   delete: "Delete",
   approve: "Approve",
   reject: "Reject",
+  patch: "Change",
+  "suspend-schedule": "Suspend schedule",
+  "resume-schedule": "Resume schedule",
+  "run-now": "Run now",
 };
 
 export function OlympusRequestStatus({
