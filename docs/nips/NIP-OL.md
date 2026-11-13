@@ -45,8 +45,15 @@ All hex values are 64 lowercase hex characters.
 - 44311: exactly one `e` tag (the request id), and exactly one `status` tag,
   `accepted` or `refused`.
 
-Other tags (`workspace`, `agent`, `action`, `proposal`, `requester`) are not
-checked by the relay.
+Other tags (`workspace`, `agent`, `schedule`, `action`, `proposal`,
+`requester`) are not checked by the relay.
+
+State events list `gitopsFields`: the spec paths that Argo CD owns. The app
+locks only those fields; a 44310 that touches one is refused. Change actions
+besides the agent ones: `patch` (JSON merge patch of an agent, schedule, or
+workspace spec), `create` with a full `spec`, and `suspend-schedule`,
+`resume-schedule`, `run-now` with a `schedule` tag. A high-risk `patch` or
+`create` needs `"highRisk": true`.
 
 The operator tags its own key in 30190 to 30193 and 44311 so that it can read
 its events back. rust-nostr removes a `p` tag equal to the signer unless the
