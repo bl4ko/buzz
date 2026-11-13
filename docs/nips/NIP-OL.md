@@ -6,9 +6,9 @@ Olympus Agents
 
 `draft` `optional` `relay` `fork`
 
-Five fork-only kinds let the Olympus app show and change the agents and
-workspaces that the Hephaestus operator runs. The operator publishes state
-and the change proposals of agents (Zeus); the owner sends change requests,
+Six fork-only kinds let the Olympus app show and change the agents and
+workspaces that the Hephaestus operator runs. The operator publishes state,
+usage, and the change proposals of agents (Zeus); the owner sends change requests,
 also to approve or reject a proposal; the operator answers each request with
 a result. The full tag and content shapes are in the Olympus agents event
 contract (`build/hephaestus/olympus-agents/contract.md`); this file states
@@ -21,6 +21,7 @@ what the relay enforces.
 | 30190 | Agent state | addressable, `d` = `<namespace>/<name>` | operator |
 | 30191 | Workspace state | addressable, `d` = `<workspace>` | operator |
 | 30192 | Change proposal | addressable, `d` = proposal name | operator |
+| 30193 | Usage | addressable, `d` = `<namespace>/<name>` or `hecate` | operator |
 | 44310 | Change request | regular, stored | owner |
 | 44311 | Change result | regular, stored | operator |
 
@@ -30,14 +31,16 @@ status when `status` is `active`, and an empty string when `status` is
 carries `status`, `reason`, and the request id. 30192 carries one change
 proposal of an agent: target, JSON merge patch, diff, reason, high-risk marks,
 digest, and phase; the owner approves or rejects it with a 44310 (`approve`
-or `reject`, with the digest).
+or `reject`, with the digest, and an optional `reason` for a reject). 30193
+carries the token, turn, and run usage of one agent for 24 h and 7 d, or
+(`d` = `hecate`) the quota ratios of the model accounts; no cost values.
 
 ## Tags
 
 All hex values are 64 lowercase hex characters.
 
 - All kinds: 1 to 4 `p` tags (44310: exactly one, the operator). No `h` tag.
-- 30190, 30191, 30192: exactly one non-empty `d` tag of at most 255 bytes, and
+- 30190, 30191, 30192, 30193: exactly one non-empty `d` tag of at most 255 bytes, and
   exactly one `status` tag, `active` or `deleted`.
 - 44311: exactly one `e` tag (the request id), and exactly one `status` tag,
   `accepted` or `refused`.
@@ -45,17 +48,17 @@ All hex values are 64 lowercase hex characters.
 Other tags (`workspace`, `agent`, `action`, `proposal`, `requester`) are not
 checked by the relay.
 
-The operator tags its own key in 30190, 30191, 30192, and 44311 so that it can read
+The operator tags its own key in 30190 to 30193 and 44311 so that it can read
 its events back. rust-nostr removes a `p` tag equal to the signer unless the
 builder calls `allow_self_tagging()`.
 
 ## Write rule
 
 The relay setting `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` lists the operator keys
-(comma-separated hex). When it is unset or empty, the relay refuses all five
+(comma-separated hex). When it is unset or empty, the relay refuses all six
 kinds.
 
-- 30190, 30191, 30192, 44311: the author must be in the operator list and have the
+- 30190 to 30193, 44311: the author must be in the operator list and have the
   relay role `owner` or `admin` in the community.
 - 44310: the author must have the relay role `owner`, and its `p` tag must be
   in the operator list.
@@ -69,7 +72,7 @@ agent or workspace, the operator publishes a `deleted` tombstone.
 
 ## Read rule
 
-All five kinds are `#p`-gated and result-gated:
+All six kinds are `#p`-gated and result-gated:
 
 - A filter that can match them must have `#p` equal to the authenticated
   reader, else the relay closes it.

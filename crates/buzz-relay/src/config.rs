@@ -299,9 +299,8 @@ pub struct Config {
     /// skipped — a typo must not silently disable an operator.
     pub relay_operator_pubkeys: Vec<String>,
 
-    /// NIP-OL: keys that may publish Olympus state, proposals, and results (30190, 30191,
-    /// 30192, 44311), and the only valid `p` of a change request (44310). Empty refuses all
-    /// five kinds.
+    /// NIP-OL: keys that may publish Olympus state, proposals, usage, and results (30190-30193,
+    /// 44311), and the only valid `p` of a change request (44310). Empty refuses all six kinds.
     ///
     /// Set via `BUZZ_OLYMPUS_OPERATOR_PUBKEYS` as comma-separated 64-char hex pubkeys.
     pub olympus_operator_pubkeys: Vec<String>,

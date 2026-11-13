@@ -191,6 +191,7 @@ pub const RESULT_GATED_KINDS: &[u32] = &[
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
     KIND_OLYMPUS_PROPOSAL,
+    KIND_OLYMPUS_USAGE,
     KIND_OLYMPUS_CHANGE_REQUEST,
     KIND_OLYMPUS_CHANGE_RESULT,
 ];
@@ -223,6 +224,7 @@ pub const P_GATED_KINDS: &[u32] = &[
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
     KIND_OLYMPUS_PROPOSAL,
+    KIND_OLYMPUS_USAGE,
     KIND_OLYMPUS_CHANGE_REQUEST,
     KIND_OLYMPUS_CHANGE_RESULT,
 ];
@@ -615,6 +617,9 @@ pub const KIND_OLYMPUS_WORKSPACE: u32 = 30191;
 /// NIP-OL: a change proposal of an agent that waits for the owner, published by the operator
 /// (addressable, `d` = proposal name).
 pub const KIND_OLYMPUS_PROPOSAL: u32 = 30192;
+/// NIP-OL: token and run usage of an agent, or account quota (`d` = `hecate`), published by the
+/// operator (addressable, `d` = `<namespace>/<name>`).
+pub const KIND_OLYMPUS_USAGE: u32 = 30193;
 /// NIP-OL: change request for an Olympus agent or workspace, signed by the owner.
 pub const KIND_OLYMPUS_CHANGE_REQUEST: u32 = 44310;
 /// NIP-OL: result of an Olympus change request, signed by the operator.
@@ -624,6 +629,7 @@ pub const OLYMPUS_KINDS: &[u32] = &[
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
     KIND_OLYMPUS_PROPOSAL,
+    KIND_OLYMPUS_USAGE,
     KIND_OLYMPUS_CHANGE_REQUEST,
     KIND_OLYMPUS_CHANGE_RESULT,
 ];
@@ -824,6 +830,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_OLYMPUS_AGENT,
     KIND_OLYMPUS_WORKSPACE,
     KIND_OLYMPUS_PROPOSAL,
+    KIND_OLYMPUS_USAGE,
     KIND_OLYMPUS_CHANGE_REQUEST,
     KIND_OLYMPUS_CHANGE_RESULT,
     KIND_WORKFLOW_DEF,
@@ -1001,6 +1008,7 @@ const _: () = assert!(KIND_AGENT_TURN_METRIC <= u16::MAX as u32);
 const _: () = assert!(is_parameterized_replaceable(KIND_OLYMPUS_AGENT));
 const _: () = assert!(is_parameterized_replaceable(KIND_OLYMPUS_WORKSPACE));
 const _: () = assert!(is_parameterized_replaceable(KIND_OLYMPUS_PROPOSAL));
+const _: () = assert!(is_parameterized_replaceable(KIND_OLYMPUS_USAGE));
 const _: () = assert!(!is_ephemeral(KIND_OLYMPUS_CHANGE_REQUEST));
 const _: () = assert!(!is_replaceable(KIND_OLYMPUS_CHANGE_REQUEST));
 const _: () = assert!(!is_parameterized_replaceable(KIND_OLYMPUS_CHANGE_REQUEST));
