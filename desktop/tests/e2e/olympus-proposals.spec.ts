@@ -5,9 +5,11 @@ import {
   OLYMPUS_OPERATOR,
   OLYMPUS_OWNER,
   olympusDevEvents,
+  olympusHecateEvent,
   olympusMasterEvent,
   olympusProposalEvent,
   olympusResultEvent,
+  olympusUsageEvent,
   PROPOSAL_DIGEST,
 } from "../helpers/olympus";
 
@@ -163,7 +165,7 @@ test("a high-risk approve needs the extra confirmation and sends highRisk", asyn
   await page.goto("/");
   await page.getByTestId("open-olympus-view").click();
   await page.getByTestId("olympus-tab-proposals").click();
-  const list = page.getByTestId("olympus-proposals");
+  const list = page.getByTestId("olympus-proposals-panel");
   await expect(list).toBeVisible({ timeout: 10_000 });
   await expect(list.getByTestId("olympus-proposal-p-expired00000")).toHaveCount(
     0,
@@ -330,4 +332,48 @@ test("a long value in the DM card shows a line diff with markers", async ({
   await expect(lines.nth(2)).toContainText(
     "+added: Answer pings and status questions in the workspace channel.",
   );
+});
+
+test("the Olympus page mounts the proposals and usage panels", async ({
+  page,
+}) => {
+  const window24h = {
+    tokens: { "claude-haiku-5-5": { input: 1_200, output: 300 } },
+    turns: 2,
+    apiErrors: 0,
+    runs: 1,
+    failedRuns: 0,
+    share: 1,
+  };
+  await installMockBridge(page, {
+    olympusEvents: [
+      ...olympusDevEvents(),
+      olympusProposalEvent(),
+      olympusUsageEvent({
+        workspace: "dev",
+        name: "proof",
+        windows: { "24h": window24h, "7d": window24h },
+      }),
+      olympusHecateEvent([
+        {
+          provider: "claude",
+          credential: "primary",
+          window: "five-hour",
+          usedRatio: 0.4,
+        },
+      ]),
+    ],
+  });
+  await page.goto("/");
+  await page.getByTestId("open-olympus-view").click();
+  await page.getByTestId("olympus-tab-proposals").click();
+  await expect(page.getByTestId("olympus-proposals-panel")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("olympus-proposal-filters")).toBeVisible();
+  await page.getByTestId("olympus-tab-usage").click();
+  await expect(page.getByTestId("olympus-usage-row-dev-proof")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("olympus-usage-accounts")).toBeVisible();
 });
