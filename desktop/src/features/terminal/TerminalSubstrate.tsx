@@ -66,8 +66,9 @@ type TerminalSubstrateProps = {
 
 function isToggleChord(event: KeyboardEvent): boolean {
   return (
-    event.code === "KeyJ" &&
-    (event.metaKey || event.ctrlKey) &&
+    event.code === "Backquote" &&
+    event.ctrlKey &&
+    !event.metaKey &&
     !event.altKey &&
     !event.shiftKey
   );
@@ -183,7 +184,7 @@ export function TerminalSubstrate({
     return true;
   });
   /**
-   * Tab chords are handled at the window in capture phase, like the ⌘J
+   * Tab chords are handled at the window in capture phase, like the ⌃`
    * handoff, so they win over the focused textarea. Gated on terminal
    * ownership: in Buzz mode these keys belong to the rest of the app.
    */

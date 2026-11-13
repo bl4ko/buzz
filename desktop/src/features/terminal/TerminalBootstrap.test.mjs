@@ -643,8 +643,8 @@ test("a non-channel route closes the panel and ignores the terminal shortcut", a
 
   const chord = {
     bubbles: true,
-    code: "KeyJ",
-    metaKey: true,
+    code: "Backquote",
+    ctrlKey: true,
   };
   act(() => {
     window.dispatchEvent(new KeyboardEvent("keydown", chord));

@@ -42,6 +42,8 @@ import {
   preferredUnreadTarget,
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
+import { useMasterAgent } from "@/features/master-agent/MasterAgentProvider";
+import { MasterAgentSidebarEntry } from "@/features/master-agent/ui/MasterAgentSidebarEntry";
 import {
   ChannelGroupSection,
   CustomChannelSection,
@@ -155,9 +157,13 @@ export function AppSidebar({
   const showSidebarUpdateCard =
     canShowSidebarUpdateCard && !isSidebarUpdateCardDismissed;
   const [dmActionsMenuOpen, setDmActionsMenuOpen] = React.useState(false);
+  const masterDmId = useMasterAgent()?.agent.dmChannel?.id;
   const allDirectMessages = React.useMemo(
-    () => channels.filter((channel) => channel.channelType === "dm"),
-    [channels],
+    () =>
+      channels.filter(
+        (channel) => channel.channelType === "dm" && channel.id !== masterDmId,
+      ),
+    [channels, masterDmId],
   );
   const directMessages = useProtectedVisibleDirectMessages(
     allDirectMessages,
@@ -574,6 +580,15 @@ export function AppSidebar({
                 onSelectWorkflows={onSelectWorkflows}
                 projectsOverviewActive={projectsOverviewActive}
                 selectedView={selectedView}
+              />
+
+              <MasterAgentSidebarEntry
+                activeWorkingByChannelId={activeWorkingByChannelId}
+                isChannelView={selectedView === "channel"}
+                mutedChannelIds={mutedChannelIds}
+                selectedChannelId={selectedChannelId}
+                unreadChannelCounts={unreadChannelCounts}
+                unreadChannelIds={unreadChannelIds}
               />
 
               {isLoading ? (
