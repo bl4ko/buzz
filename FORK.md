@@ -68,6 +68,10 @@ The visible brand is Olympus. Keep these overrides when you rebase onto upstream
 
 Desktop join alerts skip keys whose kind 0 marks an agent: a NIP-OA owner tag or NIP-24 `"bot": true` (`personJoinAlerts`). The Hephaestus operator sets `bot` on agent, scheduler, and mirror profiles.
 
+## Notification levels
+
+Each channel has a level: All new messages, Mentions and DMs, or Nothing. The level is the `level` field of the channel entry in the synced encrypted channel-mutes blob (kind 30078, `d` `channel-mutes`); `muted: true` is Nothing, so older clients stay quiet. Without a level, a DM is All, a channel with a NIP-24 `bot: true` member is Mentions and DMs, and other channels are All, but top-level posts by `bot: true` keys stay quiet there. Mentions, DMs, approval requests (`notification` `approval`), and thread replies alert unless the level is Nothing; Nothing also silences mentions. Desktop: "Notify me about" in the channel menu and Settings > Notifications > Channels; the level gates dock bounce, DM, and mention alerts, not unread state. iPhone: "Notify me about" in the channel actions and details; the push lease leaves Mentions and DMs channels out of the channel subscriptions and ignores bot authors in default channels. The relay accepts every canonical UUID channel id in a lease (`h_grammar` `uuid-lowercase`).
+
 ## Master agent quick access
 
 Desktop reads the kind 30190 state events and takes the agent with top-level `"role": "master"` (operator v1.17.0+); its kind 0 gives the name and picture. With no master, every entry point is hidden. Entry points (`src/features/master-agent/`): a pinned sidebar row above the sections (the master DM leaves the DM list), ⌘J from anywhere, "Ask <name>" in the ⌘K palette and in the message More menu. ⌘J and the menu put a quote (selected message text or the composer text; the menu also adds the `buzz://message` link) into the DM draft and never send. Buzz Term moved from ⌘J to ⌃`. Mobile has no master support yet.

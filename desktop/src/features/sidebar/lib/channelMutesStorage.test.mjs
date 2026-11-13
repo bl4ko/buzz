@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   boundMuteStore,
+  channelLevelEntry,
+  channelLevelsFromStore,
   MAX_CHANNEL_MUTE_ENTRIES,
   parseMutePayload,
   mergeStores,
@@ -372,4 +374,58 @@ test("mutedChannelIdsFromStore: excludes IDs where muted=false", () => {
 test("mutedChannelIdsFromStore: empty channels returns empty set", () => {
   const result = mutedChannelIdsFromStore({ version: 1, channels: {} });
   assert.equal(result.size, 0);
+});
+
+test("parseMutePayload: keeps a valid level and drops an unknown one", () => {
+  const store = parseMutePayload({
+    version: 1,
+    channels: {
+      a: { muted: false, updatedAt: 1, level: "mentions" },
+      b: { muted: false, updatedAt: 1, level: "loud" },
+    },
+  });
+  assert.deepEqual(store.channels, {
+    a: { muted: false, updatedAt: 1, level: "mentions" },
+  });
+});
+
+test("channelLevelsFromStore: muted means nothing, unmuted without level means default", () => {
+  const levels = channelLevelsFromStore({
+    version: 1,
+    channels: {
+      muted: { muted: true, updatedAt: 1 },
+      all: { muted: false, updatedAt: 1, level: "all" },
+      mentions: { muted: false, updatedAt: 1, level: "mentions" },
+      stale: { muted: false, updatedAt: 1, level: "nothing" },
+      plain: { muted: false, updatedAt: 1 },
+    },
+  });
+  assert.deepEqual(Object.fromEntries(levels), {
+    muted: "nothing",
+    all: "all",
+    mentions: "mentions",
+  });
+});
+
+test("channelLevelEntry: nothing sets the mute flag so older clients stay quiet", () => {
+  assert.deepEqual(channelLevelEntry("nothing", 5), {
+    muted: true,
+    updatedAt: 5,
+    level: "nothing",
+  });
+  assert.deepEqual(channelLevelEntry("mentions", 5), {
+    muted: false,
+    updatedAt: 5,
+    level: "mentions",
+  });
+  assert.deepEqual(channelLevelEntry(null, 5), { muted: false, updatedAt: 5 });
+  assert.deepEqual(
+    [
+      ...mutedChannelIdsFromStore({
+        version: 1,
+        channels: { x: channelLevelEntry("nothing", 5) },
+      }),
+    ],
+    ["x"],
+  );
 });

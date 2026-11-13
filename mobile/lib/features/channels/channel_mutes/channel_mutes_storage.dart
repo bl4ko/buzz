@@ -12,18 +12,61 @@ String channelMutesKey(String pubkey, String relayUrl) =>
 /// The earlier key, shared by every community of the identity.
 String legacyChannelMutesKey(String pubkey) => 'buzz.channel-mutes.v1:$pubkey';
 
+enum ChannelNotificationLevel {
+  all('All new messages'),
+  mentions('Mentions and DMs'),
+  nothing('Nothing');
+
+  const ChannelNotificationLevel(this.label);
+
+  final String label;
+
+  static ChannelNotificationLevel? parse(Object? value) {
+    for (final level in values) {
+      if (level.name == value) return level;
+    }
+    return null;
+  }
+}
+
 class ChannelMuteEntry {
   final bool muted;
   final int updatedAt;
+  final ChannelNotificationLevel? level;
 
-  const ChannelMuteEntry({required this.muted, required this.updatedAt});
+  const ChannelMuteEntry({
+    required this.muted,
+    required this.updatedAt,
+    this.level,
+  });
 
-  Map<String, dynamic> toJson() => {'muted': muted, 'updatedAt': updatedAt};
+  factory ChannelMuteEntry.forLevel(
+    ChannelNotificationLevel? level,
+    int updatedAt,
+  ) => ChannelMuteEntry(
+    muted: level == ChannelNotificationLevel.nothing,
+    updatedAt: updatedAt,
+    level: level,
+  );
+
+  /// The level the user chose, or null for the channel default. A mute from
+  /// an older client is [ChannelNotificationLevel.nothing].
+  ChannelNotificationLevel? get explicitLevel {
+    if (muted) return ChannelNotificationLevel.nothing;
+    return level == ChannelNotificationLevel.nothing ? null : level;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'muted': muted,
+    'updatedAt': updatedAt,
+    if (level != null) 'level': level!.name,
+  };
 
   factory ChannelMuteEntry.fromJson(Map<String, dynamic> json) =>
       ChannelMuteEntry(
         muted: json['muted'] as bool,
         updatedAt: json['updatedAt'] as int,
+        level: ChannelNotificationLevel.parse(json['level']),
       );
 }
 
@@ -45,7 +88,10 @@ class ChannelMuteStore {
       for (final entry in rawChannels.entries) {
         if (entry.key is String && entry.value is Map<String, dynamic>) {
           final v = entry.value as Map<String, dynamic>;
-          if (v['muted'] is bool && v['updatedAt'] is int) {
+          if (v['muted'] is bool &&
+              v['updatedAt'] is int &&
+              (v['level'] == null ||
+                  ChannelNotificationLevel.parse(v['level']) != null)) {
             channels[entry.key as String] = ChannelMuteEntry.fromJson(v);
           }
         }
@@ -67,6 +113,14 @@ ChannelMuteStore mergeStores(ChannelMuteStore local, ChannelMuteStore remote) {
   }
   return ChannelMuteStore(channels: merged);
 }
+
+Map<String, ChannelNotificationLevel> explicitChannelLevels(
+  ChannelMuteStore store,
+) => {
+  for (final entry in store.channels.entries)
+    if (entry.value.explicitLevel != null)
+      entry.key: entry.value.explicitLevel!,
+};
 
 class ChannelMutesStorage {
   final SharedPreferences _prefs;

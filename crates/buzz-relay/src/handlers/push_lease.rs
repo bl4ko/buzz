@@ -281,7 +281,7 @@ fn validate_filter(
     for value in h.into_iter().flatten() {
         check_string(value, limits.max_string_len)?;
         let uuid = uuid::Uuid::parse_str(value).map_err(|_| "invalid h tag".to_string())?;
-        if uuid.get_version_num() != 4 || uuid.to_string() != *value {
+        if uuid.to_string() != *value {
             return Err("invalid h tag".into());
         }
     }
@@ -712,6 +712,22 @@ mod tests {
         limits.max_h = 2;
         limits.max_tag_values = 1;
         assert!(validate_plaintext(&body, &limits).is_ok());
+    }
+
+    #[test]
+    fn h_accepts_any_canonical_uuid_version() {
+        let lease = |h: &str| {
+            parse_plaintext(&format!(r##"{{"v":1,"origin":"o","generation":1,"active":true,"transport":"apns","endpoint":"token","subscriptions":[{{"filter":{{"kinds":[9],"#h":["{h}"]}},"class":"default"}}]}}"##), 4096).unwrap()
+        };
+        assert!(validate_plaintext(&lease("4801fa7c-c7a0-526a-8ed8-39623259952e"), &limits()).is_ok());
+        assert_eq!(
+            validate_plaintext(&lease("4801FA7C-C7A0-526A-8ED8-39623259952E"), &limits()).unwrap_err(),
+            "invalid h tag"
+        );
+        assert_eq!(
+            validate_plaintext(&lease("4801fa7cc7a0526a8ed839623259952e"), &limits()).unwrap_err(),
+            "invalid h tag"
+        );
     }
 
     #[test]

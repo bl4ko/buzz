@@ -491,6 +491,18 @@ class ChannelDetailsPage extends HookConsumerWidget {
                   onTap: () => showPinnedMessagesPage(context, resolvedChannel),
                 ),
               AppListRow(
+                key: const ValueKey('channel-details-notification-level-row'),
+                icon: BuzzIcons.bellRing,
+                title: 'Notify me about',
+                subtitle: channelNotificationLevelSummary(ref, resolvedChannel),
+                trailing: const _ChannelDetailsChevron(),
+                onTap: () => showChannelNotificationLevelSheet(
+                  context,
+                  ProviderScope.containerOf(context),
+                  resolvedChannel,
+                ),
+              ),
+              AppListRow(
                 icon: BuzzIcons.folderInput,
                 title: 'Move to section…',
                 trailing: const _ChannelDetailsChevron(),

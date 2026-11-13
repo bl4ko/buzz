@@ -86,6 +86,7 @@ import { AppSidebar } from "@/features/sidebar/ui/AppSidebar";
 import { requestFocusedThreadClose } from "@/features/channels/focusedThreadCloseRequest";
 import { CommunityRail } from "@/features/sidebar/ui/CommunityRail";
 import { useChannelMutes } from "@/features/sidebar/lib/useChannelMutes";
+import { useChannelNotificationLevelState } from "@/features/notifications/useChannelNotificationLevels";
 import { useChannelStars } from "@/features/sidebar/lib/useChannelStars";
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
@@ -199,7 +200,13 @@ export function AppShell() {
     : DEFAULT_SETTINGS_SECTION;
   const startupReady = useDeferredStartup();
   const identityQuery = useIdentityQuery();
-  const { mutedChannelIds, muteChannel, unmuteChannel } = useChannelMutes(
+  const {
+    mutedChannelIds,
+    channelLevels,
+    muteChannel,
+    unmuteChannel,
+    setChannelLevel,
+  } = useChannelMutes(
     identityQuery.data?.pubkey,
     communitiesHook.activeCommunity?.relayUrl,
   );
@@ -362,11 +369,18 @@ export function AppShell() {
       ? (channels.find((channel) => channel.id === targetChannelId) ?? null)
       : null;
   }, [channels, managedChannelId, selectedChannelId]);
+  const channelNotificationLevels = useChannelNotificationLevelState(
+    channels,
+    identityQuery.data?.pubkey,
+    channelLevels,
+    setChannelLevel,
+  );
   const {
     handleChannelNotification,
     handleDmNotification,
     handleThreadReplyDesktopNotification,
   } = useAppShellDesktopNotifications({
+    channelLevels: channelNotificationLevels,
     channels,
     enabled: !isHuddleRoom,
     goChannel,
@@ -772,6 +786,7 @@ export function AppShell() {
             markAllChannelsRead,
             markChannelRead,
             markChannelUnread,
+            channelNotificationLevels,
             clearChannelUnreadSource,
             openBrowseChannels: handleOpenBrowseChannels,
             openCreateChannel: handleOpenCreateChannel,
