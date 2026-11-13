@@ -138,6 +138,53 @@ test("refuses to build requests without a valid target", () => {
   );
 });
 
+const DIGEST = "e".repeat(64);
+
+test("builds proposal approve and reject requests without an agent tag", () => {
+  for (const action of ["approve", "reject"]) {
+    assert.deepEqual(
+      build(WORKSPACE, { action, proposal: "p-aada7279a890", digest: DIGEST }),
+      {
+        kind: 44310,
+        tags: [
+          ["p", OPERATOR],
+          ["workspace", "dev"],
+          ["action", action],
+          ["proposal", "p-aada7279a890"],
+        ],
+        content: {
+          v: 1,
+          action,
+          workspace: "dev",
+          proposal: "p-aada7279a890",
+          digest: DIGEST,
+        },
+      },
+    );
+  }
+  const template = buildOlympusChangeRequest(WORKSPACE, {
+    action: "approve",
+    proposal: "p-1",
+    digest: DIGEST,
+    highRisk: true,
+  });
+  assert.equal(
+    template.content,
+    `{"v":1,"action":"approve","workspace":"dev","proposal":"p-1","digest":"${DIGEST}","highRisk":true}`,
+  );
+});
+
+test("refuses a proposal request with an agent or a bad digest", () => {
+  const change = { action: "approve", proposal: "p-1", digest: DIGEST };
+  assert.throws(() => buildOlympusChangeRequest(AGENT, change));
+  assert.throws(() =>
+    buildOlympusChangeRequest(WORKSPACE, { ...change, digest: "abc" }),
+  );
+  assert.throws(() =>
+    buildOlympusChangeRequest(WORKSPACE, { ...change, proposal: "" }),
+  );
+});
+
 function resultEvent({ requestId, status, reason, eTags }) {
   return {
     id: "r".repeat(64),

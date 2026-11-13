@@ -241,3 +241,59 @@ export function olympusMasterEvent() {
     ),
   };
 }
+
+export const PROPOSAL_DIGEST = "d1".repeat(32);
+
+export function olympusProposalEvent(
+  input: {
+    name?: string;
+    requesterKey?: string;
+    phase?: string;
+    highRisk?: string[];
+    result?: { reason: string; request: string; at: number } | null;
+    expiresAt?: number;
+    createdAt?: number;
+    eventCreatedAt?: number;
+  } = {},
+): RelayEvent {
+  const now = Math.floor(Date.now() / 1000);
+  const name = input.name ?? "p-aada7279a890";
+  const createdAt = input.createdAt ?? now - 300;
+  return {
+    id: eventId(),
+    pubkey: OLYMPUS_OPERATOR,
+    kind: 30192,
+    created_at: input.eventCreatedAt ?? createdAt,
+    content: JSON.stringify({
+      v: 1,
+      name,
+      requester: "zeus/zeus",
+      requesterKey: input.requesterKey ?? MASTER_PUBLIC_KEY,
+      target: {
+        kind: "Agent",
+        namespace: "olympus-dev",
+        name: "proof",
+        workspace: "dev",
+      },
+      operation: "patch",
+      patch: { spec: { suspend: true } },
+      reason: "Proof is idle. **Suspend** it <b>now</b>.",
+      diff: [{ path: "spec.suspend", from: "false", to: "true" }],
+      highRisk: input.highRisk ?? [],
+      createdAt,
+      expiresAt: input.expiresAt ?? createdAt + 86_400,
+      digest: PROPOSAL_DIGEST,
+      phase: input.phase ?? "pending",
+      result: input.result ?? null,
+    }),
+    tags: [
+      ["d", name],
+      ["p", OLYMPUS_OWNER],
+      ["p", OLYMPUS_OPERATOR],
+      ["workspace", "dev"],
+      ["requester", input.requesterKey ?? MASTER_PUBLIC_KEY],
+      ["status", "active"],
+    ],
+    sig: "0".repeat(128),
+  };
+}

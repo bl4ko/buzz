@@ -42,6 +42,7 @@ import { useThreadViewMode } from "@/features/channels/lib/threadViewModePrefere
 import { useThreadViewModeSwitch } from "@/features/channels/ui/useThreadViewModeSwitch";
 import { useFocusDrawerPresence } from "@/features/channels/ui/useFocusDrawerPresence";
 import { useChannelWorkingAgentPubkeys } from "@/features/agents/agentWorkingSignal";
+import { OlympusDmProposals } from "@/features/agents/ui/OlympusProposalCard";
 import { useCardMintJobs } from "@/features/agents/cardMintStore";
 import { BotActivityComposerAction } from "@/features/channels/ui/BotActivityBar";
 import { ChannelComposerActivityAccessory } from "@/features/channels/ui/ChannelComposerActivityAccessory";
@@ -72,6 +73,7 @@ import { isWelcomeExperienceChannel as isWelcomeExperience } from "@/features/on
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { channelChrome } from "@/shared/layout/chromeLayout";
 import { cn } from "@/shared/lib/cn";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 const HUDDLE_TRANSCRIPT_ROOT_STYLE = {
   "--buzz-channel-content-top-padding": "0rem",
   "--channel-top-chrome-height": "0.25rem",
@@ -234,6 +236,14 @@ export const ChannelPane = React.memo(function ChannelPane({
     () => getDmHuddleMemberPubkeys(activeChannel, agentPubkeys, currentPubkey),
     [activeChannel, agentPubkeys, currentPubkey],
   );
+  const dmPeer = React.useMemo(() => {
+    if (activeChannel?.channelType !== "dm" || !currentPubkey) return null;
+    const me = normalizePubkey(currentPubkey);
+    const others = [
+      ...new Set(activeChannel.participantPubkeys.map(normalizePubkey)),
+    ].filter((pubkey) => pubkey !== me);
+    return others.length === 1 ? others[0] : null;
+  }, [activeChannel, currentPubkey]);
   const huddleMemberPubkeysPending =
     agentPubkeysPending && hasOtherDmParticipant(activeChannel, currentPubkey);
   const isActiveWelcomeChannel =
@@ -769,6 +779,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                       {welcomeKickoffStage}
                     </WelcomeComposerGuidanceLayer>
                   ) : null}
+                  {dmPeer ? <OlympusDmProposals peer={dmPeer} /> : null}
                   {timeoutActive ? <ComposerTimeoutBanner /> : null}
                   <ComposerDockBackdrop gutterClassName="inset-x-5" />
                   <MessageComposer

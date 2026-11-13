@@ -25,6 +25,11 @@ import {
   OlympusRequestStatus,
 } from "./OlympusAgentParts";
 import { OlympusNewAgentDialog } from "./OlympusNewAgentDialog";
+import {
+  OlympusProposalCard,
+  useVisibleOlympusProposals,
+} from "./OlympusProposalCard";
+import { olympusProposalKey } from "@/features/agents/lib/olympusProposals";
 
 type SelectedAgent = { author: string; d: string };
 
@@ -34,6 +39,7 @@ export function OlympusAgentsSection({
   onOpenProfile: (pubkey: string) => void;
 }) {
   const olympus = useOlympusAgents();
+  const proposals = useVisibleOlympusProposals(olympus.proposals);
   const [selected, setSelected] = React.useState<SelectedAgent | null>(null);
   const selectedAgent = selected
     ? findOlympusAgent(olympus.groups, selected.author, selected.d)
@@ -70,6 +76,25 @@ export function OlympusAgentsSection({
         <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Couldn’t load Olympus agents. {olympus.error.message}
         </p>
+      ) : null}
+
+      {proposals.length > 0 ? (
+        <section
+          aria-label="Change proposals"
+          className="space-y-2"
+          data-testid="olympus-proposals"
+        >
+          <h3 className="text-sm font-semibold text-foreground">
+            Change proposals
+          </h3>
+          {proposals.map((proposal) => (
+            <OlympusProposalCard
+              key={olympusProposalKey(proposal)}
+              proposal={proposal}
+              submitChange={olympus.submitChange}
+            />
+          ))}
+        </section>
       ) : null}
 
       {olympus.groups.map((group) => (
