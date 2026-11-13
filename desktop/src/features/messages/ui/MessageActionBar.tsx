@@ -21,7 +21,7 @@ import { toast } from "sonner";
 
 import { buildMessageLink } from "@/features/messages/lib/messageLink";
 import { useRemindLater } from "@/features/reminders/ui/RemindMeLaterProvider";
-import { useMasterAgent } from "@/features/master-agent/MasterAgentProvider";
+import { useMasterAgent } from "@/features/master-agent/useMasterAgent";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { EmojiPicker } from "@/features/custom-emoji/ui/EmojiPicker";
 import { useCustomEmoji } from "@/features/custom-emoji/hooks";

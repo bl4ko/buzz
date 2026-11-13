@@ -42,7 +42,7 @@ import {
   preferredUnreadTarget,
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
-import { useMasterAgent } from "@/features/master-agent/MasterAgentProvider";
+import { useMasterAgent } from "@/features/master-agent/useMasterAgent";
 import { MasterAgentSidebarEntry } from "@/features/master-agent/ui/MasterAgentSidebarEntry";
 import {
   ChannelGroupSection,

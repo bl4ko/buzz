@@ -13,7 +13,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/shared/ui/sidebar";
-import { useMasterAgent } from "../MasterAgentProvider";
+import { useMasterAgent } from "../useMasterAgent";
 
 const AVATAR_SIZE = 24;
 const AVATAR_GEOMETRY = scaleProfileAvatarStatusGeometry(

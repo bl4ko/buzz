@@ -34,12 +34,28 @@ type MasterAgentContextValue = {
   ask: (seed?: AskMasterSeed | null) => Promise<void>;
 };
 
-const MasterAgentContext = React.createContext<MasterAgentContextValue | null>(
-  null,
-);
+let current: MasterAgentContextValue | null = null;
+const listeners = new Set<() => void>();
+
+function publish(next: MasterAgentContextValue | null) {
+  if (next === current) return;
+  current = next;
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 export function useMasterAgent() {
-  return React.useContext(MasterAgentContext);
+  return React.useSyncExternalStore(
+    subscribe,
+    () => current,
+    () => null,
+  );
 }
 
 function seedDraft(channelId: string, seed: AskMasterSeed) {
@@ -62,9 +78,8 @@ function seedDraft(channelId: string, seed: AskMasterSeed) {
   });
 }
 
-export function MasterAgentProvider({
+export function useMasterAgentController({
   channels,
-  children,
   currentChannelId,
   currentPubkey,
   goChannel,
@@ -72,7 +87,6 @@ export function MasterAgentProvider({
   shortcutDisabled,
 }: {
   channels: readonly Channel[];
-  children: React.ReactNode;
   currentChannelId: string | null;
   currentPubkey: string | undefined;
   goChannel: (channelId: string) => unknown;
@@ -157,9 +171,8 @@ export function MasterAgentProvider({
     [agent, ask],
   );
 
-  return (
-    <MasterAgentContext.Provider value={value}>
-      {children}
-    </MasterAgentContext.Provider>
-  );
+  React.useEffect(() => {
+    publish(value);
+  }, [value]);
+  React.useEffect(() => () => publish(null), []);
 }

@@ -18,7 +18,7 @@ import {
 } from "@/features/search/ui/SearchScopeControls";
 import { HighlightedSearchText } from "@/features/search/ui/HighlightedSearchText";
 import { useSearchMenuKeyboardNavigation } from "@/features/search/ui/useSearchMenuKeyboardNavigation";
-import { useMasterAgent } from "@/features/master-agent/MasterAgentProvider";
+import { useMasterAgent } from "@/features/master-agent/useMasterAgent";
 import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
