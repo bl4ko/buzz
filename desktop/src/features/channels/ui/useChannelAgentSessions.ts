@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import type { OlympusOwnedAgent } from "@/features/agents/lib/olympusOwnedAgents";
 import type { TimelineMessage } from "@/features/messages/types";
 import type {
   Channel,
@@ -58,10 +59,12 @@ function relayStatusToManagedStatus(
 export function buildChannelAgentSessionCandidates({
   channelMembers,
   managedAgents,
+  olympusAgents = [],
   relayAgents,
 }: {
   channelMembers?: ChannelMember[];
   managedAgents: ManagedAgent[];
+  olympusAgents?: readonly OlympusOwnedAgent[];
   relayAgents: RelayAgent[];
 }): ChannelAgentSessionAgent[] {
   const byPubkey = new Map<string, ChannelAgentSessionAgent>();
@@ -75,6 +78,18 @@ export function buildChannelAgentSessionCandidates({
       canInterruptTurn: false,
       channelIds: agent.channelIds,
       channels: agent.channels,
+    });
+  }
+
+  for (const agent of olympusAgents) {
+    const key = normalizePubkey(agent.pubkey);
+    if (byPubkey.has(key)) continue;
+    byPubkey.set(key, {
+      pubkey: agent.pubkey,
+      name: agent.name,
+      status: agent.status,
+      agentSource: "relay",
+      canInterruptTurn: false,
     });
   }
 

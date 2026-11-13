@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { reportChannelBotTyping } from "@/features/agents/agentWorkingSignal";
+import { useOlympusOwnedAgents } from "@/features/agents/useOlympusOwnedAgents";
 import type { TypingIndicatorEntry } from "@/features/messages/useChannelTyping";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import type {
@@ -32,6 +33,31 @@ export function channelScopedBotTypingPubkeyKey(
     .join(",");
 }
 
+export function classifyChannelTyping({
+  channelAgentPubkeys,
+  openThreadHeadId,
+  typingEntries,
+}: {
+  channelAgentPubkeys: ReadonlySet<string>;
+  openThreadHeadId: string | null;
+  typingEntries: readonly TypingIndicatorEntry[];
+}) {
+  const botTypingEntries: TypingIndicatorEntry[] = [];
+  const humanTypingPubkeys: string[] = [];
+  const threadTypingPubkeys: string[] = [];
+  for (const entry of typingEntries) {
+    if (channelAgentPubkeys.has(normalizePubkey(entry.pubkey))) {
+      botTypingEntries.push(entry);
+      continue;
+    }
+    if (entry.threadHeadId === null) humanTypingPubkeys.push(entry.pubkey);
+    if (entry.threadHeadId === openThreadHeadId) {
+      threadTypingPubkeys.push(entry.pubkey);
+    }
+  }
+  return { botTypingEntries, humanTypingPubkeys, threadTypingPubkeys };
+}
+
 export function useChannelActivityTyping({
   activeChannel,
   activeChannelId,
@@ -49,14 +75,16 @@ export function useChannelActivityTyping({
   relayAgents: RelayAgent[];
   typingEntries: TypingIndicatorEntry[];
 }) {
+  const olympusAgents = useOlympusOwnedAgents();
   const agentCandidates = React.useMemo(
     () =>
       buildChannelAgentSessionCandidates({
         channelMembers,
         managedAgents,
+        olympusAgents,
         relayAgents,
       }),
-    [channelMembers, managedAgents, relayAgents],
+    [channelMembers, managedAgents, olympusAgents, relayAgents],
   );
   const channelAgentSessionAgents = React.useMemo(
     () =>
@@ -75,32 +103,16 @@ export function useChannelActivityTyping({
       ),
     [channelAgentSessionAgents],
   );
-  const threadTypingPubkeys = React.useMemo(
-    () =>
-      typingEntries
-        .filter(
-          (entry) =>
-            entry.threadHeadId === openThreadHeadId &&
-            !channelAgentPubkeys.has(normalizePubkey(entry.pubkey)),
-        )
-        .map((entry) => entry.pubkey),
-    [channelAgentPubkeys, openThreadHeadId, typingEntries],
-  );
-  const { botTypingEntries, humanTypingPubkeys } = React.useMemo<{
-    botTypingEntries: TypingIndicatorEntry[];
-    humanTypingPubkeys: string[];
-  }>(() => {
-    const botTypingEntries: TypingIndicatorEntry[] = [];
-    const humanTypingPubkeys: string[] = [];
-    for (const entry of typingEntries) {
-      if (channelAgentPubkeys.has(normalizePubkey(entry.pubkey))) {
-        botTypingEntries.push(entry);
-      } else if (entry.threadHeadId === null) {
-        humanTypingPubkeys.push(entry.pubkey);
-      }
-    }
-    return { botTypingEntries, humanTypingPubkeys };
-  }, [channelAgentPubkeys, typingEntries]);
+  const { botTypingEntries, humanTypingPubkeys, threadTypingPubkeys } =
+    React.useMemo(
+      () =>
+        classifyChannelTyping({
+          channelAgentPubkeys,
+          openThreadHeadId,
+          typingEntries,
+        }),
+      [channelAgentPubkeys, openThreadHeadId, typingEntries],
+    );
 
   // Mirror bot typing into the unified working signal so surfaces that read
   // agentWorkingSignal (sidebar badges, activity panel, composer bar) get the
