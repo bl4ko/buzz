@@ -414,7 +414,7 @@ class App extends HookConsumerWidget {
     return MaterialApp(
       navigatorKey: _mobileRootNavigatorKey,
       navigatorObservers: [appRouteObserver],
-      title: 'Buzz',
+      title: 'Olympus',
       debugShowCheckedModeBanner: false,
       theme: mobileAppearanceTheme(Brightness.light, communityTheme.accent),
       darkTheme: mobileAppearanceTheme(
@@ -521,7 +521,7 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const OlympusSplash(semanticLabel: 'Starting Buzz');
+    return const OlympusSplash(semanticLabel: 'Starting Olympus');
   }
 }
 
@@ -544,7 +544,7 @@ class _StorageUnavailableScreen extends HookConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Buzz cannot read its saved sign-in yet. '
+                'Olympus cannot read its saved sign-in yet. '
                 'Unlock your iPhone, then try again.',
                 textAlign: TextAlign.center,
                 style: context.textTheme.bodyLarge,

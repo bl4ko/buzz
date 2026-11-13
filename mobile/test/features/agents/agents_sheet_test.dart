@@ -97,7 +97,7 @@ void main() {
     expect(find.text('Instructions'), findsOneWidget);
     expect(find.text('Management'), findsOneWidget);
     expect(
-      find.textContaining('Keep Buzz open and your desktop online'),
+      find.textContaining('Keep Olympus open and your desktop online'),
       findsOneWidget,
     );
     expect(
