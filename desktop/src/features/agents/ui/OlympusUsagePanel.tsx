@@ -408,23 +408,26 @@ const HEAD_CELL =
   "px-3 py-2 text-left text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground";
 const NUMBER_CELL = "px-3 py-2.5 text-right tabular-nums";
 
+function defaultIdentity(usage: OlympusAgentUsage): AgentIdentity {
+  return { label: usage.name, avatarUrl: null };
+}
+
 export function OlympusUsageTable({
   accounts,
   agents,
-  groups,
+  identity = defaultIdentity,
   nowMs,
   windowKey,
   onWindowChange,
 }: {
   accounts: OlympusAccountUsage | null;
   agents: readonly OlympusAgentUsage[];
-  groups: readonly OlympusWorkspaceGroup[];
+  identity?: (usage: OlympusAgentUsage) => AgentIdentity;
   nowMs: number;
   windowKey: OlympusUsageWindowKey;
   onWindowChange: (value: OlympusUsageWindowKey) => void;
 }) {
   const palette = useModelPalette(agents);
-  const identity = useAgentIdentities(agents, groups);
   const summary = React.useMemo(
     () => summarizeOlympusUsage(agents, windowKey),
     [agents, windowKey],
@@ -715,6 +718,7 @@ export function OlympusUsagePanel({
   agent?: string;
 }) {
   const usage = useOlympusUsage();
+  const identity = useAgentIdentities(usage.agents, usage.groups);
   const nowMs = useNow(60_000);
   const [windowKey, setWindowKey] = React.useState<OlympusUsageWindowKey>(
     OLYMPUS_USAGE_WINDOWS[0],
@@ -770,7 +774,7 @@ export function OlympusUsagePanel({
     <OlympusUsageTable
       accounts={usage.accounts}
       agents={usage.agents}
-      groups={usage.groups}
+      identity={identity}
       nowMs={nowMs}
       onWindowChange={setWindowKey}
       windowKey={windowKey}
