@@ -59,6 +59,8 @@ The visible brand is Olympus. Keep these overrides when you rebase onto upstream
 - Keep upstream bee assets that are now unused (`FlappingBee.tsx`, `FuzzyLogo.tsx`, `BuzzLogoAnimation.tsx`, the bee and wordmark assets in `pubspec.yaml`, `tray_bee_icon`) to avoid modify/delete conflicts.
 - Community name: the relay sets its NIP-11 `name` from `BUZZ_RELAY_NAME` (live: `Olympus`). Desktop renames a community to that name while its local name is still the one derived from the relay host (`relayCommunityName.ts`).
 - Desktop visible strings: tray `Open Olympus` and `Quit Olympus`, the notification fallback text, and the mobile pairing hint.
+- Visible name sweep: user-visible "Buzz" text says Olympus in place (desktop UI, window title, `Info.plist`, power assertion, harness catalog hints; mobile UI, iOS permission prompts, debug display name, push fallback). Internal names, the bundle file `Bl4uzz.app`, `productName`, "Buzz shared compute", and "Buzz event" stay.
+- `desktop/src/shared/constants/olympus.ts` hides Block hosted communities (settings section, hosted create and owner sign-in) and the Welcome team (no Fizz, Honey, and Pollen provisioning, no Fizz composer banner). The bee personas seed inactive; `personas.rs` deactivates them once on existing installs (`.olympus-built-in-personas-hidden` marker) and keeps their records.
 
 ## Agent harness replies
 
