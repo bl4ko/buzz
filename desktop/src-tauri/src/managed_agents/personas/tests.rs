@@ -1,8 +1,8 @@
 use super::{
     built_in_persona_records, ensure_persona_ids_are_active, ensure_persona_is_active,
-    merge_personas, migrate_retired_personas, persona_in_custom_team,
-    validate_persona_activation_change, validate_persona_deletion, BUILT_IN_PERSONAS,
-    RETIRED_PERSONAS,
+    hide_default_inactive_built_ins, merge_personas, migrate_retired_personas,
+    persona_in_custom_team, validate_persona_activation_change, validate_persona_deletion,
+    BUILT_IN_PERSONAS, RETIRED_PERSONAS,
 };
 use crate::managed_agents::discovery::{default_agent_command, effective_agent_command};
 use crate::managed_agents::AgentDefinition;
@@ -51,15 +51,27 @@ fn merge_personas_adds_missing_built_ins() {
         .map(|record| record.display_name.as_str())
         .collect();
     assert_eq!(display_names, vec!["Fizz", "Honey", "Pollen"]);
-    let active_ids: Vec<&str> = records
-        .iter()
-        .filter(|record| record.is_active)
-        .map(|record| record.id.as_str())
-        .collect();
-    assert_eq!(
-        active_ids,
-        vec!["builtin:fizz", "builtin:honey", "builtin:bumble"]
-    );
+    assert!(records.iter().all(|record| !record.is_active));
+}
+
+#[test]
+fn hide_default_inactive_built_ins_deactivates_seeded_personas_once() {
+    let mut fizz = custom_persona("builtin:fizz", "Fizz");
+    fizz.is_builtin = true;
+    let custom = custom_persona("custom:test", "Custom");
+    let mut records = vec![fizz, custom];
+
+    assert!(hide_default_inactive_built_ins(
+        &mut records,
+        "2026-11-13T00:00:00Z"
+    ));
+    assert!(!records[0].is_active);
+    assert_eq!(records[0].updated_at, "2026-11-13T00:00:00Z");
+    assert!(records[1].is_active);
+    assert!(!hide_default_inactive_built_ins(
+        &mut records,
+        "2026-11-14T00:00:00Z"
+    ));
 }
 
 #[test]
@@ -127,7 +139,7 @@ fn merge_personas_adds_fizz_and_retires_old_builtins_for_existing_store() {
         .find(|record| record.id == "builtin:fizz")
         .expect("fizz built-in should exist");
     assert!(fizz.is_builtin);
-    assert!(fizz.is_active);
+    assert!(!fizz.is_active);
 
     let solo = records
         .iter()

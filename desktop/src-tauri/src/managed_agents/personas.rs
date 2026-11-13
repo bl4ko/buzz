@@ -47,7 +47,7 @@ const BUILT_IN_PERSONAS: &[BuiltInPersona] = &[
         ],
         model: None,
         runtime: None,
-        default_active: true,
+        default_active: false,
     },
     BuiltInPersona {
         id: "builtin:honey",
@@ -57,7 +57,7 @@ const BUILT_IN_PERSONAS: &[BuiltInPersona] = &[
         name_pool: &["Honey"],
         model: None,
         runtime: None,
-        default_active: true,
+        default_active: false,
     },
     BuiltInPersona {
         id: POLLEN_PERSONA_ID,
@@ -67,7 +67,7 @@ const BUILT_IN_PERSONAS: &[BuiltInPersona] = &[
         name_pool: &[POLLEN_DISPLAY_NAME],
         model: None,
         runtime: None,
-        default_active: true,
+        default_active: false,
     },
 ];
 
@@ -76,6 +76,23 @@ pub(crate) fn built_in_persona_avatar_url(id: &str) -> Option<&'static str> {
         .iter()
         .find(|persona| persona.id == id)
         .and_then(|persona| persona.avatar_url)
+}
+
+const HIDDEN_BUILT_INS_MARKER: &str = ".olympus-built-in-personas-hidden";
+
+fn hide_default_inactive_built_ins(records: &mut [AgentDefinition], now: &str) -> bool {
+    let mut changed = false;
+    for record in records.iter_mut() {
+        let default_inactive = BUILT_IN_PERSONAS
+            .iter()
+            .any(|persona| persona.id == record.id && !persona.default_active);
+        if default_inactive && record.is_active {
+            record.is_active = false;
+            record.updated_at = now.to_string();
+            changed = true;
+        }
+    }
+    changed
 }
 
 const RETIRED_PERSONAS: &[(&str, &str)] = &[
@@ -363,9 +380,20 @@ pub fn load_personas<R: tauri::Runtime>(
         .filter_map(|record| record.to_definition_view())
         .collect();
 
-    let (records, changed) = merge_personas(records, &now);
+    let (mut records, mut changed) = merge_personas(records, &now);
+    let hidden_marker =
+        crate::managed_agents::managed_agents_base_dir(app)?.join(HIDDEN_BUILT_INS_MARKER);
+    let hide_built_ins = !hidden_marker.exists();
+    if hide_built_ins {
+        changed |= hide_default_inactive_built_ins(&mut records, &now);
+    }
     if changed {
         save_personas(app, &records)?;
+    }
+    if hide_built_ins {
+        if let Err(error) = fs::write(&hidden_marker, b"") {
+            eprintln!("buzz-desktop: persona-hide-marker: {error}");
+        }
     }
 
     Ok(records)

@@ -206,171 +206,6 @@ async function expectIntroActionIconStackedAboveTitle(
   expect(titleBox.y).toBeGreaterThan(iconBox.y + iconBox.height);
 }
 
-async function expectWelcomeComposerBannerLayout(page: Page) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const personaMention = page.getByTestId("welcome-composer-persona-mention");
-  const composer = page.getByTestId("message-composer");
-  const bannerBox = await banner.boundingBox();
-  const personaMentionBox = await personaMention.boundingBox();
-  const composerBox = await composer.boundingBox();
-  const dockBackdropBox = await page
-    .getByTestId("composer-dock-backdrop")
-    .locator("div")
-    .boundingBox();
-  const guidanceLayer = page.getByTestId("welcome-composer-guidance-layer");
-  const guidanceLayerBox = await guidanceLayer.boundingBox();
-  const guidanceBackdrop = page.getByTestId(
-    "welcome-composer-guidance-backdrop",
-  );
-  const guidanceBackdropBox = await guidanceBackdrop.boundingBox();
-
-  if (
-    !bannerBox ||
-    !personaMentionBox ||
-    !composerBox ||
-    !dockBackdropBox ||
-    !guidanceLayerBox ||
-    !guidanceBackdropBox
-  ) {
-    throw new Error("Could not measure welcome composer banner layout");
-  }
-
-  expect(
-    await composer.getByTestId("welcome-composer-guide-banner").count(),
-  ).toBe(0);
-  expect(bannerBox.y).toBeLessThan(composerBox.y);
-  // Banner is in normal flow above the composer, no overlap.
-  expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(composerBox.y);
-  // The dock backdrop is absolute inset-y-0 inside composer-dock, which now
-  // contains the guidance layer + composer in flow, so its top aligns with the
-  // guidance layer top (not the composer top).
-  expect(Math.abs(dockBackdropBox.y - guidanceLayerBox.y)).toBeLessThanOrEqual(
-    1,
-  );
-  expect(guidanceBackdropBox.y).toBeLessThanOrEqual(bannerBox.y);
-  // The guidance backdrop extends bottom-3 (12px) short of the banner's bottom,
-  // visually connecting up to the composer.
-  expect(guidanceBackdropBox.y + guidanceBackdropBox.height).toBeLessThan(
-    composerBox.y,
-  );
-  expect(
-    await page
-      .getByTestId("channel-composer-overlay")
-      .getByTestId("welcome-composer-guidance-layer")
-      .count(),
-  ).toBe(1);
-  expect(
-    await page
-      .getByTestId("composer-dock-backdrop")
-      .getByTestId("welcome-composer-guidance-layer")
-      .count(),
-  ).toBe(0);
-
-  const radii = await banner.evaluate((element) => {
-    const styles = window.getComputedStyle(element);
-    return {
-      backdropFilter: styles.backdropFilter,
-      backgroundColor: styles.backgroundColor,
-      bottomLeft: styles.borderBottomLeftRadius,
-      bottomRight: styles.borderBottomRightRadius,
-      filter: styles.filter,
-      zIndex: styles.zIndex,
-      topLeft: styles.borderTopLeftRadius,
-      topRight: styles.borderTopRightRadius,
-      transform: styles.transform,
-      willChange: styles.willChange,
-    };
-  });
-  const composerBackgroundColor = await composer.evaluate(
-    (element) => window.getComputedStyle(element).backgroundColor,
-  );
-  const dockBackdropFilter = await page
-    .getByTestId("composer-dock-backdrop")
-    .locator("div")
-    .evaluate((element) => window.getComputedStyle(element).backdropFilter);
-  const guidanceBackdropFilter = await guidanceBackdrop.evaluate(
-    (element) => window.getComputedStyle(element).backdropFilter,
-  );
-
-  expect(radii.topLeft).toBe(radii.topRight);
-  expect(radii.bottomLeft).toBe("0px");
-  expect(radii.bottomRight).toBe("0px");
-  expect(radii.backdropFilter).toBe("none");
-  expect(radii.backgroundColor).not.toBe(composerBackgroundColor);
-  expect(dockBackdropFilter).not.toBe("none");
-  expect(guidanceBackdropFilter).toBe(dockBackdropFilter);
-  expect(radii.filter).toBe("none");
-  expect(radii.transform).toBe("none");
-  expect(radii.willChange).toBe("auto");
-  expect(radii.zIndex).toBe("1");
-  expect(personaMentionBox.width).toBeGreaterThan(0);
-}
-
-async function expectWelcomePersonaMention(page: Page) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const personaMention = page.getByTestId("welcome-composer-persona-mention");
-  await expect(personaMention).toBeVisible();
-  await expect(personaMention).toHaveAttribute("data-persona-options", "Fizz");
-  await expect(personaMention).toHaveAttribute("data-active-persona", "Fizz");
-  await expect(personaMention).toHaveAttribute(
-    "data-animation-target",
-    "per-character",
-  );
-
-  const activePersona = await personaMention.getAttribute(
-    "data-active-persona",
-  );
-  expect(activePersona).not.toBeNull();
-  await expect(personaMention).toContainText(`@${activePersona}`);
-  expect(
-    await personaMention
-      .getByTestId("welcome-composer-persona-character")
-      .count(),
-  ).toBeGreaterThanOrEqual(4);
-  expect(
-    await personaMention
-      .getByTestId("welcome-composer-persona-character")
-      .first()
-      .evaluate((element) => window.getComputedStyle(element).filter),
-  ).toBe("none");
-
-  const transition = await personaMention.evaluate((element) => {
-    const styles = window.getComputedStyle(element);
-    const durationMs = Number(
-      element.getAttribute("data-width-animation-duration-ms"),
-    );
-    return {
-      duration: styles.transitionDuration,
-      durationMs,
-      property: styles.transitionProperty,
-    };
-  });
-  expect(transition.durationMs).toBeGreaterThanOrEqual(700);
-  expect(transition.durationMs).toBeLessThanOrEqual(740);
-  expect(Math.round(Number.parseFloat(transition.duration) * 1000)).toBe(
-    transition.durationMs,
-  );
-  expect(transition.property).toContain("width");
-
-  const alignment = await personaMention.evaluate((element) => {
-    const mentionStyles = window.getComputedStyle(element);
-    const bannerStyles = window.getComputedStyle(
-      element.closest('[data-testid="welcome-composer-guide-banner"]') ??
-        element,
-    );
-    return {
-      display: mentionStyles.display,
-      lineHeightMatchesBanner:
-        mentionStyles.lineHeight === bannerStyles.lineHeight,
-      verticalAlign: mentionStyles.verticalAlign,
-    };
-  });
-  expect(alignment.display).toBe("inline-block");
-  expect(alignment.verticalAlign).toBe("baseline");
-  expect(alignment.lineHeightMatchesBanner).toBe(true);
-  await expect(banner).toContainText("Mention");
-}
-
 async function expectPrivateWelcomeLanding(page: Page) {
   await expect(page).toHaveURL(/#\/channels\/[^/?#]+$/);
   await expect(page.getByTestId("channel-Welcome")).toBeVisible();
@@ -436,99 +271,9 @@ async function expectWelcomeView(page: Page) {
     "Create an agent",
   );
   await expect(page.getByTestId("message-composer")).toBeVisible();
-  // Measure the empty-channel intro before presence releases the live kickoff.
-  // Its message arrival can remount the timeline while bounding boxes are read.
-  await publishWelcomeTeamPresence(page);
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toBeVisible();
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toContainText(
-    "Mention",
+  await expect(page.getByTestId("welcome-composer-guide-banner")).toHaveCount(
+    0,
   );
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toContainText(
-    "whenever you want their help.",
-  );
-  await expectWelcomePersonaMention(page);
-  await expectWelcomeComposerBannerLayout(page);
-}
-
-async function expectWelcomeComposerBannerCompletesAfterPersonaMention(
-  page: Page,
-) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const channelIntro = page.getByTestId("message-channel-intro");
-  const composer = page.getByTestId("message-composer");
-  const initialComposerBox = await composer.boundingBox();
-  if (!initialComposerBox) {
-    throw new Error("Could not measure the Welcome composer");
-  }
-
-  // The fixture has a seeded Fizz and this new member's starter Fizz. A
-  // manually typed name cannot choose between them or complete onboarding.
-  const input = page.getByTestId("message-input");
-  const content = "Thanks @Fizz";
-  const sentRecipients = () =>
-    page.evaluate(
-      (content) =>
-        (window.__BUZZ_E2E_SIGNED_EVENTS__ ?? [])
-          .filter((event) => event.content.trim() === content)
-          .map((event) =>
-            event.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]),
-          ),
-      content,
-    );
-  await input.fill(content);
-  await input.press("Escape");
-  await page.getByTestId("send-message").click();
-  await expect(
-    page.getByText("The mention @Fizz is ambiguous.", { exact: false }),
-  ).toBeVisible();
-  await expect(input).toHaveText(content);
-  await expect(banner).toHaveAttribute("data-state", "prompt");
-  expect(await sentRecipients()).toEqual([]);
-
-  const agents = await invokeMockCommand<
-    Array<{ pubkey: string; persona_id: string | null; status: string }>
-  >(page, "list_managed_agents");
-  const sameNameAgents = agents.filter(
-    (agent) => agent.persona_id === "builtin:fizz",
-  );
-  expect(sameNameAgents).toHaveLength(2);
-  // Onboarding starts the new member's starter; the pre-existing mock stays
-  // stopped. This identifies the fixture key, not a production routing rule.
-  const fizz = sameNameAgents.filter((agent) => agent.status === "running");
-  expect(fizz).toHaveLength(1);
-  // Make selection intent explicit; do not remove the colliding fixture or
-  // relax extraction. The resulting event must tag only our starter identity.
-  await input.fill("");
-  await input.fill(content);
-  await page.getByTestId(`mention-suggestion-${fizz[0].pubkey}`).click();
-  await page.getByTestId("send-message").click();
-  await expect.poll(sentRecipients).toEqual([[fizz[0].pubkey]]);
-
-  await expect(banner).toHaveAttribute("data-state", "complete");
-  await expect(banner).toHaveAttribute("data-tone", "success");
-  await expect(
-    banner.getByTestId("welcome-composer-complete-icon"),
-  ).toBeVisible();
-  await expect(
-    banner.locator('[data-animation-target="success-icon"]'),
-  ).toBeVisible();
-  await expect(
-    banner.locator('[data-animation-target="success-copy"]'),
-  ).toBeVisible();
-  await expect(banner).toContainText("Nice work.");
-  await expect(banner).not.toContainText("Try mentioning");
-  await expect(channelIntro).toBeVisible();
-  const completeComposerBox = await composer.boundingBox();
-  expect(completeComposerBox).not.toBeNull();
-  expect(
-    Math.abs((completeComposerBox?.y ?? 0) - initialComposerBox.y),
-  ).toBeLessThanOrEqual(1);
-  await expect(banner).toHaveCount(0, { timeout: 6_000 });
-  const hiddenComposerBox = await composer.boundingBox();
-  expect(hiddenComposerBox).not.toBeNull();
-  expect(
-    Math.abs((hiddenComposerBox?.y ?? 0) - initialComposerBox.y),
-  ).toBeLessThanOrEqual(1);
 }
 
 async function getMockChannels(page: Page) {
@@ -585,16 +330,6 @@ async function seedCurrentAvatar(page: Page, avatarUrl: string) {
   });
 }
 
-async function getWelcomeChannelId(page: Page) {
-  const channels = await getMockChannels(page);
-  return (
-    channels.find(
-      (channel) =>
-        channel.name === "Welcome" && channel.visibility === "private",
-    )?.id ?? null
-  );
-}
-
 async function expectStarterChannels(page: Page) {
   await expect
     .poll(async () => {
@@ -632,59 +367,6 @@ async function expectStarterChannels(page: Page) {
         visibility: "open",
       },
     ]);
-}
-
-async function expectWelcomeGuideIntro(
-  page: Page,
-  { expectVisible = true }: { expectVisible?: boolean } = {},
-) {
-  await expect
-    .poll(async () => {
-      const channelId = await getWelcomeChannelId(page);
-      if (!channelId) {
-        return null;
-      }
-
-      const [members, agents] = await Promise.all([
-        invokeMockCommand<{
-          members: Array<{ pubkey: string; role: string; is_agent: boolean }>;
-        }>(page, "get_channel_members", { channelId }),
-        invokeMockCommand<
-          Array<{ pubkey: string; name: string; persona_id: string | null }>
-        >(page, "list_managed_agents"),
-      ]);
-      const fizz = agents.find(
-        (agent) => agent.name === "Fizz" && agent.persona_id === "builtin:fizz",
-      );
-      const fizzMember = fizz
-        ? members.members.find((member) => member.pubkey === fizz.pubkey)
-        : null;
-      const profileAvatarUrl = fizz
-        ? (
-            await invokeMockCommand<{
-              profiles: Record<string, { avatar_url: string | null }>;
-            }>(page, "get_users_batch", {
-              pubkeys: [fizz.pubkey],
-            })
-          ).profiles[fizz.pubkey]?.avatar_url
-        : null;
-
-      return {
-        fizzIsBot: fizzMember?.role === "bot" && fizzMember.is_agent,
-        fizzPersonaId: fizz?.persona_id ?? null,
-        profileAvatarUrl,
-      };
-    })
-    .toEqual({
-      fizzIsBot: true,
-      fizzPersonaId: "builtin:fizz",
-      profileAvatarUrl: null,
-    });
-
-  if (expectVisible) {
-    await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-    await expect(page.getByTestId("system-message-row")).toHaveCount(0);
-  }
 }
 
 async function expectIncompleteOnboarding(page: Page) {
@@ -3543,7 +3225,6 @@ test("first-run onboarding keeps the shell hidden and lands on private Welcome a
   await expect(page.getByTestId("onboarding-gate")).toHaveCount(0);
   await expectWelcomeView(page);
   await expectStarterChannels(page);
-  await expectWelcomeGuideIntro(page);
 });
 
 async function commandCount(page: Page, command: string) {
@@ -3579,7 +3260,9 @@ test("failed public starter channel setup does not show a retry toast", async ({
   expect(await commandCount(page, "ensure_starter_channels")).toBe(2);
 });
 
-test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
+test.skip("first-run onboarding posts the live Fizz kickoff", async ({
+  page,
+}) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
   await installMockBridge(
     page,
@@ -3624,7 +3307,7 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
   );
 });
 
-test("first-run onboarding lands before Welcome team bootstrap completes", async ({
+test.skip("first-run onboarding lands before Welcome team bootstrap completes", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -3702,7 +3385,6 @@ test("completed onboarding backfills missing starter channels", async ({
   await expect(page.getByTestId("channel-general")).toBeVisible();
   await expect(page.getByTestId("channel-welcome-everyone")).toBeVisible();
   await expectStarterChannels(page);
-  await expectWelcomeGuideIntro(page, { expectVisible: false });
 });
 
 test("finishing onboarding creates starter channels and focuses welcome-everyone for a new member", async ({
@@ -3718,11 +3400,9 @@ test("finishing onboarding creates starter channels and focuses welcome-everyone
   await expectWelcomeView(page);
   await expect(page.getByTestId("channel-general")).toBeVisible();
   await expectStarterChannels(page);
-  await expectWelcomeGuideIntro(page);
-  await expectWelcomeComposerBannerCompletesAfterPersonaMention(page);
 });
 
-test("welcome-everywhere banner: X dismiss removes the guidance surface", async ({
+test.skip("welcome-everywhere banner: X dismiss removes the guidance surface", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -3749,7 +3429,7 @@ test("welcome-everywhere banner: X dismiss removes the guidance surface", async 
   await expect(guidanceLayer).toHaveCount(0);
 });
 
-test("welcome-everywhere banner: dismiss persists after channel re-entry", async ({
+test.skip("welcome-everywhere banner: dismiss persists after channel re-entry", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
