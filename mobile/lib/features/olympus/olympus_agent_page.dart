@@ -245,7 +245,9 @@ class _Status extends StatelessWidget {
     dividerIndent: Grid.xs,
     children: [
       AppListRow(title: 'Phase', value: _phaseName(agent.phase)),
-      if (agent.reason != null && agent.phase != OlympusPhase.online)
+      if (agent.reason != null &&
+          agent.phase != OlympusPhase.online &&
+          agent.reason != _phaseName(agent.phase))
         AppListRow(
           title: 'Reason',
           subtitle: agent.reason,

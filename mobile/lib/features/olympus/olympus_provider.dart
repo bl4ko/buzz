@@ -208,6 +208,7 @@ class OlympusNotifier extends Notifier<OlympusSnapshot> {
   bool _loaded = false;
   String? _identity;
   void Function()? _unsubscribe;
+  Timer? _flush;
   int _epoch = 0;
 
   @override
@@ -240,6 +241,8 @@ class OlympusNotifier extends Notifier<OlympusSnapshot> {
 
   void _stop() {
     _epoch++;
+    _flush?.cancel();
+    _flush = null;
     _unsubscribe?.call();
     _unsubscribe = null;
   }
@@ -249,9 +252,8 @@ class OlympusNotifier extends Notifier<OlympusSnapshot> {
   Future<void> _start(String me, int epoch) async {
     if (epoch != _epoch || _unsubscribe != null) return;
     final pending = <NostrEvent>[];
-    Timer? flush;
     void apply() {
-      flush = null;
+      _flush = null;
       if (epoch != _epoch || pending.isEmpty) return;
       _events = mergeOlympusEvents(_events, pending);
       pending.clear();
@@ -261,7 +263,7 @@ class OlympusNotifier extends Notifier<OlympusSnapshot> {
     try {
       final unsubscribe = await ref
           .read(relaySessionProvider.notifier)
-          .subscribeWithStatus(
+          .subscribe(
             NostrFilter(
               kinds: OlympusKind.state,
               tags: {
@@ -271,16 +273,7 @@ class OlympusNotifier extends Notifier<OlympusSnapshot> {
             ),
             (event) {
               pending.add(event);
-              flush ??= Timer(const Duration(milliseconds: 50), apply);
-            },
-            onStatusChanged: (status) {
-              if (status != RelaySubscriptionStatus.ready || epoch != _epoch) {
-                return;
-              }
-              flush?.cancel();
-              apply();
-              _loaded = true;
-              _emit();
+              _flush ??= Timer(const Duration(milliseconds: 50), apply);
             },
             onClosed: (message) {
               debugPrint('olympus: subscription closed: $message');
@@ -294,6 +287,10 @@ class OlympusNotifier extends Notifier<OlympusSnapshot> {
         unsubscribe();
         return;
       }
+      _flush?.cancel();
+      apply();
+      _loaded = true;
+      _emit();
       _unsubscribe = unsubscribe;
     } catch (error) {
       debugPrint('olympus: subscribe failed: $error');
@@ -405,12 +402,10 @@ final olympusMasterProvider = Provider<OlympusAgent?>(
 
 int olympusNow() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-/// Open proposals; refreshed each minute so expiries drop out.
-final olympusPendingCountProvider = Provider.autoDispose<int>((ref) {
-  final timer = Timer(const Duration(minutes: 1), ref.invalidateSelf);
-  ref.onDispose(timer.cancel);
-  return ref.watch(olympusProvider).pendingCount(olympusNow());
-});
+/// Open proposals. The operator republishes a proposal when it expires.
+final olympusPendingCountProvider = Provider<int>(
+  (ref) => ref.watch(olympusProvider).pendingCount(olympusNow()),
+);
 
 const _workingStale = Duration(minutes: 3);
 const _turnEnd = {'turn_completed', 'turn_error', 'agent_panic'};

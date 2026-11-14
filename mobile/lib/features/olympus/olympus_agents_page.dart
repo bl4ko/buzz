@@ -286,26 +286,26 @@ class _AgentRow extends ConsumerWidget {
           ],
         ],
       ),
-      subtitle: Text(
-        [
-          agent.resolved.model,
-          if (agent.schedules.isNotEmpty)
-            '${agent.schedules.length} schedule${agent.schedules.length == 1 ? '' : 's'}',
-        ].where((part) => part.isNotEmpty).join(' · '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: context.textTheme.bodySmall?.copyWith(
-          color: context.colors.onSurfaceVariant,
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+      subtitle: Row(
         children: [
           OlympusStateLabel(state: olympusDisplayState(agent, working)),
-          const SizedBox(width: Grid.half),
-          const _Chevron(),
+          Expanded(
+            child: Text(
+              [
+                agent.resolved.model,
+                if (agent.schedules.isNotEmpty)
+                  '${agent.schedules.length} schedule${agent.schedules.length == 1 ? '' : 's'}',
+              ].where((part) => part.isNotEmpty).map((p) => ' · $p').join(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.textTheme.bodySmall?.copyWith(
+                color: context.colors.onSurfaceVariant,
+              ),
+            ),
+          ),
         ],
       ),
+      trailing: const _Chevron(),
       onTap: onTap,
     );
   }
