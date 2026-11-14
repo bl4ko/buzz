@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { OlympusInstructionsFile } from "@/features/agents/lib/olympusAgents";
-import {
-  getProjectRepoFileContent,
-  getProjectRepoSnapshot,
-} from "@/shared/api/projectGit";
+import { invokeTauri } from "@/shared/api/tauri";
 
 export const OLYMPUS_FILE_MAX_BYTES = 100 * 1024;
 
@@ -14,25 +11,11 @@ export async function readOlympusInstructionsFile(
   file: OlympusInstructionsFile,
 ): Promise<OlympusFileVersion> {
   if (!file.url) throw new Error("Hephaestus did not publish the clone URL.");
-  const snapshot = await getProjectRepoSnapshot({
+  return invokeTauri<OlympusFileVersion>("read_olympus_git_file", {
     cloneUrl: file.url,
-    defaultBranch: file.branch,
-    baseBranch: file.branch,
-  });
-  const base = snapshot.latestCommit?.hash;
-  if (!base) throw new Error(`The branch ${file.branch} has no commit.`);
-  const content = await getProjectRepoFileContent({
-    cloneUrl: file.url,
-    defaultBranch: file.branch,
-    targetCommit: base,
+    branch: file.branch,
     path: file.path,
   });
-  if (content === null) {
-    throw new Error(
-      `${file.path} is missing, binary, or larger than 64 KiB at ${base.slice(0, 7)}.`,
-    );
-  }
-  return { base, content };
 }
 
 export function olympusInstructionsFileQueryKey(
