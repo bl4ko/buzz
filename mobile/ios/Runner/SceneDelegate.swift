@@ -23,12 +23,16 @@ class SceneDelegate: FlutterSceneDelegate {
     }
   }
 
-  func windowScene(
+  override func windowScene(
     _ windowScene: UIWindowScene,
     performActionFor shortcutItem: UIApplicationShortcutItem,
     completionHandler: @escaping (Bool) -> Void
   ) {
-    completionHandler(BuzzQuickActions.handle(shortcutItem))
+    if BuzzQuickActions.handle(shortcutItem) {
+      completionHandler(true)
+    } else {
+      super.windowScene(windowScene, performActionFor: shortcutItem, completionHandler: completionHandler)
+    }
   }
 }
 

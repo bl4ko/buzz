@@ -148,10 +148,12 @@ void useMasterAgentShortcut(BuildContext context, WidgetRef ref) {
   );
   useEffect(() {
     if (link is! AskMasterDeepLink || !loaded || !channelsReady) return null;
-    ref.read(pendingDeepLinkProvider.notifier).consume();
     final key = master?.publicKey;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) return;
+      if (!context.mounted || ref.read(pendingDeepLinkProvider) != link) {
+        return;
+      }
+      ref.read(pendingDeepLinkProvider.notifier).consume();
       if (key == null) {
         ScaffoldMessenger.maybeOf(context)?.showFeedbackSnackBar(
           const SnackBar(content: Text('No master agent in this community.')),
