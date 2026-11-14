@@ -31,6 +31,7 @@ import {
   olympusEditableSpec,
   useOlympusSpecSave,
 } from "./OlympusAgentEditor";
+import { OlympusContextGauge } from "./OlympusContextGauge";
 import { OlympusAgentUsage } from "./olympusMounts";
 import {
   formatOlympusAgo,
@@ -203,6 +204,11 @@ export function OlympusProfileSection({
               </div>
             ) : null}
           </div>
+          <OlympusContextGauge
+            agentPubkey={agent.publicKey}
+            className="px-4 py-3"
+            limit={1}
+          />
           <Row label="Workspace" testId="olympus-profile-workspace">
             {agent.workspace}
             <Muted>
