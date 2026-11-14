@@ -21,9 +21,11 @@ pub struct SessionContext {
     pub(crate) open_compactions: HashSet<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Compaction {
+    #[serde(skip)]
+    pub id: String,
     pub at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pre_tokens: Option<u64>,
@@ -128,22 +130,24 @@ impl ContextTracker {
                         {
                             ctx.compactions += 1;
                             ctx.last_compaction = Some(Compaction {
+                                id: id.to_owned(),
                                 at: now,
-                                pre_tokens: update
-                                    .pointer("/rawOutput/preTokens")
-                                    .and_then(|v| v.as_u64()),
-                                post_tokens: update
-                                    .pointer("/rawOutput/postTokens")
-                                    .and_then(|v| v.as_u64()),
+                                ..Compaction::default()
                             });
                         }
                     }
                     Some("failed") => {
                         ctx.open_compactions.remove(id);
                     }
-                    _ => {
+                    Some(_) => {
                         ctx.open_compactions.insert(id.to_owned());
                     }
+                    None => {}
+                }
+                if let Some(last) = ctx.last_compaction.as_mut().filter(|last| last.id == id) {
+                    let tokens = |key: &str| update.pointer(key).and_then(|v| v.as_u64());
+                    last.pre_tokens = tokens("/rawOutput/preTokens").or(last.pre_tokens);
+                    last.post_tokens = tokens("/rawOutput/postTokens").or(last.post_tokens);
                 }
             }
             _ => {}
@@ -231,22 +235,23 @@ pub fn render_report(r: &Report<'_>) -> String {
             age(r.now.saturating_sub(ctx.started_at))
         ),
     ];
-    let compactions = match ctx.last_compaction {
+    let compactions = match &ctx.last_compaction {
         Some(Compaction {
             pre_tokens: Some(pre),
             post_tokens: Some(post),
             at,
+            ..
         }) => format!(
             "- Compactions: {} (last {} ago: {} → {} tokens)",
             ctx.compactions,
-            age(r.now.saturating_sub(at)),
-            group(pre),
-            group(post)
+            age(r.now.saturating_sub(*at)),
+            group(*pre),
+            group(*post)
         ),
         Some(Compaction { at, .. }) => format!(
             "- Compactions: {} (last {} ago)",
             ctx.compactions,
-            age(r.now.saturating_sub(at))
+            age(r.now.saturating_sub(*at))
         ),
         None => format!("- Compactions: {}", ctx.compactions),
     };
@@ -297,29 +302,32 @@ mod tests {
     fn claude_compaction_counts_once_on_completion() {
         let mut t = ContextTracker::default();
         t.open("s", 0);
+        let meta = json!({"claudeCode": {"toolName": "compact"}});
         t.record_update(
-            &update("s", json!({"sessionUpdate": "tool_call", "toolCallId": "c1", "title": "Compact conversation", "kind": "think", "status": "in_progress", "_meta": {"claudeCode": {"toolName": "compact"}}})),
+            &update("s", json!({"sessionUpdate": "tool_call", "toolCallId": "c1", "title": "Compact conversation", "kind": "think", "status": "in_progress", "_meta": meta})),
             1,
-        );
-        t.record_update(
-            &update("s", json!({"sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "in_progress"})),
-            2,
         );
         assert_eq!(t.get("s").unwrap().compactions, 0);
         let done = update(
             "s",
-            json!({"sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "completed", "rawOutput": {"trigger": "manual", "preTokens": 150_000, "postTokens": 20_000}, "_meta": {"claudeCode": {"toolName": "compact"}}}),
+            json!({"sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "completed", "_meta": meta}),
         );
         t.record_update(&done, 3);
         t.record_update(&done, 4);
+        t.record_update(
+            &update("s", json!({"sessionUpdate": "tool_call_update", "toolCallId": "c1", "rawOutput": {"trigger": "manual", "preTokens": 17_672, "postTokens": 3_236, "durationMs": 3495}, "_meta": meta})),
+            5,
+        );
         let ctx = t.get("s").unwrap();
         assert_eq!(ctx.compactions, 1);
+        assert!(ctx.open_compactions.is_empty());
         assert_eq!(
             ctx.last_compaction,
             Some(Compaction {
+                id: "c1".into(),
                 at: 3,
-                pre_tokens: Some(150_000),
-                post_tokens: Some(20_000)
+                pre_tokens: Some(17_672),
+                post_tokens: Some(3_236)
             })
         );
     }
@@ -379,6 +387,7 @@ mod tests {
             size: Some(200_000),
             compactions: 1,
             last_compaction: Some(Compaction {
+                id: "c".into(),
                 at: 4600,
                 pre_tokens: Some(180_204),
                 post_tokens: Some(21_330),

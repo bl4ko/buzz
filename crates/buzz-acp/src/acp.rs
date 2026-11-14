@@ -4889,7 +4889,8 @@ sleep 1"#,
             read -r REQ
             ID=$(printf '%s' "$REQ" | sed -E 's/.*"id":([0-9]+).*/\1/')
             echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call","toolCallId":"c1","title":"Compact conversation","kind":"think","status":"in_progress","_meta":{"claudeCode":{"toolName":"compact"}}}}}'
-            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","rawOutput":{"trigger":"manual","preTokens":150000,"postTokens":20000},"_meta":{"claudeCode":{"toolName":"compact"}}}}}'
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","_meta":{"claudeCode":{"toolName":"compact"}}}}}'
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","rawOutput":{"trigger":"manual","preTokens":150000,"postTokens":20000},"_meta":{"claudeCode":{"toolName":"compact"}}}}}'
             echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"usage_update","used":20000,"size":200000}}}'
             echo '{"jsonrpc":"2.0","id":'"$ID"',"result":{"stopReason":"end_turn","usage":{"inputTokens":7,"outputTokens":3,"totalTokens":10}}}'
             read -r REQ
@@ -4916,6 +4917,11 @@ sleep 1"#,
             (Some(20_000), Some(200_000), 1)
         );
         assert_eq!(context.compactions, 1);
+        let last = context.last_compaction.clone().expect("last compaction");
+        assert_eq!(
+            (last.pre_tokens, last.post_tokens),
+            (Some(150_000), Some(20_000))
+        );
         let usage = client.take_turn_usage().expect("usage");
         assert_eq!(usage.context, Some(context.usage()));
         assert!(client.session_close("ctx").await);
