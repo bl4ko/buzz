@@ -70,8 +70,8 @@ export function OlympusSchedulesTab({ agent }: { agent?: string } = {}) {
     setStored(next);
     saveOlympusScheduleFilter(next);
   };
-  const failed = rows.filter((row) => row.failed).length;
   const shown = applyOlympusScheduleFilter(rows, filter);
+  const failed = shown.filter((row) => row.failed).length;
   const filtered = filter.workspace !== null || filter.agent !== null;
 
   if (rows.length === 0) {

@@ -89,7 +89,7 @@ test("the schedules filter by agent and workspace is remembered", async ({
     olympus.getByTestId("olympus-schedule-argus-report"),
   ).toBeVisible();
   await expect(olympus.getByTestId("olympus-schedule-filters")).toContainText(
-    "2 of 3 schedules",
+    "2 of 3 schedules, 1 with a failed last run",
   );
   await page.screenshot({ path: `${SHOTS}/02-schedules-agent.png` });
 
