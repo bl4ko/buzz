@@ -327,4 +327,44 @@ void main() {
       expect(olympusAgentWorking([], now), isFalse);
     });
   });
+
+  test('an agent has respondTo, instructions file, and the last error', () {
+    final event = agentEvent(
+      workspace: 'dev',
+      name: 'proof',
+      publicKey: zeusKey,
+    );
+    final content = jsonDecode(event.content) as Map<String, Object?>;
+    (content['spec'] as Map<String, Object?>)['respondTo'] = [argusKey, 'x'];
+    content['instructionsFile'] = {'repo': 'agents', 'path': 'dev/proof.md'};
+    (content['status'] as Map<String, Object?>)['conditions'] = [
+      {'type': 'Ready', 'status': 'True', 'reason': 'Available'},
+      {
+        'type': 'Online',
+        'status': 'False',
+        'reason': 'NoHeartbeat',
+        'message': 'no heartbeat',
+      },
+      {'type': 'Backup', 'status': 'False', 'reason': 'Failed'},
+    ];
+    final agent = OlympusAgent.parse(
+      olympusEvent(
+        kind: OlympusKind.agent,
+        d: 'olympus-dev/proof',
+        content: content,
+        extraTags: [
+          ['workspace', 'dev'],
+        ],
+      ),
+    )!;
+    expect(agent.spec.respondTo, [argusKey]);
+    expect(agent.instructionsFile, 'agents/dev/proof.md');
+    expect(agent.lastError, (title: 'NoHeartbeat', detail: 'no heartbeat'));
+    expect(
+      findOwnedOlympusAgent([agent], ownerKey, zeusKey.toUpperCase()),
+      agent,
+    );
+    expect(findOwnedOlympusAgent([agent], argusKey, zeusKey), isNull);
+    expect(findOwnedOlympusAgent([agent], null, zeusKey), isNull);
+  });
 }

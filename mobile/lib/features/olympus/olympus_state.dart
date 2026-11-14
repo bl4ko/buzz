@@ -136,6 +136,7 @@ class OlympusAgentSpec {
     this.kubernetesRole,
     this.runtimeClass,
     this.instructionsFromRepo,
+    this.respondTo = const [],
     this.displayName,
     this.picture,
     this.about,
@@ -156,6 +157,7 @@ class OlympusAgentSpec {
   final String? kubernetesRole;
   final String? runtimeClass;
   final String? instructionsFromRepo;
+  final List<String> respondTo;
   final String? displayName;
   final String? picture;
   final String? about;
@@ -217,6 +219,10 @@ class OlympusAgentSpec {
       instructionsFromRepo: from == null
           ? null
           : [?_text(from['skillsRepo']), ?_text(from['path'])].join(':'),
+      respondTo: [
+        if (spec['respondTo'] case final List<Object?> keys)
+          for (final key in keys) ?_hex(key),
+      ],
       displayName: _text(profile?['displayName']),
       picture: _text(profile?['picture']),
       about: _text(profile?['about']),
@@ -282,6 +288,8 @@ class OlympusAgent {
     this.reason,
     this.publicKey,
     this.lastActivity,
+    this.instructionsFile,
+    this.lastError,
   });
 
   final String author;
@@ -302,6 +310,12 @@ class OlympusAgent {
   final String? reason;
   final String? publicKey;
   final DateTime? lastActivity;
+
+  /// `repo/path` of the instructions file in Olympus git.
+  final String? instructionsFile;
+
+  /// The first false condition: reason, then message.
+  final ({String title, String? detail})? lastError;
 
   bool get isMaster => role == masterAgentRole;
   OlympusAgentSpec get resolved => effectiveSpec ?? spec;
@@ -359,8 +373,43 @@ class OlympusAgent {
       reason: _text(status?['reason']),
       publicKey: _hex(status?['publicKey']),
       lastActivity: DateTime.tryParse(_text(status?['lastActivity']) ?? ''),
+      instructionsFile: switch (_object(content['instructionsFile'])) {
+        final file?
+            when _text(file['repo']) != null && _text(file['path']) != null =>
+          '${_text(file['repo'])}/${_text(file['path'])}',
+        _ => null,
+      },
+      lastError: _lastError(status?['conditions']),
     );
   }
+}
+
+({String title, String? detail})? _lastError(Object? conditions) {
+  for (final condition in _objects(conditions)) {
+    if (condition['status'] != 'False') continue;
+    final title = _text(condition['reason']) ?? _text(condition['type']);
+    if (title == null) continue;
+    final message = _text(condition['message']);
+    return (title: title, detail: message == title ? null : message);
+  }
+  return null;
+}
+
+/// The newest agent state for [publicKey] that [me] owns.
+OlympusAgent? findOwnedOlympusAgent(
+  Iterable<OlympusAgent> agents,
+  String? me,
+  String publicKey,
+) {
+  final owner = me?.toLowerCase();
+  final key = publicKey.toLowerCase();
+  if (owner == null || owner.isEmpty) return null;
+  OlympusAgent? match;
+  for (final agent in agents) {
+    if (agent.publicKey != key || agent.owner != owner) continue;
+    if (match == null || agent.createdAt > match.createdAt) match = agent;
+  }
+  return match;
 }
 
 @immutable

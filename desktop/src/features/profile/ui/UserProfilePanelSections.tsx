@@ -49,6 +49,7 @@ import {
   ProfilePrimaryActions,
 } from "@/features/profile/ui/UserProfilePrimaryActions";
 import { StatusEmoji } from "@/features/user-status/ui/StatusEmoji";
+import { useOwnedOlympusAgent } from "@/features/olympus/useOwnedOlympusAgent";
 import { BotIdenticon } from "@/features/messages/ui/BotIdenticon";
 import type { ManagedAgent, RelayAgent } from "@/shared/api/types";
 import type {
@@ -140,6 +141,11 @@ const PROFILE_HERO_PRESENCE_BADGE = {
   },
 } as const;
 
+const OlympusProfileSection = React.lazy(async () => {
+  const module = await import("@/features/olympus/ui/OlympusProfileSection");
+  return { default: module.OlympusProfileSection };
+});
+
 export function ProfileSummaryView({
   activityAgent,
   canAddToChannel,
@@ -200,6 +206,7 @@ export function ProfileSummaryView({
 }: ProfileSummaryViewProps) {
   const notManagedOnDevice = useIsOtherSetupAgent(pubkey, profile?.ownerPubkey);
   const activeTurns = useAgentWorking(isBot ? pubkey : null).channels;
+  const olympusAgent = useOwnedOlympusAgent(isBot ? pubkey : null);
   const stickyLayoutRef = React.useRef<HTMLDivElement>(null);
   const [primaryActionsConcealed, setPrimaryActionsConcealed] =
     React.useState(false);
@@ -252,6 +259,7 @@ export function ProfileSummaryView({
     showActivityIngress ||
     showInstructionBlock ||
     managedAgent !== undefined ||
+    olympusAgent !== null ||
     !showRuntimeTab;
 
   const diagnosticsErrorField = diagnosticsFields.find(
@@ -542,27 +550,34 @@ export function ProfileSummaryView({
             tabs={tabIds}
           >
             {activeTab === "info" ? (
-              <ProfileInfoTabContent
-                activeTurns={activeTurns}
-                activityAgent={activityAgent}
-                agentInfoFields={agentInfoFields}
-                archiveActions={archiveActions}
-                canArchiveAgent={isBot && archiveActions.canArchive}
-                canDeleteAgent={canDeleteAgent}
-                channelIdToName={channelIdToName}
-                isArchived={isArchived}
-                isDeleteAgentPending={isAgentActionPending}
-                managedAgent={managedAgent}
-                onEditAgent={handleEditAgent}
-                onCreateCard={onCreateCard}
-                onDeleteAgent={onDeleteAgent}
-                onDuplicateAgent={onDuplicateAgent}
-                onExportAgent={onExportAgent}
-                onOpenActivity={onOpenActivity}
-                pubkey={pubkey}
-                showActivityIngress={showActivityIngress}
-                showInstructionBlock={showInstructionBlock}
-              />
+              <div className="space-y-4">
+                {olympusAgent ? (
+                  <React.Suspense fallback={null}>
+                    <OlympusProfileSection match={olympusAgent} />
+                  </React.Suspense>
+                ) : null}
+                <ProfileInfoTabContent
+                  activeTurns={activeTurns}
+                  activityAgent={activityAgent}
+                  agentInfoFields={agentInfoFields}
+                  archiveActions={archiveActions}
+                  canArchiveAgent={isBot && archiveActions.canArchive}
+                  canDeleteAgent={canDeleteAgent}
+                  channelIdToName={channelIdToName}
+                  isArchived={isArchived}
+                  isDeleteAgentPending={isAgentActionPending}
+                  managedAgent={managedAgent}
+                  onEditAgent={handleEditAgent}
+                  onCreateCard={onCreateCard}
+                  onDeleteAgent={onDeleteAgent}
+                  onDuplicateAgent={onDuplicateAgent}
+                  onExportAgent={onExportAgent}
+                  onOpenActivity={onOpenActivity}
+                  pubkey={pubkey}
+                  showActivityIngress={showActivityIngress}
+                  showInstructionBlock={showInstructionBlock}
+                />
+              </div>
             ) : null}
             {activeTab === "runtime" ? (
               <div className="space-y-4">

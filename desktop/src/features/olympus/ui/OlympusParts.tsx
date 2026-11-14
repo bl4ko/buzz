@@ -302,6 +302,7 @@ export function OlympusEmptyState({
 }
 
 export function OlympusSelect({
+  className,
   disabled,
   id,
   label,
@@ -310,6 +311,7 @@ export function OlympusSelect({
   placeholder = "Choose",
   value,
 }: {
+  className?: string;
   disabled?: boolean;
   id?: string;
   label: string;
@@ -324,7 +326,7 @@ export function OlympusSelect({
       <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           aria-label={`${label}: ${current?.label ?? placeholder}`}
-          className="w-full justify-between font-normal"
+          className={cn("w-full justify-between font-normal", className)}
           id={id}
           type="button"
           variant="outline"

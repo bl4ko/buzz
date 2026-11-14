@@ -654,7 +654,7 @@ export function OlympusAgentUsageBlock({
   return (
     <section
       aria-label="Token usage"
-      className="space-y-3 rounded-2xl border border-border/70 bg-card px-4 py-3"
+      className="@container space-y-3 rounded-2xl border border-border/70 bg-card px-4 py-3"
       data-testid="olympus-agent-usage"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -665,7 +665,7 @@ export function OlympusAgentUsageBlock({
           value={windowKey}
         />
       </div>
-      <dl className="grid grid-cols-3 gap-x-4 gap-y-3 sm:grid-cols-6">
+      <dl className="grid grid-cols-3 gap-x-4 gap-y-3 @xl:grid-cols-6">
         <Stat label="Tokens" title={`${formatExact(tokens)} tokens`}>
           {formatCompactCount(tokens)}
         </Stat>

@@ -2,6 +2,7 @@ import 'package:buzz/features/olympus/master_agent.dart';
 import 'package:buzz/features/olympus/olympus_agent_page.dart';
 import 'package:buzz/features/olympus/olympus_agents_page.dart';
 import 'package:buzz/features/olympus/olympus_proposals.dart';
+import 'package:buzz/features/olympus/olympus_profile_card.dart';
 import 'package:buzz/features/olympus/olympus_provider.dart';
 import 'package:buzz/features/olympus/olympus_usage_page.dart';
 import 'package:buzz/shared/agents/owned_agent_directory.dart';
@@ -245,5 +246,38 @@ void main() {
     expect(find.text('Working…'), findsOneWidget);
     final badge = tester.getTopRight(find.text('1'));
     expect(badge.dx, greaterThan(330));
+  });
+
+  testWidgets('the profile card shows Olympus properties only to the owner', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      Scaffold(
+        body: ListView(
+          children: [
+            OlympusProfileCard(pubkey: zeusKey.toUpperCase()),
+            OlympusProfileCard(pubkey: 'f' * 64),
+          ],
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('olympus-profile-card')), findsOneWidget);
+    expect(find.text('zeus · zeus'), findsOneWidget);
+    expect(find.text('Master'), findsWidgets);
+    expect(find.text('claude-opus-5-5'), findsOneWidget);
+    expect(find.text('claude'), findsOneWidget);
+    expect(find.text('high'), findsOneWidget);
+    expect(find.text('Owner and scheduler only'), findsOneWidget);
+    expect(find.text('olympus'), findsOneWidget);
+    expect(find.text('Bank private'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('olympus-profile-schedule-zeus-case-monitor')),
+      findsOneWidget,
+    );
+    expect(find.text('Usage'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('olympus-profile-open')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OlympusAgentPage), findsOneWidget);
   });
 }
