@@ -166,10 +166,13 @@ pub fn sdk_err(e: buzz_sdk::SdkError) -> CliError {
 
 /// Read content from a string value or stdin if the value is "-".
 pub fn read_or_stdin(value: &str) -> Result<String, CliError> {
+    read_or_input(value, std::io::stdin())
+}
+
+pub fn read_or_input(value: &str, mut input: impl std::io::Read) -> Result<String, CliError> {
     if value == "-" {
-        use std::io::Read;
         let mut buf = String::new();
-        std::io::stdin()
+        input
             .read_to_string(&mut buf)
             .map_err(|e| CliError::Other(format!("failed to read stdin: {e}")))?;
         Ok(buf)
