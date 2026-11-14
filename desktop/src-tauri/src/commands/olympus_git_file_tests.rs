@@ -125,7 +125,7 @@ fn reads_the_file_at_the_branch_head_like_the_relay_serves_it() {
     let error = file_at(&objects, &head, "bin.dat").unwrap_err();
     assert!(error.contains("binary"), "{error}");
     let error = file_at(&objects, &head, "dev/agents/testbed.md/x").unwrap_err();
-    assert!(error.contains("is missing"), "{error}");
+    assert!(error.contains("not a regular file"), "{error}");
 }
 
 #[test]
