@@ -455,6 +455,23 @@ function OlympusJsonEditor({
   );
 }
 
+export function useOlympusSpecSave(agent: OlympusAgent, send: Send) {
+  const gate = useOlympusRiskGate();
+  const save = (after: Json, onSent?: () => void) => {
+    const { patch, risks } = olympusPatchChange(agent, after);
+    if (Object.keys(patch).length === 0) return onSent?.();
+    gate.guard(agent.name, risks, (confirmed) => {
+      void send({
+        action: "patch",
+        patch,
+        ...(confirmed ? { highRisk: true as const } : {}),
+      });
+      onSent?.();
+    });
+  };
+  return { save, dialog: gate.dialog };
+}
+
 export function OlympusAgentEditor({
   agent,
   onOpenChange,
@@ -466,24 +483,14 @@ export function OlympusAgentEditor({
   send: Send;
   workspace: OlympusWorkspace | null;
 }) {
-  const gate = useOlympusRiskGate();
+  const gate = useOlympusSpecSave(agent, send);
   const queryClient = useQueryClient();
   const legacy = agent.gitopsFields === null;
   const [fileDraft, setFileDraft] = React.useState<string | null>(null);
   const [review, setReview] = React.useState<OlympusFileReview | null>(null);
   const done = () => onOpenChange(false);
-  const savePatch = (after: Json, close: boolean) => {
-    const { patch, risks } = olympusPatchChange(agent, after);
-    if (Object.keys(patch).length === 0) return close ? done() : undefined;
-    gate.guard(agent.name, risks, (confirmed) => {
-      void send({
-        action: "patch",
-        patch,
-        ...(confirmed ? { highRisk: true as const } : {}),
-      });
-      if (close) done();
-    });
-  };
+  const savePatch = (after: Json, close: boolean) =>
+    gate.save(after, close ? done : undefined);
   const submit = (after: Json) => savePatch(after, true);
   return (
     <>
