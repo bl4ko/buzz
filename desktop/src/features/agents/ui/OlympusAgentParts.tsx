@@ -56,6 +56,7 @@ const ACTION_LABELS: Record<string, string> = {
   "suspend-schedule": "Suspend schedule",
   "resume-schedule": "Resume schedule",
   "run-now": "Run now",
+  "edit-file": "Edit instructions",
 };
 
 export function OlympusRequestStatus({

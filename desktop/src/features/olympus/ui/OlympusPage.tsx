@@ -90,7 +90,7 @@ export function OlympusPage({ tab }: { tab: OlympusTab }) {
           >
             {tabs.map((item) => (
               <TabsTrigger
-                className="gap-1.5 px-2.5 text-xs"
+                className="gap-1.5 px-2 text-xs"
                 data-testid={`olympus-tab-${item.id}`}
                 key={item.id}
                 value={item.id}

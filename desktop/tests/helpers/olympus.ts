@@ -198,6 +198,7 @@ export function olympusResultEvent(input: {
   reason: string;
   action: string;
   agent?: string;
+  commit?: string;
 }): RelayEvent {
   return {
     id: eventId(),
@@ -209,6 +210,7 @@ export function olympusResultEvent(input: {
       status: input.status,
       reason: input.reason,
       request: input.requestId,
+      ...(input.commit ? { commit: input.commit } : {}),
     }),
     tags: [
       ["e", input.requestId],

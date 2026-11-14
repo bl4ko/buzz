@@ -414,3 +414,35 @@ test("reads workspace ownership, templates, quota, and channel", () => {
   ]);
   assert.equal(parseOlympusWorkspace(workspaceEvent()).gitopsFields, null);
 });
+
+test("parses the instructions file and ignores an incomplete one", () => {
+  const withFile = (instructionsFile) => {
+    const event = stateEvent({ id: "f1" });
+    const content = JSON.parse(event.content);
+    return {
+      ...event,
+      content: JSON.stringify({ ...content, instructionsFile }),
+    };
+  };
+  assert.deepEqual(
+    parseOlympusAgent(
+      withFile({
+        repo: "agents",
+        path: "dev/agents/proof.md",
+        url: "https://buzz.example/git/olympus-dev/agents.git",
+        branch: "main",
+      }),
+    ).instructionsFile,
+    {
+      repo: "agents",
+      path: "dev/agents/proof.md",
+      url: "https://buzz.example/git/olympus-dev/agents.git",
+      branch: "main",
+    },
+  );
+  assert.equal(
+    parseOlympusAgent(withFile({ repo: "agents" })).instructionsFile,
+    null,
+  );
+  assert.equal(parseOlympusAgent(withFile(null)).instructionsFile, null);
+});
