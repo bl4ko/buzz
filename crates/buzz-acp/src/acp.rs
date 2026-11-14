@@ -221,6 +221,8 @@ pub struct AcpClient {
     standard_usage: StandardUsageTracker,
     /// Known adapter identity for prompt-response usage mapping.
     standard_adapter: Option<StandardAdapterKind>,
+    context: crate::context::ContextTracker,
+    close_supported: bool,
     /// Ask Claude Code for summarized thinking on `session/new`. Opus omits
     /// readable thinking unless asked; set only when the CLI the adapter runs
     /// is new enough to accept `--thinking-display`.
@@ -633,6 +635,8 @@ impl AcpClient {
             goose_usage: UsageTracker::default(),
             standard_usage: StandardUsageTracker::default(),
             standard_adapter,
+            context: crate::context::ContextTracker::default(),
+            close_supported: false,
             claude_thinking_summaries,
         })
     }
@@ -689,6 +693,9 @@ impl AcpClient {
             .pointer("/_meta/steering/supported")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        self.close_supported = result
+            .pointer("/agentCapabilities/sessionCapabilities/close")
+            .is_some_and(serde_json::Value::is_object);
         tracing::debug!(target: "acp::init", "initialize response: {result}");
         Ok(result)
     }
@@ -970,7 +977,12 @@ impl AcpClient {
     pub fn take_turn_usage(&mut self) -> Option<TurnUsage> {
         let goose_usage = self.goose_usage.take();
         let standard_usage = self.standard_usage.take();
-        goose_usage.or(standard_usage)
+        let mut usage = goose_usage.or(standard_usage)?;
+        usage.context = self
+            .context
+            .get(&usage.session_id)
+            .map(crate::context::SessionContext::usage);
+        Some(usage)
     }
 
     /// Notify the usage tracker that buzz-acp just spawned a new session.
@@ -982,6 +994,39 @@ impl AcpClient {
     pub(crate) fn notify_session_spawned(&mut self, session_id: &str) {
         self.goose_usage.seed_zero_baseline(session_id);
         self.standard_usage.seed_zero_baseline(session_id);
+        self.context.open(session_id, crate::context::now_secs());
+    }
+
+    pub(crate) fn session_context(
+        &self,
+        session_id: &str,
+    ) -> Option<&crate::context::SessionContext> {
+        self.context.get(session_id)
+    }
+
+    /// Close a session the harness no longer uses, so the adapter can end its
+    /// process. Best effort: without the `close` capability the session stays.
+    pub(crate) async fn session_close(&mut self, session_id: &str) -> bool {
+        self.context.forget(session_id);
+        if !self.close_supported {
+            return false;
+        }
+        match self
+            .send_request(
+                "session/close",
+                serde_json::json!({ "sessionId": session_id }),
+            )
+            .await
+        {
+            Ok(_) => {
+                tracing::info!(target: "acp::session", "session closed: {session_id}");
+                true
+            }
+            Err(e) => {
+                tracing::warn!(target: "acp::session", "session/close {session_id} failed: {e}");
+                false
+            }
+        }
     }
 
     /// Install a per-turn steer request channel for goose-native
@@ -1827,6 +1872,8 @@ impl AcpClient {
     /// leave it `None` and are steered via `_session/steering` instead, which
     /// needs no run id.
     fn handle_session_update(&mut self, msg: &serde_json::Value) -> bool {
+        self.context
+            .record_update(&msg["params"], crate::context::now_secs());
         let update = &msg["params"]["update"];
         let update_type = update
             .get("sessionUpdate")
@@ -2096,6 +2143,8 @@ impl AcpClient {
         result: &serde_json::Value,
     ) -> Result<StopReason, AcpError> {
         let stop_reason = self.parse_stop_reason(result)?;
+        self.context
+            .record_turn(session_id, crate::context::now_secs());
         if let Some(adapter) = self.standard_adapter {
             match serde_json::from_value::<PromptResponseUsage>(result["usage"].clone()) {
                 Ok(usage) => self
@@ -4827,6 +4876,56 @@ sleep 1"#,
         assert_eq!(usage.turn_output_tokens, Some(3));
         assert_eq!(usage.turn_cost_usd, Some(0.5));
         assert_eq!(usage.cumulative_cost_usd, Some(0.5));
+        drop(client);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn context_use_compaction_and_close_follow_the_wire() {
+        let script = r#"
+            read -r REQ
+            echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{"sessionCapabilities":{"close":{}}}}}'
+            read -r REQ
+            ID=$(printf '%s' "$REQ" | sed -E 's/.*"id":([0-9]+).*/\1/')
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call","toolCallId":"c1","title":"Compact conversation","kind":"think","status":"in_progress","_meta":{"claudeCode":{"toolName":"compact"}}}}}'
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","_meta":{"claudeCode":{"toolName":"compact"}}}}}'
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","rawOutput":{"trigger":"manual","preTokens":150000,"postTokens":20000},"_meta":{"claudeCode":{"toolName":"compact"}}}}}'
+            echo '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ctx","update":{"sessionUpdate":"usage_update","used":20000,"size":200000}}}'
+            echo '{"jsonrpc":"2.0","id":'"$ID"',"result":{"stopReason":"end_turn","usage":{"inputTokens":7,"outputTokens":3,"totalTokens":10}}}'
+            read -r REQ
+            ID=$(printf '%s' "$REQ" | sed -E 's/.*"id":([0-9]+).*/\1/')
+            case "$REQ" in *'"session/close"'*'"ctx"'*) echo '{"jsonrpc":"2.0","id":'"$ID"',"result":{}}' ;; esac
+            sleep 1
+        "#;
+        let (mut client, dir) = spawn_named_script("claude-agent-acp", script).await;
+        client.initialize().await.expect("initialize");
+        assert!(client.close_supported);
+        client.notify_session_spawned("ctx");
+        client
+            .session_prompt_with_idle_timeout(
+                "ctx",
+                "/compact",
+                std::time::Duration::from_secs(2),
+                std::time::Duration::from_secs(5),
+            )
+            .await
+            .expect("prompt");
+        let context = client.session_context("ctx").expect("context").clone();
+        assert_eq!(
+            (context.used, context.size, context.turns),
+            (Some(20_000), Some(200_000), 1)
+        );
+        assert_eq!(context.compactions, 1);
+        let last = context.last_compaction.clone().expect("last compaction");
+        assert_eq!(
+            (last.pre_tokens, last.post_tokens),
+            (Some(150_000), Some(20_000))
+        );
+        let usage = client.take_turn_usage().expect("usage");
+        assert_eq!(usage.context, Some(context.usage()));
+        assert!(client.session_close("ctx").await);
+        assert!(client.session_context("ctx").is_none());
         drop(client);
         let _ = std::fs::remove_dir_all(dir);
     }

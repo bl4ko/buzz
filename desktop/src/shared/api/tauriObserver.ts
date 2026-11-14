@@ -9,6 +9,14 @@ export async function decryptObserverEvent(
   });
 }
 
+export async function decryptAgentTurnMetric(
+  event: RelayEvent,
+): Promise<unknown> {
+  return invokeTauri<unknown>("decrypt_agent_turn_metric", {
+    eventJson: JSON.stringify(event),
+  });
+}
+
 export async function buildObserverControlEvent(input: {
   agentPubkey: string;
   payload: unknown;

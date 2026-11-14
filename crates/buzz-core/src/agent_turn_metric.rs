@@ -157,6 +157,27 @@ pub struct AgentTurnMetricPayload {
     /// treat omission as "price unknown".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pricing_identity: Option<PricingIdentity>,
+
+    /// Context window use of the session at the end of this turn, as the ACP
+    /// adapter reported it. Omitted when the publisher has no session record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<ContextUsage>,
+}
+
+/// Context window use of one ACP session (`usage_update` `used`/`size`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextUsage {
+    /// Tokens in the context window; `None` before the adapter reported it.
+    pub used: Option<u64>,
+    /// Context window size in tokens; `None` when not reported.
+    pub size: Option<u64>,
+    /// Completed prompts in this session.
+    pub turns: u32,
+    /// Unix seconds when the session was created.
+    pub started_at: u64,
+    /// Compactions the adapter reported in this session.
+    pub compactions: u32,
 }
 
 fn default_delta_reliable() -> bool {
@@ -256,6 +277,7 @@ mod tests {
             delta_reliable: true,
             stop_reason: Some(StopReason::EndTurn),
             pricing_identity: None,
+            context: None,
         }
     }
 
@@ -381,6 +403,31 @@ mod tests {
 
     // ── validate() — negative / non-finite costUsd ─────────────────────────
 
+    #[test]
+    fn context_usage_round_trips_and_is_optional() {
+        let mut payload = sample_payload();
+        payload.context = Some(ContextUsage {
+            used: Some(84_312),
+            size: Some(200_000),
+            turns: 7,
+            started_at: 1_794_500_000,
+            compactions: 1,
+        });
+        let json = serde_json::to_value(&payload).unwrap();
+        assert_eq!(
+            json["context"],
+            serde_json::json!({"used": 84_312, "size": 200_000, "turns": 7, "startedAt": 1_794_500_000u64, "compactions": 1})
+        );
+        let back: AgentTurnMetricPayload = serde_json::from_value(json).unwrap();
+        assert_eq!(back, payload);
+
+        let mut old = serde_json::to_value(sample_payload()).unwrap();
+        assert!(old.get("context").is_none());
+        old.as_object_mut().unwrap().remove("context");
+        let parsed: AgentTurnMetricPayload = serde_json::from_value(old).unwrap();
+        assert_eq!(parsed.context, None);
+    }
+
     fn make_payload_with_turn_cost(cost: Option<f64>) -> AgentTurnMetricPayload {
         AgentTurnMetricPayload {
             harness: "test".to_string(),
@@ -402,6 +449,7 @@ mod tests {
             delta_reliable: true,
             stop_reason: None,
             pricing_identity: None,
+            context: None,
         }
     }
 
@@ -426,6 +474,7 @@ mod tests {
             delta_reliable: true,
             stop_reason: None,
             pricing_identity: None,
+            context: None,
         }
     }
 

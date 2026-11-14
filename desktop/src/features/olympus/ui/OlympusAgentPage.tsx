@@ -41,6 +41,7 @@ import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { olympusCanDelete, olympusFieldLocked } from "../lib/olympusOwnership";
 import { OlympusAgentEditor } from "./OlympusAgentEditor";
+import { OlympusContextGauge } from "./OlympusContextGauge";
 import { OlympusAgentSections } from "./OlympusAgentSections";
 import { OlympusNewAgentDialog } from "./OlympusNewAgentDialog";
 import {
@@ -263,6 +264,11 @@ function OlympusAgentBody({
       <OlympusRequestStatus
         state={request}
         testId="olympus-agent-request-status"
+      />
+
+      <OlympusContextGauge
+        agentPubkey={agent.publicKey}
+        className="rounded-xl border border-border/70 bg-card/60 px-4 py-3.5"
       />
 
       <OlympusAgentSections

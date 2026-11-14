@@ -12774,7 +12774,8 @@ export function maybeInstallE2eTauriMocks() {
           ),
         );
       }
-      case "decrypt_observer_event": {
+      case "decrypt_observer_event":
+      case "decrypt_agent_turn_metric": {
         const event = JSON.parse(
           (payload as { eventJson: string }).eventJson,
         ) as RelayEvent;
