@@ -16,6 +16,10 @@ function ago(atSeconds: number, nowMs: number) {
   return `${Math.floor(seconds / 86_400)}d`;
 }
 
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
 function ContextRow({ entry, now }: { entry: OlympusContextUse; now: number }) {
   const percent = olympusContextPercent(entry);
   const tokens =
@@ -41,7 +45,8 @@ function ContextRow({ entry, now }: { entry: OlympusContextUse; now: number }) {
         value={percent ?? 0}
       />
       <p className="text-[11px] text-muted-foreground tabular-nums">
-        {entry.turns} turns · {entry.compactions} compactions · session{" "}
+        {plural(entry.turns, "turn")} ·{" "}
+        {plural(entry.compactions, "compaction")} · session{" "}
         {ago(entry.startedAt, now)} · updated {ago(entry.at, now)} ago
       </p>
     </div>

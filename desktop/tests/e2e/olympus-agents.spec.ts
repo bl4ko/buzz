@@ -9,6 +9,7 @@ import {
   olympusResultEvent,
 } from "../helpers/olympus";
 import {
+  ARGUS_PUBLIC_KEY,
   olympusArgusEvent,
   olympusOpsEvents,
   olympusOpsResult,
@@ -104,6 +105,69 @@ test("shows the empty state when the relay has no Olympus state", async ({
   );
   await goToAgentsRoute(page);
   await expect(page.getByTestId("olympus-agents-link")).toHaveCount(0);
+});
+
+function turnMetric(sessionId: string, at: string, context: unknown) {
+  return {
+    id: crypto.randomUUID().replaceAll("-", "").repeat(2),
+    pubkey: ARGUS_PUBLIC_KEY,
+    kind: 44200,
+    created_at: Math.floor(Date.parse(at) / 1000),
+    content: JSON.stringify({
+      harness: "claude-agent-acp",
+      sessionId,
+      channelId: "dm-1",
+      timestamp: at,
+      context,
+    }),
+    tags: [
+      ["p", OLYMPUS_OWNER],
+      ["agent", ARGUS_PUBLIC_KEY],
+    ],
+    sig: "0".repeat(128),
+  };
+}
+
+test("the agent page shows the context window of recent sessions", async ({
+  page,
+}) => {
+  const now = Date.now();
+  const iso = (minutesAgo: number) =>
+    new Date(now - minutesAgo * 60_000).toISOString();
+  const olympus = await openOlympus(page, [
+    ...olympusOpsEvents(),
+    turnMetric("s1", iso(30), {
+      used: 50000,
+      size: 200000,
+      turns: 3,
+      startedAt: Math.floor(now / 1000) - 7200,
+      compactions: 0,
+    }),
+    turnMetric("s1", iso(5), {
+      used: 170000,
+      size: 200000,
+      turns: 4,
+      startedAt: Math.floor(now / 1000) - 7200,
+      compactions: 1,
+    }),
+    turnMetric("s2", iso(10), {
+      used: 21000,
+      size: 1000000,
+      turns: 1,
+      startedAt: Math.floor(now / 1000) - 600,
+      compactions: 0,
+    }),
+  ]);
+  await olympus.getByTestId("olympus-agent-row-argus").click();
+  const gauge = page.getByTestId("olympus-context-gauge");
+  await expect(gauge.getByTestId("olympus-context-row")).toHaveCount(2);
+  const first = gauge.getByTestId("olympus-context-row").first();
+  await expect(first).toContainText("85%");
+  await expect(first).toContainText("170k / 200k");
+  await expect(first).toContainText("4 turns · 1 compaction");
+  await expect(gauge.getByTestId("olympus-context-row").nth(1)).toContainText(
+    "2%",
+  );
 });
 
 test("the agent page shows the full config and locks git fields", async ({

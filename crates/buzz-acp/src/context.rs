@@ -230,8 +230,9 @@ pub fn render_report(r: &Report<'_>) -> String {
         format!("Context of {label} ({}):", r.harness),
         format!("- Used: {}", usage_line(ctx)),
         format!(
-            "- Session: {} turns, age {}",
+            "- Session: {} turn{}, age {}",
             ctx.turns,
+            if ctx.turns == 1 { "" } else { "s" },
             age(r.now.saturating_sub(ctx.started_at))
         ),
     ];
