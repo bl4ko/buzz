@@ -213,6 +213,30 @@ pub async fn decrypt_observer_event(
 }
 
 #[tauri::command]
+pub async fn decrypt_agent_turn_metric(
+    event_json: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let keys = state.signing_keys()?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let event =
+            Event::from_json(event_json).map_err(|error| format!("invalid event: {error}"))?;
+        if event.kind.as_u16() as u32 != buzz_core_pkg::kind::KIND_AGENT_TURN_METRIC {
+            return Err("not an agent turn metric".into());
+        }
+        if !event.verify_id() || !event.verify_signature() {
+            return Err("agent turn metric has an invalid ID or signature".into());
+        }
+        let payload = buzz_core_pkg::agent_turn_metric::decrypt_agent_turn_metric(&keys, &event)
+            .map_err(|error| format!("decrypt agent turn metric failed: {error}"))?;
+        serde_json::to_value(payload).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking failed: {e}"))?
+}
+
+#[tauri::command]
 pub fn build_observer_control_event(
     agent_pubkey: String,
     payload: serde_json::Value,
