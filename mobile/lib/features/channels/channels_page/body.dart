@@ -5,6 +5,7 @@ class _ChannelsBody extends StatelessWidget {
   final bool showTeam;
   final bool showTeamHeading;
   final VoidCallback? onInbox;
+  final Widget? pinnedRow;
   final List<Channel>? channels;
   final AsyncValue<List<Channel>> channelsAsync;
   final bool showError;
@@ -22,6 +23,7 @@ class _ChannelsBody extends StatelessWidget {
     this.showTeam = true,
     this.showTeamHeading = false,
     required this.onInbox,
+    this.pinnedRow,
     required this.channels,
     required this.channelsAsync,
     required this.showError,
@@ -100,9 +102,16 @@ class _ChannelsBody extends StatelessWidget {
               hitTestBehavior: HitTestBehavior.translucent,
               slivers: [
                 SliverToBoxAdapter(child: SizedBox(height: barHeight)),
-                if (onInbox != null)
+                if (pinnedRow case final row?)
                   SliverPadding(
                     padding: const EdgeInsets.only(top: Grid.twelve),
+                    sliver: SliverToBoxAdapter(child: row),
+                  ),
+                if (onInbox != null)
+                  SliverPadding(
+                    padding: EdgeInsets.only(
+                      top: pinnedRow == null ? Grid.twelve : 0,
+                    ),
                     sliver: SliverToBoxAdapter(child: inbox),
                   ),
                 if (soloSliver != null && showTeamHeading)
@@ -158,6 +167,7 @@ class _ChannelsBody extends StatelessWidget {
                           channels: loadedChannels,
                           currentPubkey: currentPubkey,
                           onSelectChannel: onSelectChannel,
+                          hideMasterDm: pinnedRow != null,
                         )
                       : DecoratedSliver(
                           decoration: BoxDecoration(
@@ -170,6 +180,7 @@ class _ChannelsBody extends StatelessWidget {
                             channels: loadedChannels,
                             currentPubkey: currentPubkey,
                             onSelectChannel: onSelectChannel,
+                            hideMasterDm: pinnedRow != null,
                           ),
                         ),
                 ),
@@ -212,11 +223,13 @@ class _SliverChannelsList extends HookConsumerWidget {
   final List<Channel> channels;
   final String? currentPubkey;
   final Future<void> Function(Channel channel) onSelectChannel;
+  final bool hideMasterDm;
 
   const _SliverChannelsList({
     required this.channels,
     required this.currentPubkey,
     required this.onSelectChannel,
+    this.hideMasterDm = false,
   });
 
   @override
@@ -233,6 +246,9 @@ class _SliverChannelsList extends HookConsumerWidget {
       for (final entry in starsState.store.channels.entries)
         if (entry.value.starred) entry.key,
     };
+    final masterDmId = hideMasterDm
+        ? ref.watch(masterDmChannelIdProvider)
+        : null;
     final visibleChannels = channels
         .where(
           (channel) =>
@@ -244,7 +260,9 @@ class _SliverChannelsList extends HookConsumerWidget {
     final streamChannels = visibleChannels
         .where((channel) => channel.isStream)
         .toList();
-    final unsortedDms = visibleChannels.where((channel) => channel.isDm);
+    final unsortedDms = visibleChannels.where(
+      (channel) => channel.isDm && channel.id != masterDmId,
+    );
     // Rebuild only when the DM order changes, not for every profile fetch.
     final dmOrder = ref.watch(
       identityNameSourcesProvider.select(

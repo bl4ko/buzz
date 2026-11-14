@@ -16,6 +16,7 @@ import '../../shared/widgets/bottom_up_page_route.dart';
 import '../../shared/widgets/mobile_tab_footer_backdrop.dart';
 import '../activity/activity_page.dart';
 import '../channels/channels_page.dart';
+import '../olympus/master_agent.dart';
 import '../search/search_page.dart';
 import 'messages_filters.dart';
 import 'messages_navigation_bar.dart';
@@ -54,6 +55,7 @@ class HomePage extends HookConsumerWidget {
     final nativeControlsVisible =
         (route?.isCurrent ?? true) && coveringProgress == 0;
 
+    useMasterAgentShortcut(context, ref);
     final communitySurfaceProgress = useState(0.0);
     final filter = useState('All');
     final reselect = useValueNotifier(0);
@@ -87,6 +89,7 @@ class HomePage extends HookConsumerWidget {
     final solo = mePageBuilder?.call(context, newChat, newWorkspace);
     final messages = ChannelsPage(
       settingsPageBuilder: settingsPageBuilder,
+      pinnedRow: const MasterAgentRow(),
       onInbox: () => Navigator.of(context).push(
         BottomUpPageRoute<void>(
           builder: (_) => const ActivityPage(),

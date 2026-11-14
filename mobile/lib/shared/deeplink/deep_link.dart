@@ -360,8 +360,29 @@ InviteDeepLink? parseInviteDeepLink(Uri uri) {
   return null;
 }
 
+/// Opens the master agent DM: `buzz://olympus/ask` (home-screen quick action).
+class AskMasterDeepLink extends BuzzDeepLink {
+  const AskMasterDeepLink();
+
+  @override
+  bool operator ==(Object other) => other is AskMasterDeepLink;
+
+  @override
+  int get hashCode => (AskMasterDeepLink).hashCode;
+}
+
+AskMasterDeepLink? parseAskMasterDeepLink(Uri uri) =>
+    uri.scheme == 'buzz' &&
+        uri.host == 'olympus' &&
+        uri.path == '/ask' &&
+        !uri.hasQuery &&
+        !uri.hasFragment
+    ? const AskMasterDeepLink()
+    : null;
+
 /// Parse any supported Buzz deep link.
 BuzzDeepLink? parseBuzzDeepLink(Uri uri) =>
+    parseAskMasterDeepLink(uri) ??
     parseAgentCreationDeepLink(uri) ??
     parseNostrBindDeepLink(uri) ??
     parseAddCommunityDeepLink(uri) ??

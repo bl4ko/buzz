@@ -53,6 +53,7 @@ import '../../shared/identity_names/identity_names_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../onboarding_app_entry.dart';
 import '../pairing/pairing_provider.dart';
+import '../olympus/master_agent.dart';
 import 'channel.dart';
 import 'ios_create_channel_sheet.dart';
 import 'ios_add_members_sheet.dart';
@@ -121,6 +122,7 @@ class ChannelsPage extends HookConsumerWidget {
     this.newChannelAction,
     this.newDmAction,
     this.onInbox,
+    this.pinnedRow,
     this.communityInvitePageBuilder,
     this.communityAppearancePageBuilder,
     required this.onSettingsTransitionProgress,
@@ -143,6 +145,9 @@ class ChannelsPage extends HookConsumerWidget {
 
   /// Opens the conversation inbox above the channel sections.
   final VoidCallback? onInbox;
+
+  /// The master agent row above Inbox; its DM then leaves the DM list.
+  final Widget? pinnedRow;
 
   /// Builds the invite destination opened from the community sheet.
   final WidgetBuilder? communityInvitePageBuilder;
@@ -743,6 +748,7 @@ class ChannelsPage extends HookConsumerWidget {
         showTeam: showTeam,
         showTeamHeading: showTeamHeading,
         onInbox: onInbox,
+        pinnedRow: pinnedRow,
         onReadyChanged: (ready) => bodyReady.value = ready,
         channels: channels,
         channelsAsync: channelsAsync,

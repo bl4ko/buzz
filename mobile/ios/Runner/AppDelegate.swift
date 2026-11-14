@@ -59,6 +59,7 @@ import os.log
   private var huddleMediaPlugin: HuddleMediaPlugin?
   private var watchBridge: WatchBridge?
   private var reminderAlerts: ReminderAlerts?
+  private var quickActionsChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -128,6 +129,7 @@ import os.log
       }
     }
     watchBridge = WatchBridge(messenger: messenger)
+    quickActionsChannel = BuzzQuickActions.channel(messenger: messenger)
     reminderAlerts = ReminderAlerts(messenger: messenger)
     huddleMediaPlugin = HuddleMediaPlugin(messenger: messenger)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BuzzIosNavigationBar") {
