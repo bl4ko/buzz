@@ -199,14 +199,20 @@ class _UsageDetail extends StatelessWidget {
 
 /// Token usage of one agent, for its page.
 class OlympusAgentUsageCard extends ConsumerWidget {
-  const OlympusAgentUsageCard({required this.agent, super.key});
+  const OlympusAgentUsageCard({
+    required this.agent,
+    this.horizontalPadding = Grid.gutter,
+    super.key,
+  });
   final OlympusAgent agent;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final usage = ref.watch(olympusProvider.select((s) => s.usageFor(agent)));
     return AppListCard(
       label: 'Usage',
+      horizontalPadding: horizontalPadding,
       dividerIndent: Grid.xs,
       children: [
         if (usage == null) const AppListRow(title: 'No usage data yet'),

@@ -34,6 +34,7 @@ import '../channels/channel.dart';
 import '../channels/channel_detail_page.dart';
 import '../channels/channel_management_provider.dart';
 import '../channels/message_content.dart';
+import '../olympus/olympus_profile_card.dart';
 import 'presence_cache_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import 'user_status_cache_provider.dart';
@@ -558,6 +559,7 @@ class UserProfileSheet extends HookConsumerWidget {
                           ),
                         ],
                       ),
+                      OlympusProfileCard(pubkey: pk),
                       if (agentSettings != null)
                         Builder(builder: agentSettings!),
                     ] else ...[
@@ -596,6 +598,7 @@ class UserProfileSheet extends HookConsumerWidget {
                       SizedBox(height: contextualActionsSpacing),
                       if (contextualActions != null)
                         Builder(builder: contextualActions!),
+                      OlympusProfileCard(pubkey: pk),
                     ],
                   ],
                 ),

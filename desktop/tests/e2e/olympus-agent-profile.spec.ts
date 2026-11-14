@@ -123,7 +123,7 @@ for (const scheme of ["light", "dark"] as const) {
       "Online",
     );
     await expect(section.getByTestId("olympus-profile-status")).toContainText(
-      "ops/argus",
+      "Active 3 min ago",
     );
     await expect(section.getByTestId("olympus-profile-error")).toContainText(
       "BackupFailed",
