@@ -13,6 +13,7 @@ import {
   openCreateChannelDialog,
   openNewMessagePage,
 } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const RANDOM_CHANNEL_ID = "9dae0116-799b-5071-a0a8-fdd30a91a35d";
@@ -4973,7 +4974,7 @@ test("removing a channel-scoped agent preserves the managed agent record", async
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await expect(page.getByTestId(`managed-agent-${agentPubkey}`)).toHaveCount(1);
 });
 
@@ -5147,7 +5148,7 @@ test("members sidebar omits bulk controls for managed bots", async ({
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await expect(
     page.getByTestId(`managed-agent-${firstAgentPubkey}`),
   ).toHaveCount(1);
@@ -5206,7 +5207,7 @@ test("removing a multi-channel managed bot preserves its record after removal fr
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await expect(page.getByTestId(`managed-agent-${agentPubkey}`)).toHaveCount(1);
 
   let commands = await readCommandLog(page);
@@ -5225,7 +5226,7 @@ test("removing a multi-channel managed bot preserves its record after removal fr
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await expect(page.getByTestId(`managed-agent-${agentPubkey}`)).toHaveCount(1);
 
   commands = await readCommandLog(page);

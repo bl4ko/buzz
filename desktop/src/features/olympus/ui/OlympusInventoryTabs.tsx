@@ -120,7 +120,11 @@ function useOlympusInventory() {
   return React.useMemo(() => {
     const providers = new Map<
       string,
-      Usage & { models: Set<string>; protocols: Set<string> }
+      Usage & {
+        description: string | null;
+        models: Set<string>;
+        protocols: Set<string>;
+      }
     >();
     const servers = new Map<string, Usage>();
     for (const group of olympus.groups) {
@@ -128,9 +132,11 @@ function useOlympusInventory() {
         const entry = providers.get(provider.name) ?? {
           workspaces: new Set(),
           agents: [],
+          description: null,
           models: new Set(),
           protocols: new Set(),
         };
+        entry.description ??= provider.description;
         entry.workspaces.add(group.name);
         for (const model of provider.models) entry.models.add(model);
         for (const protocol of provider.protocols)
@@ -222,6 +228,14 @@ export function OlympusProvidersTab() {
                 </span>
               </span>
               <span className="space-y-1.5 text-xs text-muted-foreground">
+                {entry.description ? (
+                  <span
+                    className="block text-sm text-foreground/90"
+                    data-testid={`olympus-provider-description-${name}`}
+                  >
+                    {entry.description}
+                  </span>
+                ) : null}
                 <span className="block">
                   Models:{" "}
                   {entry.models.size > 0

@@ -4,7 +4,7 @@ import {
   OLYMPUS_EFFORTS,
   type OlympusAgent,
   type OlympusWorkspace,
-  olympusModelOptions,
+  olympusEffectiveSpec,
 } from "@/features/agents/lib/olympusAgents";
 import type { OlympusChange } from "@/features/agents/lib/olympusChangeRequests";
 import { OlympusAgentEditForm } from "@/features/agents/ui/OlympusAgentChangeControls";
@@ -20,6 +20,8 @@ import {
 import { Switch } from "@/shared/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { Textarea } from "@/shared/ui/textarea";
+import { useOlympusAgents } from "@/features/agents/useOlympusAgents";
+import { olympusModelChoices } from "../lib/olympusModels";
 import { olympusFieldLocked } from "../lib/olympusOwnership";
 import {
   olympusAgentRisks,
@@ -127,7 +129,9 @@ function OlympusFormEditor({
   const [storage, setStorage] = React.useState(text(shown.storage));
   const [backup, setBackup] = React.useState(shown.backup === true);
   const locked = (field: string) => olympusFieldLocked(agent, `spec.${field}`);
-  const models = olympusModelOptions(workspace, agent.spec.pool);
+  const { groups } = useOlympusAgents();
+  const pool = olympusEffectiveSpec(agent).pool;
+  const choices = olympusModelChoices(groups, workspace, pool);
   const instructionsLocked =
     locked("instructions") ||
     agent.spec.instructionsFrom !== null ||
@@ -210,26 +214,46 @@ function OlympusFormEditor({
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field htmlFor={`${id}-model`} label="Model" locked={locked("model")}>
-          {models.length > 0 ? (
+          {choices.restricted ? (
             <OlympusSelect
               disabled={locked("model")}
               id={`${id}-model`}
               label="Model"
               onChange={setModel}
-              options={(models.includes(model) || !model
-                ? models
-                : [model, ...models]
-              ).map((item) => ({ value: item, label: item }))}
+              options={[
+                ...(model && !choices.models.includes(model)
+                  ? [{ value: model, label: `${model} (not allowed)` }]
+                  : []),
+                ...choices.models.map((item) => ({ value: item, label: item })),
+              ]}
               value={model}
             />
           ) : (
-            <Input
-              disabled={locked("model")}
-              id={`${id}-model`}
-              onChange={(event) => setModel(event.target.value)}
-              value={model}
-            />
+            <>
+              <Input
+                disabled={locked("model")}
+                id={`${id}-model`}
+                list={`${id}-models`}
+                onChange={(event) => setModel(event.target.value)}
+                value={model}
+              />
+              <datalist id={`${id}-models`}>
+                {choices.models.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </>
           )}
+          {pool ? (
+            <p
+              className="text-xs text-muted-foreground"
+              data-testid="olympus-editor-model-hint"
+            >
+              {choices.restricted
+                ? `Models that the ${pool} provider allows.`
+                : `The ${pool} provider allows any model.`}
+            </p>
+          ) : null}
         </Field>
         <Field
           htmlFor={`${id}-effort`}

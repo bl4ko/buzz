@@ -1,4 +1,5 @@
 import * as React from "react";
+import { CheckCircle2 } from "lucide-react";
 
 import {
   countOlympusProposals,
@@ -15,6 +16,7 @@ import {
   useOlympusAgents,
 } from "@/features/agents/useOlympusAgents";
 import { cn } from "@/shared/lib/cn";
+import { Button } from "@/shared/ui/button";
 import { Spinner } from "@/shared/ui/spinner";
 import { Toggle } from "@/shared/ui/toggle";
 import { OlympusProposalCard, useNowSeconds } from "./OlympusProposalCard";
@@ -122,12 +124,42 @@ export function OlympusProposalsList({
           </p>
         </div>
       ) : visible.length === 0 ? (
-        <p
-          className="rounded-2xl border border-dashed border-border/70 px-6 py-8 text-center text-sm text-muted-foreground"
+        <div
+          className="rounded-2xl border border-dashed border-border/70 px-6 py-10 text-center"
           data-testid="olympus-proposals-empty"
         >
-          No {FILTER_LABELS[filter].toLowerCase()} proposals.
-        </p>
+          {filter === "pending" ? (
+            <>
+              <CheckCircle2
+                aria-hidden
+                className="mx-auto mb-2 h-6 w-6 text-emerald-600 dark:text-emerald-400"
+              />
+              <p className="text-sm font-medium text-foreground">
+                Nothing waits for your decision
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                New proposals from Zeus show here.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No {FILTER_LABELS[filter].toLowerCase()} proposals.
+            </p>
+          )}
+          {filter !== "all" ? (
+            <Button
+              className="mt-3"
+              data-testid="olympus-proposals-show-all"
+              onClick={() => onFilterChange("all")}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Show all {counts.all}{" "}
+              {counts.all === 1 ? "proposal" : "proposals"}
+            </Button>
+          ) : null}
+        </div>
       ) : (
         <ul className="space-y-3" data-testid="olympus-proposals-list">
           {visible.map((proposal) => (
@@ -147,14 +179,7 @@ export function OlympusProposalsList({
 export function OlympusProposalsPanel() {
   const olympus = useOlympusAgents();
   const now = useNowSeconds();
-  const [chosen, setChosen] = React.useState<OlympusProposalFilter | null>(
-    null,
-  );
-  const hasPending = React.useMemo(
-    () => countPendingOlympusProposals(olympus.proposals, now) > 0,
-    [olympus.proposals, now],
-  );
-  const filter = chosen ?? (hasPending ? "pending" : "all");
+  const [filter, setFilter] = React.useState<OlympusProposalFilter>("pending");
 
   if (olympus.isLoading && olympus.proposals.length === 0) {
     return (
@@ -175,7 +200,7 @@ export function OlympusProposalsPanel() {
     <OlympusProposalsList
       filter={filter}
       now={now}
-      onFilterChange={setChosen}
+      onFilterChange={setFilter}
       proposals={olympus.proposals}
       submitChange={olympus.submitChange}
     />

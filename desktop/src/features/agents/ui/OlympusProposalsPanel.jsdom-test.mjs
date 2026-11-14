@@ -129,7 +129,38 @@ test("filter chips show counts and switch the list", async () => {
   assert.deepEqual(names(), []);
   assert.equal(
     byTestId(container, "olympus-proposals-empty").textContent,
-    "No failed proposals.",
+    "No failed proposals.Show all 4 proposals",
+  );
+  await click(byTestId(container, "olympus-proposals-show-all"));
+  assert.equal(chip("all").getAttribute("aria-pressed"), "true");
+  assert.equal(names().length, 4);
+});
+
+test("the pending filter with no open proposal links to all proposals", async () => {
+  const decided = PROPOSALS.filter((item) => item.name !== "p-open");
+  function PendingList() {
+    const [filter, setFilter] = React.useState("pending");
+    return React.createElement(OlympusProposalsList, {
+      filter,
+      now: NOW,
+      onFilterChange: setFilter,
+      proposals: decided,
+      submitChange: async () => {},
+    });
+  }
+  const { container } = await mount(React.createElement(PendingList));
+  const empty = byTestId(container, "olympus-proposals-empty");
+  assert.match(empty.textContent, /Nothing waits for your decision/);
+  await click(byTestId(container, "olympus-proposals-show-all"));
+  assert.equal(
+    byTestId(container, "olympus-proposal-filter-all").getAttribute(
+      "aria-pressed",
+    ),
+    "true",
+  );
+  assert.equal(
+    container.querySelectorAll('[data-testid^="olympus-proposal-p-"]').length,
+    decided.length,
   );
 });
 

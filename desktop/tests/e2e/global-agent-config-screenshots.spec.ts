@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const SHOTS = "test-results/global-agent-config";
 
@@ -30,7 +31,7 @@ async function openAiDefaultsSettings(page: import("@playwright/test").Page) {
  */
 async function openCreateDialog(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByTestId("new-agent-card").click();
   await page.locator("#persona-display-name").fill("Test Agent");
 }
@@ -879,7 +880,7 @@ test.describe("global agent config screenshots", () => {
     await installMockBridge(page);
 
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     await page.getByTestId("new-agent-card").click();
 
     await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled({
@@ -1015,7 +1016,7 @@ test.describe("global agent config screenshots", () => {
 
     // Agents view → persona-grouped agent card → Edit quick action.
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     const agentButton = page.getByRole("button", {
       name: "Codex Editor agent profile",
     });
@@ -1106,7 +1107,7 @@ test.describe("global agent config screenshots", () => {
 
     // Agents view → persona-grouped agent card → Edit quick action.
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     const agentButton = page.getByRole("button", {
       name: "Legacy Editor agent profile",
     });

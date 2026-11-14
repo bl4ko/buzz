@@ -153,7 +153,6 @@ export function AppShell() {
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
-    goAgents,
     goChannel,
     goHome,
     goNewMessage,
@@ -956,7 +955,6 @@ export function AppShell() {
                               });
                             await goChannel(directMessage.id);
                           }}
-                          onSelectAgents={() => void goAgents()}
                           onSelectChannel={openSidebarChannel}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}

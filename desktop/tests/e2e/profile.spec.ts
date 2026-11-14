@@ -9,6 +9,7 @@ import {
 import { waitForAnimations } from "../helpers/animations";
 import { expectEmojiMartStylesInstalled } from "../helpers/css";
 import { openProfileMenu, openSettings } from "../helpers/settings";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -367,7 +368,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     "Keep every profile entry point in sync.",
   );
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
@@ -408,7 +409,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     { dmChannelId, pubkey: agentPubkey },
   );
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
@@ -1932,7 +1933,7 @@ test("an older agent message stays exact while persona navigation selects the li
   });
   await page.goto("/");
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByTestId(`persona-agent-row-${personaId}`).click();
   await expect(
     page.getByTestId("user-profile-agent-primary-action"),

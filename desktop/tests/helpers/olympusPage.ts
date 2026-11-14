@@ -85,6 +85,7 @@ export function olympusOpsWorkspaceEvent() {
     providers: [
       {
         name: "claude",
+        description: "Claude subscription through Hecate, flat rate",
         models: ["claude-opus-5-5", "claude-sonnet-5-5"],
         protocols: ["anthropic"],
       },

@@ -6,6 +6,7 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 function ownerPrivateKeyFor(pubkey: string): Uint8Array {
   const privateKey = Object.values(TEST_IDENTITIES).find(
@@ -156,10 +157,10 @@ const CATALOG_EVENTS: RelayEvent[] = [
 
 async function gotoAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("open-olympus-view")).toBeVisible({
     timeout: 10_000,
   });
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
 }
 
 async function openTeamCatalog(page: import("@playwright/test").Page) {

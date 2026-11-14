@@ -38,7 +38,7 @@ import {
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { getInheritedAgentDefaults } from "./bakedEnvHelpers";
 
-export function AgentsView() {
+export function AgentsView({ embedded = false }: { embedded?: boolean }) {
   const { openPersonaProfilePanel, openProfilePanel } = useProfilePanel();
   const { globalConfig } = useGlobalAgentConfig();
   const { data: bakedEnv } = useBakedBuildEnvQuery({ enabled: true });
@@ -215,11 +215,15 @@ export function AgentsView() {
                 </DropdownMenu>
               </>
             }
-            description="Set up and manage your agents."
-            title="Agents"
+            description={
+              embedded
+                ? "These agents run on this Mac, outside Olympus."
+                : "Set up and manage your agents."
+            }
+            title={embedded ? "Agents on this Mac" : "Agents"}
           />
           <div className="flex flex-col gap-8">
-            <OlympusAgentsLink />
+            {embedded ? null : <OlympusAgentsLink />}
             <UnifiedAgentsSection
               getAvailability={agents.getAvailability}
               defaultModel={inheritedDefaults.model.value}
