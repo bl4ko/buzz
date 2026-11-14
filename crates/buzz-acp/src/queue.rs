@@ -281,6 +281,31 @@ pub struct FlushBatch {
     pub cancel_reason: Option<CancelReason>,
 }
 
+/// Prompt tag of an owner `!compact`. It is dispatched alone and runs the
+/// adapter's `/compact` in the scope's session.
+pub const COMPACT_PROMPT_TAG: &str = "owner:compact";
+
+pub fn is_compact_batch(batch: &FlushBatch) -> bool {
+    batch.cancelled_events.is_empty()
+        && matches!(batch.events.as_slice(), [only] if only.prompt_tag == COMPACT_PROMPT_TAG)
+}
+
+/// Reply thread for a harness notice about `event`: its own thread, the main
+/// conversation of a DM, else a new thread under the event.
+pub fn notice_thread_tags(event: &Event, is_dm: bool) -> ThreadTags {
+    let mut tags = parse_thread_tags(event);
+    let id = event.id.to_hex();
+    match tags.root_event_id {
+        Some(_) => tags.parent_event_id = Some(id),
+        None if is_dm => {}
+        None => {
+            tags.root_event_id = Some(id.clone());
+            tags.parent_event_id = Some(id);
+        }
+    }
+    tags
+}
+
 /// Per-channel event queue with per-channel in-flight enforcement.
 ///
 /// # State Machine
@@ -580,9 +605,17 @@ impl EventQueue {
         };
         let channel_id = scope.channel_id();
 
-        // Drain up to MAX_BATCH_EVENTS; leave any remainder in the queue.
+        // Drain up to MAX_BATCH_EVENTS; leave any remainder in the queue. An
+        // owner `!compact` always goes alone.
         let queue = self.queues.entry(scope.clone()).or_default();
-        let drain_count = MAX_BATCH_EVENTS.min(queue.len());
+        let drain_count = match queue
+            .iter()
+            .position(|e| e.prompt_tag == COMPACT_PROMPT_TAG)
+        {
+            Some(0) => 1,
+            Some(i) => i.min(MAX_BATCH_EVENTS),
+            None => MAX_BATCH_EVENTS.min(queue.len()),
+        };
         let mut events: Vec<BatchEvent> = queue
             .drain(..drain_count)
             .map(QueuedEvent::into_batch_event)
@@ -1118,6 +1151,13 @@ impl EventQueue {
     }
 
     /// Whether any scope currently has a turn in flight.
+    /// No turn, queued event, or cancelled batch for `scope`.
+    pub fn scope_is_idle(&self, scope: &SessionScope) -> bool {
+        !self.in_flight_scopes.contains(scope)
+            && self.queues.get(scope).is_none_or(|q| q.is_empty())
+            && !self.cancelled_batches.contains_key(scope)
+    }
+
     pub fn has_in_flight(&self) -> bool {
         !self.in_flight_scopes.is_empty()
     }
@@ -3024,6 +3064,56 @@ mod tests {
         // All drained.
         assert_eq!(pending_count(&q), 0);
         assert_eq!(q.queues.len(), 0);
+    }
+
+    #[test]
+    fn compact_event_flushes_alone() {
+        let mut q = EventQueue::new(DedupMode::Queue);
+        let ch = Uuid::new_v4();
+        q.push(make_queued(ch, "first"));
+        let mut compact = make_queued(ch, "!compact");
+        compact.prompt_tag = COMPACT_PROMPT_TAG.into();
+        q.push(compact);
+        q.push(make_queued(ch, "after"));
+        assert!(!q.scope_is_idle(&conv(ch)));
+
+        let batch = q.flush_next().unwrap();
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.events[0].event.content, "first");
+        assert!(!is_compact_batch(&batch));
+        q.mark_complete(conv(ch));
+
+        let batch = q.flush_next().unwrap();
+        assert!(is_compact_batch(&batch));
+        q.mark_complete(conv(ch));
+
+        let batch = q.flush_next().unwrap();
+        assert_eq!(batch.events[0].event.content, "after");
+        q.mark_complete(conv(ch));
+        assert!(q.scope_is_idle(&conv(ch)));
+    }
+
+    #[test]
+    fn notice_thread_tags_reply_where_the_command_was() {
+        let top = make_event("!context");
+        let id = top.id.to_hex();
+        let in_channel = notice_thread_tags(&top, false);
+        assert_eq!(in_channel.root_event_id.as_deref(), Some(id.as_str()));
+        assert_eq!(in_channel.parent_event_id.as_deref(), Some(id.as_str()));
+        let in_dm = notice_thread_tags(&top, true);
+        assert!(in_dm.root_event_id.is_none() && in_dm.parent_event_id.is_none());
+
+        let root = "ab".repeat(32);
+        let reply = EventBuilder::new(Kind::Custom(9), "!context")
+            .tags([
+                nostr::Tag::parse(["e", &root, "", "root"]).unwrap(),
+                nostr::Tag::parse(["e", &root, "", "reply"]).unwrap(),
+            ])
+            .sign_with_keys(&Keys::generate())
+            .unwrap();
+        let tags = notice_thread_tags(&reply, true);
+        assert_eq!(tags.root_event_id.as_deref(), Some(root.as_str()));
+        assert_eq!(tags.parent_event_id, Some(reply.id.to_hex()));
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod git_runtime_tests;
 
 mod acp;
 mod config;
+mod context;
 mod cursor;
 mod edit_routing;
 mod engram_fetch;
@@ -3774,6 +3775,93 @@ async fn run_harness(
                                 // Not from owner — fall through to normal prompt handling.
                             }
 
+                            let context_command = ["!context", "!compact"].into_iter().find(|command| {
+                                is_owner_control_command(&buzz_event.event, kind_u32, command, &pubkey_hex)
+                            });
+                            if let Some(command) = context_command {
+                                let from_owner = owner_cache.get().is_some_and(|owner| {
+                                    buzz_event.event.pubkey.to_hex() == *owner
+                                });
+                                if from_owner {
+                                    let is_dm =
+                                        is_dm_channel(buzz_event.channel_id, &ctx.channel_info).await;
+                                    let scope = scope::SessionScope::derive(
+                                        config.session_policy,
+                                        buzz_event.channel_id,
+                                        is_dm,
+                                        &buzz_event.event,
+                                    );
+                                    let idle = queue.scope_is_idle(&scope);
+                                    let reply = match command {
+                                        "!context" => Some(context::render_report(&context::Report {
+                                            scope: &scope,
+                                            is_dm,
+                                            harness: &ctx.harness_name,
+                                            context: pool.scope_context(&scope),
+                                            turn_running: !idle,
+                                            now: context::now_secs(),
+                                        })),
+                                        _ if !compact_supported(&ctx.harness_name) => Some(format!(
+                                            "`!compact` is not supported for the harness {}.",
+                                            ctx.harness_name
+                                        )),
+                                        _ if pool.scope_context(&scope).is_none() => {
+                                            Some("No session in this scope. Nothing to compact.".to_owned())
+                                        }
+                                        _ if !idle => Some(
+                                            "A turn runs or waits in this scope. Send `!compact` again when it ends."
+                                                .to_owned(),
+                                        ),
+                                        _ => None,
+                                    };
+                                    tracing::info!(
+                                        channel_id = %buzz_event.channel_id,
+                                        scope = %scope.telemetry_label(),
+                                        command,
+                                        queued = reply.is_none(),
+                                        "owner context command"
+                                    );
+                                    if let Some(text) = reply {
+                                        let rest = ctx.rest_client.clone();
+                                        let tags = queue::notice_thread_tags(&buzz_event.event, is_dm);
+                                        let channel_id = buzz_event.channel_id;
+                                        tokio::spawn(async move {
+                                            pool::post_failure_notice(&rest, channel_id, &tags, &text).await;
+                                        });
+                                        continue;
+                                    }
+                                    let event = buzz_event.event;
+                                    let accepted = queue.push(QueuedEvent {
+                                        channel_id: buzz_event.channel_id,
+                                        scope: scope.clone(),
+                                        event: event.clone(),
+                                        received_at: std::time::Instant::now(),
+                                        prompt_tag: queue::COMPACT_PROMPT_TAG.to_owned(),
+                                        edit: None,
+                                    });
+                                    cursor.admit(&scope, &event, accepted);
+                                    if accepted {
+                                        let rest = ctx.rest_client.clone();
+                                        let id = event.id.to_hex();
+                                        tokio::spawn(async move {
+                                            pool::reaction_add(&rest, &id, "👀").await;
+                                        });
+                                    }
+                                    if pool_ready {
+                                        for (scope, thread_tags) in dispatch_pending(
+                                            &mut pool,
+                                            &mut queue,
+                                            &ctx,
+                                            &mut last_activity,
+                                            observer.as_ref(),
+                                        ) {
+                                            typing_channels.insert(scope, thread_tags);
+                                        }
+                                    }
+                                    continue;
+                                }
+                            }
+
                             // Coarse security policy: drop events from disallowed
                             // authors before they reach subscription rules or the
                             // agent. Must be AFTER !shutdown (owner can always
@@ -4523,6 +4611,18 @@ fn is_owner_control_command(
         && event_mentions_agent(event, agent_pubkey_hex)
 }
 
+fn compact_supported(harness: &str) -> bool {
+    matches!(
+        harness,
+        "claude-agent-acp"
+            | "claude-code-acp"
+            | "claude-code"
+            | "claudecode"
+            | "codex"
+            | "codex-acp"
+    )
+}
+
 /// A turn that ends normally while the harness shuts down is complete. Release
 /// its scope so the cursor records its events as handled, not as interrupted.
 fn complete_finished_turn(queue: &mut EventQueue, result: &PromptResult) {
@@ -4542,7 +4642,7 @@ fn is_stale_control_command(
     agent_pubkey_hex: &str,
 ) -> bool {
     cursor.is_missed(event)
-        && ["!shutdown", "!cancel", "!rotate"]
+        && ["!shutdown", "!cancel", "!rotate", "!context", "!compact"]
             .iter()
             .any(|command| is_owner_control_command(event, kind_u32, command, agent_pubkey_hex))
 }
@@ -6703,7 +6803,7 @@ mod owner_control_command_tests {
         let live = cursor::Cursor::load(Some(dir.path().join("live.json")), now - 60, 86_400);
         let disabled = cursor::Cursor::load(None, now + 60, 86_400);
 
-        for command in ["!shutdown", "!cancel", "!rotate"] {
+        for command in ["!shutdown", "!cancel", "!rotate", "!context", "!compact"] {
             let event = make_event(KIND_STREAM_MESSAGE, command, Some(&agent));
             assert!(
                 is_stale_control_command(&replaying, &event, KIND_STREAM_MESSAGE, &agent),

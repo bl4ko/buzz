@@ -157,6 +157,9 @@ pub struct SessionState {
     /// pool uses this fence to discard that stale provider session before the
     /// worker becomes claimable again.
     scope_owner_generations: HashMap<SessionScope, u64>,
+    /// Provider sessions dropped by an invalidation. The next turn of this
+    /// worker sends `session/close` for each, so the adapter can free them.
+    pub(crate) pending_close: Vec<String>,
 }
 
 impl SessionState {
@@ -171,7 +174,7 @@ impl SessionState {
                 self.invalidate_scope(scope);
             }
             PromptSource::Heartbeat => {
-                self.heartbeat_session = None;
+                self.pending_close.extend(self.heartbeat_session.take());
                 self.heartbeat_turn_count = 0;
                 self.heartbeat_standing_context_sent = false;
             }
@@ -186,7 +189,11 @@ impl SessionState {
         self.canvas_sections.remove(scope);
         self.deliveries.remove(scope);
         self.scope_owner_generations.remove(scope);
-        self.sessions.remove(scope).is_some()
+        let Some(session_id) = self.sessions.remove(scope) else {
+            return false;
+        };
+        self.pending_close.push(session_id);
+        true
     }
 
     /// Invalidate every session scope belonging to `channel_id` (channel-wide
@@ -217,9 +224,10 @@ impl SessionState {
 
     /// Invalidate all sessions and turn counters (e.g. after agent exit).
     pub fn invalidate_all(&mut self) {
-        self.sessions.clear();
+        self.pending_close
+            .extend(self.sessions.drain().map(|(_, id)| id));
         self.turn_counts.clear();
-        self.heartbeat_session = None;
+        self.pending_close.extend(self.heartbeat_session.take());
         self.heartbeat_turn_count = 0;
         self.heartbeat_standing_context_sent = false;
         self.core_sections.clear();
@@ -394,6 +402,9 @@ pub struct AgentPool {
     /// `Thread` scopes (the sole variant [`hold_decision`](Self::hold_decision)
     /// stamps).
     held_since: HashMap<SessionScope, tokio::time::Instant>,
+    /// Context use of each scope's session as of its worker's last return,
+    /// keyed with the worker index. Read by the owner `!context` command.
+    contexts: HashMap<SessionScope, (usize, crate::context::SessionContext)>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -967,6 +978,17 @@ impl AgentPool {
             session_owners: HashMap::new(),
             next_scope_owner_generation: 1,
             held_since: HashMap::new(),
+            contexts: HashMap::new(),
+        }
+    }
+
+    /// Context use of `scope`'s session, when a worker still holds it. A
+    /// checked-out worker's entry is from the end of its last turn.
+    pub fn scope_context(&self, scope: &SessionScope) -> Option<&crate::context::SessionContext> {
+        let (index, context) = self.contexts.get(scope)?;
+        match self.agents.get(*index) {
+            Some(Some(agent)) if !agent.state.sessions.contains_key(scope) => None,
+            _ => Some(context),
         }
     }
 
@@ -1102,6 +1124,13 @@ impl AgentPool {
                 "discarding stale session after ownership changed"
             );
             agent.state.invalidate_scope(&scope);
+        }
+        self.contexts.retain(|_, (index, _)| *index != agent.index);
+        for (scope, session_id) in &agent.state.sessions {
+            if let Some(context) = agent.acp.session_context(session_id) {
+                self.contexts
+                    .insert(scope.clone(), (agent.index, context.clone()));
+            }
         }
         let live_scopes: HashSet<SessionScope> = agent.state.sessions.keys().cloned().collect();
         agent
@@ -2437,6 +2466,7 @@ pub async fn run_prompt_task(
         Some(b) => PromptSource::Channel(b.scope.clone()),
         None => PromptSource::Heartbeat,
     };
+    let compact = batch.as_ref().is_some_and(crate::queue::is_compact_batch);
     let observer_channel_id = source.channel_id();
     // Thread conversation context requires the canonical root to distinguish
     // concurrent threads in the same channel's activity.
@@ -2685,6 +2715,28 @@ pub async fn run_prompt_task(
         PromptSource::Heartbeat => None,
     };
 
+    close_unused_sessions(&mut agent, source.scope()).await;
+    if let (true, Some(b), PromptSource::Channel(scope)) = (compact, &batch, &source) {
+        if !agent.state.sessions.contains_key(scope) {
+            post_compact_notice(
+                &ctx,
+                b,
+                prompt_is_dm,
+                "No session in this scope. Nothing to compact.",
+            )
+            .await;
+            send_prompt_result(
+                &result_tx,
+                &turn_id,
+                agent,
+                source,
+                PromptOutcome::Ok(StopReason::EndTurn),
+                None,
+            );
+            return;
+        }
+    }
+
     let (session_id, is_new_session) = match &source {
         PromptSource::Channel(scope) => {
             let cid = &scope.channel_id();
@@ -2821,6 +2873,9 @@ pub async fn run_prompt_task(
     // Backfill liveness's shared session ID so ticks after this point carry
     // it too, matching every other observer frame for this turn.
     liveness_guard.set_session_id(session_id.clone());
+    let compact_before = compact
+        .then(|| agent.acp.session_context(&session_id).cloned())
+        .flatten();
     agent.acp.observe(
         "session_resolved",
         serde_json::json!({
@@ -3051,6 +3106,9 @@ pub async fn run_prompt_task(
             )
         };
         vec![text]
+    } else if compact {
+        slash_command = Some("/compact".to_owned());
+        Vec::new()
     } else if let Some(ref b) = batch {
         // Project authority was resolved before any ACP session boundary above;
         // reuse that exact typed result for prompt formatting.
@@ -3469,6 +3527,13 @@ pub async fn run_prompt_task(
                 Some(core_stop),
             )
             .await;
+            if let (true, Some(b)) = (compact, &batch) {
+                let text = compact_reply_text(
+                    compact_before.as_ref(),
+                    agent.acp.session_context(&session_id),
+                );
+                post_compact_notice(&ctx, b, prompt_is_dm, &text).await;
+            }
 
             send_prompt_result(
                 &result_tx,
@@ -5405,6 +5470,7 @@ async fn publish_agent_turn_metric(
         delta_reliable: usage.delta_reliable,
         stop_reason,
         pricing_identity: usage.pricing_identity.clone(),
+        context: usage.context.clone(),
     };
     let ciphertext = match buzz_core::agent_turn_metric::encrypt_agent_turn_metric(
         &ctx.agent_keys,
@@ -5519,6 +5585,86 @@ pub(crate) async fn reaction_add(rest: &crate::relay::RestClient, event_id: &str
         Ok(Err(e)) => tracing::debug!(event_id, emoji, "reaction add failed: {e}"),
         Err(_) => tracing::debug!(event_id, emoji, "reaction add timed out"),
     }
+}
+
+/// A thread session that had no turn for this long is closed at the next turn
+/// of its worker.
+const THREAD_SESSION_IDLE_SECS: u64 = 3600;
+/// Idle thread sessions a worker keeps; older ones are closed.
+const MAX_IDLE_THREAD_SESSIONS: usize = 4;
+
+fn idle_thread_sessions_to_close(
+    sessions: impl Iterator<Item = (SessionScope, u64)>,
+    current: Option<&SessionScope>,
+    now: u64,
+) -> Vec<SessionScope> {
+    let mut idle: Vec<(SessionScope, u64)> = sessions
+        .filter(|(scope, _)| scope.is_thread() && Some(scope) != current)
+        .collect();
+    idle.sort_by(|a, b| b.1.cmp(&a.1));
+    idle.into_iter()
+        .enumerate()
+        .filter(|(i, (_, last))| {
+            *i >= MAX_IDLE_THREAD_SESSIONS || now.saturating_sub(*last) > THREAD_SESSION_IDLE_SECS
+        })
+        .map(|(_, (scope, _))| scope)
+        .collect()
+}
+
+/// Drop idle thread sessions, then send `session/close` for every session
+/// this worker dropped. Without it each session keeps its provider process.
+async fn close_unused_sessions(agent: &mut OwnedAgent, current: Option<&SessionScope>) {
+    let sessions = agent.state.sessions.iter().map(|(scope, id)| {
+        let last = agent
+            .acp
+            .session_context(id)
+            .map_or(0, |context| context.last_turn_at);
+        (scope.clone(), last)
+    });
+    let idle = idle_thread_sessions_to_close(sessions, current, crate::context::now_secs());
+    for scope in idle {
+        tracing::info!(
+            target: "pool::session",
+            scope = %scope.telemetry_label(),
+            "closing idle thread session"
+        );
+        agent.state.invalidate_scope(&scope);
+    }
+    for session_id in std::mem::take(&mut agent.state.pending_close) {
+        agent.acp.session_close(&session_id).await;
+    }
+}
+
+fn compact_reply_text(
+    before: Option<&crate::context::SessionContext>,
+    after: Option<&crate::context::SessionContext>,
+) -> String {
+    let Some(after) = after else {
+        return "Compaction ended. The adapter reported no session data.".to_owned();
+    };
+    let compacted = after.compactions > before.map_or(0, |b| b.compactions);
+    let mut lines = vec![if compacted {
+        "Compacted.".to_owned()
+    } else {
+        "The `/compact` turn ended, but the adapter reported no compaction.".to_owned()
+    }];
+    if let Some(before) = before {
+        lines.push(format!("- Before: {}", crate::context::usage_line(before)));
+    }
+    lines.push(format!("- Now: {}", crate::context::usage_line(after)));
+    lines.push(format!(
+        "- Compactions in this session: {}",
+        after.compactions
+    ));
+    lines.join("\n")
+}
+
+async fn post_compact_notice(ctx: &PromptContext, batch: &FlushBatch, is_dm: bool, text: &str) {
+    let Some(event) = batch.events.first() else {
+        return;
+    };
+    let tags = crate::queue::notice_thread_tags(&event.event, is_dm);
+    post_failure_notice(&ctx.rest_client, batch.channel_id, &tags, text).await;
 }
 
 /// Best-effort: post a visible failure notice (kind:9) to a channel after a
@@ -8031,6 +8177,73 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         assert!(!wire.contains(&steered_event_id));
     }
 
+    fn thread(channel_id: Uuid, root: char) -> SessionScope {
+        SessionScope::Thread {
+            channel_id,
+            root_event_id: root.to_string().repeat(64),
+        }
+    }
+
+    #[test]
+    fn idle_thread_sessions_close_after_an_hour_or_beyond_four() {
+        let ch = Uuid::new_v4();
+        let now = 10_000;
+        let current = thread(ch, 'c');
+        let sessions = vec![
+            (conv(ch), 0),
+            (current.clone(), 0),
+            (thread(ch, '1'), now - 10),
+            (thread(ch, '2'), now - 20),
+            (thread(ch, '3'), now - 30),
+            (thread(ch, '4'), now - 40),
+            (thread(ch, '5'), now - 50),
+            (thread(ch, '6'), now - THREAD_SESSION_IDLE_SECS - 1),
+        ];
+        let mut closed = idle_thread_sessions_to_close(sessions.into_iter(), Some(&current), now);
+        closed.sort_by_key(|scope| scope.root_event_id().map(str::to_owned));
+        assert_eq!(closed, vec![thread(ch, '5'), thread(ch, '6')]);
+        let fresh = vec![(thread(ch, '1'), now - THREAD_SESSION_IDLE_SECS)];
+        assert!(idle_thread_sessions_to_close(fresh.into_iter(), None, now).is_empty());
+    }
+
+    #[test]
+    fn invalidation_queues_the_session_for_close() {
+        let ch = Uuid::new_v4();
+        let mut state = SessionState::default();
+        state.sessions.insert(conv(ch), "a".into());
+        state.sessions.insert(thread(ch, 'b'), "b".into());
+        state.heartbeat_session = Some("h".into());
+        assert!(state.invalidate_scope(&conv(ch)));
+        assert!(!state.invalidate_scope(&conv(ch)));
+        assert_eq!(state.pending_close, vec!["a".to_owned()]);
+        state.invalidate_all();
+        let mut pending = state.pending_close.clone();
+        pending.sort();
+        assert_eq!(pending, vec!["a", "b", "h"]);
+        assert!(state.sessions.is_empty() && state.heartbeat_session.is_none());
+    }
+
+    #[test]
+    fn compact_reply_reports_before_and_after() {
+        let before = crate::context::SessionContext {
+            used: Some(150_000),
+            size: Some(200_000),
+            ..Default::default()
+        };
+        let after = crate::context::SessionContext {
+            used: Some(20_000),
+            size: Some(200_000),
+            compactions: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            compact_reply_text(Some(&before), Some(&after)),
+            "Compacted.\n- Before: 150,000 of 200,000 tokens (75 %)\n- Now: 20,000 of 200,000 tokens (10 %)\n- Compactions in this session: 1"
+        );
+        assert!(compact_reply_text(Some(&after), Some(&after))
+            .starts_with("The `/compact` turn ended, but the adapter reported no compaction."));
+    }
+
     #[test]
     fn delivery_state_commits_only_when_explicitly_marked_successful() {
         let channel = Uuid::new_v4();
@@ -10137,6 +10350,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
     async fn test_publish_agent_turn_metric_noop_on_no_owner() {
         let ctx = make_prompt_context_no_owner();
         let usage = crate::usage::TurnUsage {
+            context: None,
             session_id: "sess-1".to_string(),
             turn_seq: 1,
             delta_reliable: true,
@@ -10176,6 +10390,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         let owner_keys = nostr::Keys::generate();
         let ctx = make_prompt_context_with_owner(&agent_keys, owner_keys.public_key());
         let usage = crate::usage::TurnUsage {
+            context: None,
             session_id: "sess-1".to_string(),
             turn_seq: 1,
             delta_reliable: true,
@@ -10216,6 +10431,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         let owner_keys = nostr::Keys::generate();
         let ctx = make_prompt_context_with_owner(&agent_keys, owner_keys.public_key());
         let usage = crate::usage::TurnUsage {
+            context: None,
             session_id: "sess-cancel".to_string(),
             turn_seq: 2,
             delta_reliable: true,
@@ -10256,6 +10472,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         let mut ctx = make_prompt_context_with_owner(&agent_keys, owner_keys.public_key());
         ctx.harness_name = "buzz-agent".to_string();
         let usage = crate::usage::TurnUsage {
+            context: None,
             session_id: "sess-ba".to_string(),
             turn_seq: 1,
             delta_reliable: false, // first turn from buzz-agent
@@ -10293,6 +10510,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
     #[test]
     fn test_build_turn_metric_counts_exact_totals_map_through() {
         let usage = crate::usage::TurnUsage {
+            context: None,
             session_id: "sess-total".to_string(),
             turn_seq: 2,
             delta_reliable: true,
@@ -10345,6 +10563,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
     #[test]
     fn test_build_turn_metric_counts_null_totals_never_derived() {
         let usage = crate::usage::TurnUsage {
+            context: None,
             session_id: "sess-nototal".to_string(),
             turn_seq: 1,
             delta_reliable: true,

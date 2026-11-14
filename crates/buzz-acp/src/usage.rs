@@ -189,6 +189,8 @@ struct SessionState {
 pub struct TurnUsage {
     /// Goose session id (maps to NIP-AM `sessionId`).
     pub session_id: String,
+    /// Context window use of the session, attached by the ACP client.
+    pub context: Option<buzz_core::agent_turn_metric::ContextUsage>,
     /// Per-session monotonic sequence number for this turn (maps to NIP-AM `turnSeq`).
     pub turn_seq: u64,
     /// Whether the `turn_*` delta fields are reliable.
@@ -372,6 +374,7 @@ impl StandardUsageTracker {
 
         state.published_seq += 1;
         Some(TurnUsage {
+            context: None,
             session_id,
             turn_seq: state.published_seq,
             // Standard prompt counters are per-turn already. A cost-only record
@@ -730,6 +733,7 @@ impl UsageTracker {
                 poisoned @ Some(None) => poisoned,
             };
             self.pending = Some(TurnUsage {
+                context: None,
                 session_id: session_id.to_string(),
                 turn_seq,
                 delta_reliable,
@@ -1972,6 +1976,7 @@ mod tests {
         use crate::pool::build_turn_metric_counts;
 
         let usage = TurnUsage {
+            context: None,
             session_id: "sess-pool-none".into(),
             turn_seq: 2,
             delta_reliable: true,
@@ -2013,6 +2018,7 @@ mod tests {
         use crate::pool::build_turn_metric_counts;
 
         let usage = TurnUsage {
+            context: None,
             session_id: "sess-pool-some".into(),
             turn_seq: 2,
             delta_reliable: true,
