@@ -46,23 +46,41 @@ class OlympusProfileCard extends ConsumerWidget {
           horizontalPadding: 0,
           dividerIndent: Grid.xs,
           children: [
-            AppListRowRaw(
-              leading: const SizedBox.shrink(),
-              title: Row(
-                children: [
-                  OlympusStateLabel(state: olympusDisplayState(agent, working)),
-                  if (agent.isMaster) ...[
-                    const SizedBox(width: Grid.xxs),
-                    const OlympusMasterMark(),
-                  ],
-                  const Spacer(),
-                  if (agent.lastActivity case final at?)
-                    Text('Active ${formatOlympusAgo(at)}', style: muted),
-                ],
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Grid.xs,
+                vertical: Grid.twelve,
               ),
-              subtitle: error == null
-                  ? null
-                  : Text(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      OlympusStateLabel(
+                        state: olympusDisplayState(agent, working),
+                      ),
+                      if (agent.isMaster) ...[
+                        const SizedBox(width: Grid.xxs),
+                        const OlympusMasterMark(),
+                      ],
+                      const SizedBox(width: Grid.xxs),
+                      Expanded(
+                        child: Text(
+                          switch (agent.lastActivity) {
+                            final at? => 'Active ${formatOlympusAgo(at)}',
+                            null => 'No activity',
+                          },
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: Grid.half),
+                    Text(
                       [error.title, ?error.detail].join('\n'),
                       key: const ValueKey('olympus-profile-error'),
                       maxLines: 4,
@@ -73,6 +91,9 @@ class OlympusProfileCard extends ConsumerWidget {
                             : olympusDanger(context),
                       ),
                     ),
+                  ],
+                ],
+              ),
             ),
             AppListRow(
               title: 'Workspace',
