@@ -6,7 +6,7 @@ use crate::client::{normalize_events, normalize_write_response, BuzzClient};
 use crate::commands::event_output::{format_events, thread_markers};
 use crate::error::CliError;
 use crate::validate::{
-    infer_language, parse_event_id, parse_uuid, read_or_stdin, truncate_diff,
+    infer_language, parse_event_id, parse_uuid, read_or_input, read_or_stdin, truncate_diff,
     validate_content_size, validate_hex64, validate_uuid, MAX_DIFF_BYTES,
 };
 use buzz_sdk::mentions::{
@@ -953,8 +953,16 @@ pub async fn cmd_edit_message(
     event_id: &str,
     content: &str,
     voice_final: bool,
+    input: impl std::io::Read,
 ) -> Result<(), CliError> {
     validate_hex64(event_id)?;
+    let content = read_or_input(content, input)?;
+    let content = content.as_str();
+    if content.trim().is_empty() {
+        return Err(CliError::Usage(
+            "edit content is empty; the message was not changed".into(),
+        ));
+    }
     validate_content_size(content)?;
 
     // Resolve channel_id from the event's h-tag
@@ -1095,7 +1103,7 @@ pub async fn dispatch(
             event,
             content,
             voice_final,
-        } => cmd_edit_message(client, &event, &content, voice_final).await,
+        } => cmd_edit_message(client, &event, &content, voice_final, std::io::stdin()).await,
         MessagesCmd::Delete {
             event,
             action_id,
@@ -1929,6 +1937,61 @@ mod tests {
                 approval_request
             );
         }
+    }
+
+    fn edit_target_response() -> String {
+        serde_json::json!([{
+            "id": "a".repeat(64),
+            "kind": 9,
+            "created_at": 100,
+            "tags": [["h", SEND_TEST_CHANNEL]],
+            "content": "original answer"
+        }])
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn cmd_edit_message_reads_dash_content_from_stdin() {
+        let (url, _, captured_event) = fake_send_relay(edit_target_response()).await;
+        let client = BuzzClient::new(url, Keys::generate(), None, None).unwrap();
+        let text = "**Report**\n\n- line one\n- line two\n";
+
+        super::cmd_edit_message(
+            &client,
+            &"a".repeat(64),
+            "-",
+            false,
+            std::io::Cursor::new(text),
+        )
+        .await
+        .unwrap();
+
+        let raw = captured_event.lock().unwrap();
+        let event: serde_json::Value =
+            serde_json::from_str(&raw.as_ref().expect("edit must be submitted").body).unwrap();
+        assert_eq!(event["kind"], 40003);
+        assert_eq!(event["content"], text);
+    }
+
+    #[tokio::test]
+    async fn cmd_edit_message_refuses_empty_content() {
+        let (url, query_count, captured_event) = fake_send_relay(edit_target_response()).await;
+        let client = BuzzClient::new(url, Keys::generate(), None, None).unwrap();
+
+        for (content, input) in [("-", ""), ("-", " \n"), ("  ", "")] {
+            let err = super::cmd_edit_message(
+                &client,
+                &"a".repeat(64),
+                content,
+                false,
+                std::io::Cursor::new(input),
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(err, CliError::Usage(_)));
+        }
+        assert_eq!(query_count.load(Ordering::Relaxed), 0);
+        assert!(captured_event.lock().unwrap().is_none());
     }
 
     #[tokio::test]
