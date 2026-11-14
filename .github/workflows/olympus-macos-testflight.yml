@@ -33,7 +33,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Activate Hermit
+        run: ./bin/hermit env --raw >> "$GITHUB_ENV"
 
       - name: Cache keys
         id: keys
