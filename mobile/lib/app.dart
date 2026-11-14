@@ -1,6 +1,5 @@
 import 'features/activity/activity_provider.dart';
-import 'features/channels/default_agent_launcher.dart';
-import 'features/agents/agents_page.dart';
+import 'features/olympus/olympus_agents_page.dart';
 
 import 'dart:async';
 
@@ -467,10 +466,8 @@ class App extends HookConsumerWidget {
           AuthStatus.authenticated => HostedAppGate(
             authenticated: true,
             child: HomePage(
-              onAgents: showAgents,
-              defaultAgentBuilder: (context) => DefaultAgentLauncher(
-                onChooseAgent: () => showAgents(context, createOnOpen: true),
-              ),
+              onAgents: showOlympusAgents,
+              defaultAgentBuilder: (_) => const OlympusAgentsButton(),
               mePageBuilder: (_, chat, workspace) => MePage(
                 sliver: true,
                 newChatAction: chat,

@@ -116,6 +116,7 @@ import 'thread_detail_page.dart';
 import 'thread_replies_provider.dart';
 import 'reading_marks.dart';
 import 'timeline_message.dart';
+import '../olympus/olympus_proposals.dart';
 
 part 'channel_detail_page/message_list.dart';
 part 'channel_detail_page/placement_route.dart';
@@ -412,6 +413,12 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
         .toSet()
         .length;
     final isOneToOneDm = resolvedChannel.isDm && participantCount == 2;
+    final dmPeer = isOneToOneDm && currentPubkey != null
+        ? resolvedChannel.participantPubkeys
+              .map((pubkey) => pubkey.trim().toLowerCase())
+              .where((pubkey) => pubkey != currentPubkey)
+              .firstOrNull
+        : null;
     final memberProfilesPreload = useMemoized(
       () => _preloadMembers(
         ref,
@@ -1087,6 +1094,7 @@ class _ResolvedChannelDetailPage extends HookConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ?assistant.pendingNotice,
+                        if (dmPeer != null) OlympusDmProposals(peer: dmPeer),
                         ComposeBar(
                           channelId: channel.id,
                           focusNode: composerFocusNode,

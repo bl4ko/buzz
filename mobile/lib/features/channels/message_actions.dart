@@ -27,6 +27,8 @@ import '../../shared/reminders/remind_me_later_sheet.dart';
 import '../../shared/reminders/reminder_service.dart';
 import '../activity/reminders_provider.dart' show remindersProvider;
 import 'channel_management_provider.dart';
+import '../olympus/master_agent.dart';
+import '../olympus/olympus_provider.dart';
 import 'channels_provider.dart';
 import '../../shared/emoji/emoji_picker.dart';
 import 'message_pins/message_pins_provider.dart';
@@ -280,6 +282,13 @@ Future<void> showMessageActions({
                             Clipboard.setData(data);
                           },
                         ),
+                        if (ref.read(olympusMasterProvider) != null)
+                          _AskMasterTile(
+                            message: message,
+                            channelId: channelId,
+                            pageContext: context,
+                            pageRef: ref,
+                          ),
                       ],
                     ),
                   ],
@@ -657,6 +666,42 @@ class _MarkReadUnreadTile extends ConsumerWidget {
             channelId: channelId,
           );
         }
+      },
+    );
+  }
+}
+
+class _AskMasterTile extends ConsumerWidget {
+  final TimelineMessage message;
+  final String channelId;
+  final BuildContext pageContext;
+  final WidgetRef pageRef;
+
+  const _AskMasterTile({
+    required this.message,
+    required this.channelId,
+    required this.pageContext,
+    required this.pageRef,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final label = askMasterLabel(ref);
+    if (label == null) return const SizedBox.shrink();
+    return ListTile(
+      key: const ValueKey('message-ask-master'),
+      leading: const Icon(BuzzIcons.sparkles),
+      title: Text(label),
+      onTap: () {
+        if (!_selectMessageAction(context)) return;
+        unawaited(
+          askMaster(
+            pageContext,
+            pageRef,
+            quote: message.content,
+            link: messageLinkFor(message: message, channelId: channelId),
+          ),
+        );
       },
     );
   }
