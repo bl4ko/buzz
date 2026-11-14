@@ -576,6 +576,7 @@ pub fn run() {
             get_git_identity,
             get_project_repo_snapshot,
             get_project_repo_file_content,
+            read_olympus_git_file,
             get_project_repo_diff,
             get_project_local_repo_diff,
             get_project_local_repo_snapshot,

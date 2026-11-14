@@ -13186,6 +13186,14 @@ export function maybeInstallE2eTauriMocks() {
         };
       case "get_project_local_repo_snapshot":
         return window.__BUZZ_E2E_PROJECT_LOCAL_REPO_SNAPSHOT__ ?? null;
+      case "read_olympus_git_file": {
+        const path = (payload as { path?: string } | undefined)?.path ?? "";
+        const content = window.__BUZZ_E2E_PROJECT_REPO_FILE_CONTENTS__?.[path];
+        if (typeof content !== "string") {
+          throw new Error(`${path} is missing at 0123456.`);
+        }
+        return { base: "0123456789abcdef0123456789abcdef01234567", content };
+      }
       case "get_project_repo_file_content":
       case "get_project_local_repo_file_content": {
         const path = (payload as { path?: string } | undefined)?.path;
