@@ -84,7 +84,10 @@ export function OlympusPage({ tab }: { tab: OlympusTab }) {
         value={tab}
       >
         <div className="border-b border-border/60 px-4 py-2">
-          <TabsList aria-label="Olympus sections" className="h-8">
+          <TabsList
+            aria-label="Olympus sections"
+            className="h-8 max-w-full justify-start overflow-x-auto [scrollbar-width:none]"
+          >
             {tabs.map((item) => (
               <TabsTrigger
                 className="gap-1.5 px-2.5 text-xs"

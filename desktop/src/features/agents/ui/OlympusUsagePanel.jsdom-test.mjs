@@ -158,7 +158,7 @@ test("the table shows each agent, the total, and the Hecate quota", async () => 
     '[data-testid="olympus-usage-row-ops-argus"]',
   );
   assert.deepEqual(cells(argus), [
-    "Aargusops · claude-code",
+    "Aargusops · claude-code1h agofailed",
     "1.2M",
     "12",
     "4",

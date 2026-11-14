@@ -65,6 +65,13 @@ test("the On this Mac tab shows the local agents", async ({ page }) => {
     "true",
   );
   await page.screenshot({ path: `${SHOTS}/01-local-tab.png` });
+  await page.setViewportSize({ width: 900, height: 700 });
+  const tabs = page.getByRole("tablist", { name: "Olympus sections" });
+  await expect(page.getByTestId("olympus-tab-local")).toBeInViewport();
+  expect(
+    await tabs.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await page.screenshot({ path: `${SHOTS}/01b-local-tab-900.png` });
 });
 
 test("the schedules filter by agent and workspace is remembered", async ({
