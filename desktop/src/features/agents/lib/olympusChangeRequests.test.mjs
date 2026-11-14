@@ -442,3 +442,49 @@ test("patch and create with a spec carry the spec and the high-risk flag", () =>
     spec: { template: "base" },
   });
 });
+
+test("edit-file is a workspace request with the file, base, and message", () => {
+  const change = {
+    action: "edit-file",
+    repo: "agents",
+    path: "zeus/agents/zeus.md",
+    content: "You are Zeus.\n",
+    base: "c".repeat(40),
+    message: "docs: shorter Zeus rules",
+  };
+  assert.deepEqual(build(WORKSPACE, change), {
+    kind: 44310,
+    tags: [
+      ["p", OPERATOR],
+      ["workspace", "dev"],
+      ["action", "edit-file"],
+    ],
+    content: { v: 1, workspace: "dev", ...change },
+  });
+});
+
+test("a result keeps a valid commit and drops a bad one", () => {
+  const id = "1".repeat(64);
+  const event = (commit) => ({
+    ...resultEvent({ requestId: id, status: "accepted" }),
+    content: JSON.stringify({
+      v: 1,
+      status: "accepted",
+      reason: "committed",
+      request: id,
+      commit,
+    }),
+  });
+  assert.deepEqual(
+    parseOlympusChangeResult(event("d".repeat(40)), id, OPERATOR),
+    {
+      status: "accepted",
+      reason: "committed",
+      commit: "d".repeat(40),
+    },
+  );
+  assert.deepEqual(parseOlympusChangeResult(event("HEAD"), id, OPERATOR), {
+    status: "accepted",
+    reason: "committed",
+  });
+});

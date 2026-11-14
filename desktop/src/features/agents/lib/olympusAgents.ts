@@ -122,12 +122,20 @@ export type OlympusAgent = {
   gitopsFields: string[] | null;
   runtime: OlympusAgentRuntime;
   instructionsTruncated: boolean;
+  instructionsFile: OlympusInstructionsFile | null;
   schedules: OlympusSchedule[];
   phase: OlympusPhase;
   reason: string | null;
   publicKey: string | null;
   lastActivity: string | null;
   conditions: OlympusCondition[];
+};
+
+export type OlympusInstructionsFile = {
+  repo: string;
+  path: string;
+  url: string | null;
+  branch: string;
 };
 
 export type OlympusProvider = {
@@ -484,6 +492,7 @@ export function parseOlympusAgent(event: RelayEvent): OlympusAgent | null {
     gitopsFields: fieldList(content.gitopsFields),
     runtime: parseRuntime(status),
     instructionsTruncated: content.instructionsTruncated === true,
+    instructionsFile: parseInstructionsFile(content.instructionsFile),
     schedules: parseSchedules(content.schedules),
     phase: phase as OlympusPhase,
     reason: text(status?.reason),
@@ -537,6 +546,19 @@ export function parseOlympusWorkspace(
     mcpServers: texts(content.mcpServers),
     templates: parseTemplates(content.templates),
     gitopsFields: fieldList(content.gitopsFields),
+  };
+}
+
+function parseInstructionsFile(value: unknown): OlympusInstructionsFile | null {
+  if (!isObject(value)) return null;
+  const repo = text(value.repo);
+  const path = text(value.path);
+  if (!repo || !path) return null;
+  return {
+    repo,
+    path,
+    url: text(value.url),
+    branch: text(value.branch) ?? "main",
   };
 }
 

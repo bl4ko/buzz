@@ -2,6 +2,7 @@ import {
   isOlympusProposalOpen,
   type OlympusProposal,
   olympusProposalKey,
+  olympusProposalSubject,
 } from "@/features/agents/lib/olympusProposals";
 
 export const PROPOSAL_SOON_SECONDS = 2 * 3_600;
@@ -119,7 +120,7 @@ export function proposalAlertText(
   nowSeconds: number,
 ): { title: string; body: string } {
   const { proposal } = alert;
-  const change = `${proposal.operation} ${proposal.target.kind} ${proposal.target.name} in ${proposal.workspace}`;
+  const change = `${olympusProposalSubject(proposal)} in ${proposal.workspace}`;
   const risk = proposal.highRisk.length > 0 ? "High risk · " : "";
   if (alert.kind === "soon") {
     return {

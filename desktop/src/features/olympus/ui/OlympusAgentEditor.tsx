@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import {
   OLYMPUS_EFFORTS,
@@ -21,6 +22,11 @@ import { Switch } from "@/shared/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { Textarea } from "@/shared/ui/textarea";
 import { useOlympusAgents } from "@/features/agents/useOlympusAgents";
+import {
+  olympusFileTooLarge,
+  olympusInstructionsFileQueryKey,
+  useOlympusInstructionsFile,
+} from "../lib/olympusInstructionsFile";
 import { olympusModelChoices } from "../lib/olympusModels";
 import { olympusFieldLocked } from "../lib/olympusOwnership";
 import {
@@ -30,6 +36,11 @@ import {
   olympusWithoutNulls,
 } from "../lib/olympusRisk";
 import { OlympusGitLock, OlympusSelect } from "./OlympusParts";
+import { OlympusInstructionsFileField } from "./OlympusInstructionsFileField";
+import {
+  type OlympusFileReview,
+  OlympusInstructionsReview,
+} from "./OlympusInstructionsReview";
 import { useOlympusRiskGate } from "./OlympusRiskGate";
 
 type Json = Record<string, unknown>;
@@ -100,12 +111,18 @@ function text(value: unknown) {
 
 function OlympusFormEditor({
   agent,
+  fileDraft,
   onDone,
+  onFileDraft,
+  onFileReview,
   submit,
   workspace,
 }: {
   agent: OlympusAgent;
+  fileDraft: string | null;
   onDone: () => void;
+  onFileDraft: (draft: string | null) => void;
+  onFileReview: (review: OlympusFileReview) => void;
   submit: (after: Json) => void;
   workspace: OlympusWorkspace | null;
 }) {
@@ -136,6 +153,15 @@ function OlympusFormEditor({
     locked("instructions") ||
     agent.spec.instructionsFrom !== null ||
     agent.instructionsTruncated;
+  const file = locked("instructionsFrom") ? null : agent.instructionsFile;
+  const fileQuery = useOlympusInstructionsFile(file);
+  const fileVersion = fileQuery.data;
+  const fileText = fileDraft ?? fileVersion?.content ?? "";
+  const fileChanged =
+    fileVersion !== undefined &&
+    fileDraft !== null &&
+    fileDraft !== fileVersion.content;
+  const fileTooBig = fileChanged && olympusFileTooLarge(fileText);
 
   const after = (() => {
     const next: Json = { ...base };
@@ -161,7 +187,8 @@ function OlympusFormEditor({
     set("backup", backup, !locked("backup"));
     return next;
   })();
-  const changed = Object.keys(olympusSpecPatch(base, after)).length > 0;
+  const specChanged = Object.keys(olympusSpecPatch(base, after)).length > 0;
+  const changed = specChanged || fileChanged;
 
   return (
     <form
@@ -170,7 +197,14 @@ function OlympusFormEditor({
       data-testid="olympus-agent-editor-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (changed) submit(after);
+        if (file && fileVersion && fileChanged) {
+          onFileReview({
+            file,
+            version: fileVersion,
+            draft: fileText,
+            spec: specChanged ? after : null,
+          });
+        } else if (specChanged) submit(after);
         else onDone();
       }}
     >
@@ -273,29 +307,40 @@ function OlympusFormEditor({
           />
         </Field>
       </div>
-      <Field
-        htmlFor={`${id}-instructions`}
-        label="Instructions"
-        locked={locked("instructions") || locked("instructionsFrom")}
-      >
-        <Textarea
-          className="min-h-48 font-mono text-xs"
-          disabled={instructionsLocked}
+      {file ? (
+        <OlympusInstructionsFileField
+          file={file}
           id={`${id}-instructions`}
-          onChange={(event) => setInstructions(event.target.value)}
-          placeholder={
-            agent.spec.instructionsFrom
-              ? `${agent.spec.instructionsFrom.skillsRepo}/${agent.spec.instructionsFrom.path}`
-              : undefined
-          }
-          value={instructions}
+          onChange={onFileDraft}
+          query={fileQuery}
+          tooBig={fileTooBig}
+          value={fileText}
         />
-        {agent.spec.instructionsFrom ? (
-          <p className="text-xs text-muted-foreground">
-            The instructions come from a skills repository.
-          </p>
-        ) : null}
-      </Field>
+      ) : (
+        <Field
+          htmlFor={`${id}-instructions`}
+          label="Instructions"
+          locked={locked("instructions") || locked("instructionsFrom")}
+        >
+          <Textarea
+            className="min-h-48 font-mono text-xs"
+            disabled={instructionsLocked}
+            id={`${id}-instructions`}
+            onChange={(event) => setInstructions(event.target.value)}
+            placeholder={
+              agent.spec.instructionsFrom
+                ? `${agent.spec.instructionsFrom.skillsRepo}/${agent.spec.instructionsFrom.path}`
+                : undefined
+            }
+            value={instructions}
+          />
+          {agent.spec.instructionsFrom ? (
+            <p className="text-xs text-muted-foreground">
+              The instructions come from a skills repository.
+            </p>
+          ) : null}
+        </Field>
+      )}
       <label
         className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5 text-sm"
         htmlFor={`${id}-backup`}
@@ -315,8 +360,8 @@ function OlympusFormEditor({
         <Button onClick={onDone} type="button" variant="outline">
           Cancel
         </Button>
-        <Button disabled={!changed} type="submit">
-          Save changes
+        <Button disabled={!changed || fileTooBig} type="submit">
+          {fileChanged ? "Review and save" : "Save changes"}
         </Button>
       </div>
     </form>
@@ -422,20 +467,24 @@ export function OlympusAgentEditor({
   workspace: OlympusWorkspace | null;
 }) {
   const gate = useOlympusRiskGate();
+  const queryClient = useQueryClient();
   const legacy = agent.gitopsFields === null;
+  const [fileDraft, setFileDraft] = React.useState<string | null>(null);
+  const [review, setReview] = React.useState<OlympusFileReview | null>(null);
   const done = () => onOpenChange(false);
-  const submit = (after: Json) => {
+  const savePatch = (after: Json, close: boolean) => {
     const { patch, risks } = olympusPatchChange(agent, after);
-    if (Object.keys(patch).length === 0) return done();
+    if (Object.keys(patch).length === 0) return close ? done() : undefined;
     gate.guard(agent.name, risks, (confirmed) => {
       void send({
         action: "patch",
         patch,
         ...(confirmed ? { highRisk: true as const } : {}),
       });
-      done();
+      if (close) done();
     });
   };
+  const submit = (after: Json) => savePatch(after, true);
   return (
     <>
       <Sheet onOpenChange={onOpenChange} open>
@@ -448,7 +497,9 @@ export function OlympusAgentEditor({
             <SheetDescription>
               {legacy
                 ? "This Hephaestus version changes only model, effort, and instructions."
-                : "Fields with a lock are set in gitops-home. Change them there."}
+                : agent.gitopsFields?.length
+                  ? "Fields with a lock are set in gitops-home. Change them there."
+                  : "Olympus manages every field of this agent."}
             </SheetDescription>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -476,7 +527,10 @@ export function OlympusAgentEditor({
                 <TabsContent value="form">
                   <OlympusFormEditor
                     agent={agent}
+                    fileDraft={fileDraft}
                     onDone={done}
+                    onFileDraft={setFileDraft}
+                    onFileReview={setReview}
                     submit={submit}
                     workspace={workspace}
                   />
@@ -493,6 +547,26 @@ export function OlympusAgentEditor({
           </div>
         </SheetContent>
       </Sheet>
+      {review ? (
+        <OlympusInstructionsReview
+          agent={agent}
+          onClose={() => setReview(null)}
+          onCommitted={() => {
+            setReview(null);
+            done();
+          }}
+          onUseGitVersion={(version) => {
+            queryClient.setQueryData(
+              olympusInstructionsFileQueryKey(review.file),
+              version,
+            );
+            setFileDraft(null);
+            setReview(null);
+          }}
+          review={review}
+          saveSpec={(spec) => savePatch(spec, false)}
+        />
+      ) : null}
       {gate.dialog}
     </>
   );

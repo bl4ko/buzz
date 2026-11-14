@@ -15,7 +15,7 @@ export const OLYMPUS_PROPOSAL_PHASES = [
 ] as const;
 export type OlympusProposalPhase = (typeof OLYMPUS_PROPOSAL_PHASES)[number];
 
-const TARGET_KINDS = ["Agent", "Schedule", "Workspace"] as const;
+const TARGET_KINDS = ["Agent", "Schedule", "Workspace", "File"] as const;
 const OPERATIONS = ["create", "patch", "delete"] as const;
 
 export type OlympusProposalDiff = {
@@ -125,7 +125,13 @@ export function parseOlympusProposal(
   const name = text(content.name);
   const workspace = text(target.workspace);
   const targetKind = oneOf(TARGET_KINDS, target.kind);
-  const targetName = text(target.name);
+  const targetPath = targetKind === "File" ? text(target.path) : null;
+  const targetName =
+    targetKind === "File"
+      ? targetPath && text(target.name)
+        ? `${text(target.name)}/${targetPath}`
+        : null
+      : text(target.name);
   const operation = oneOf(OPERATIONS, content.operation);
   const phase = oneOf(OLYMPUS_PROPOSAL_PHASES, content.phase);
   const digest = text(content.digest);
@@ -192,6 +198,14 @@ export function parseOlympusProposal(
     phase,
     result,
   };
+}
+
+export function olympusProposalSubject(
+  proposal: Pick<OlympusProposal, "operation" | "target">,
+): string {
+  return proposal.target.kind === "File"
+    ? `edit the file ${proposal.target.name}`
+    : `${proposal.operation} ${proposal.target.kind} ${proposal.target.name}`;
 }
 
 export function olympusOperators(

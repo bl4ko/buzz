@@ -32,6 +32,14 @@ export type OlympusChange =
   | { action: "patch"; patch: Record<string, unknown>; highRisk?: true }
   | { action: "suspend-schedule" | "resume-schedule" | "run-now" }
   | {
+      action: "edit-file";
+      repo: string;
+      path: string;
+      content: string;
+      base: string;
+      message?: string;
+    }
+  | {
       action: "approve" | "reject";
       proposal: string;
       digest: string;
@@ -52,7 +60,8 @@ export type OlympusEventTemplate = {
   tags: string[][];
 };
 
-const WORKSPACE_ACTIONS = new Set(["suspend", "resume", "patch"]);
+const WORKSPACE_ACTIONS = new Set(["suspend", "resume", "patch", "edit-file"]);
+export const OLYMPUS_EDIT_FILE_TIMEOUT_MS = 180_000;
 const SCHEDULE_ACTIONS = new Set([
   "suspend-schedule",
   "resume-schedule",
@@ -123,6 +132,7 @@ export function buildOlympusChangeRequest(
 export type OlympusChangeResult = {
   status: "accepted" | "refused";
   reason: string | null;
+  commit?: string;
 };
 
 export function parseOlympusChangeResult(
@@ -139,24 +149,37 @@ export function parseOlympusChangeResult(
   const status = statusTags.length === 1 ? statusTags[0][1] : null;
   if (status !== "accepted" && status !== "refused") return null;
   let reason: string | null = null;
+  let commit: string | undefined;
   try {
     const content: unknown = JSON.parse(event.content);
-    if (
-      typeof content === "object" &&
-      content !== null &&
-      "reason" in content &&
-      typeof content.reason === "string" &&
-      content.reason.length > 0
-    ) {
-      reason = content.reason;
+    if (typeof content === "object" && content !== null) {
+      if (
+        "reason" in content &&
+        typeof content.reason === "string" &&
+        content.reason.length > 0
+      ) {
+        reason = content.reason;
+      }
+      if (
+        "commit" in content &&
+        typeof content.commit === "string" &&
+        /^[0-9a-f]{40}$/.test(content.commit)
+      ) {
+        commit = content.commit;
+      }
     }
   } catch {}
-  return { status, reason };
+  return commit ? { status, reason, commit } : { status, reason };
 }
 
 export type OlympusRequestState =
   | { phase: "pending"; action: string }
-  | { phase: "accepted" | "refused"; action: string; reason: string | null }
+  | {
+      phase: "accepted" | "refused";
+      action: string;
+      reason: string | null;
+      commit?: string;
+    }
   | { phase: "failed"; action: string; reason: string };
 
 export type OlympusChangeTransport = {
@@ -183,6 +206,14 @@ function setState(key: string, state: OlympusRequestState | null) {
 
 export function olympusRequestKey(workspace: string, agent: string | null) {
   return agent ? `${workspace}/${agent}` : workspace;
+}
+
+export function olympusFileRequestKey(
+  workspace: string,
+  repo: string,
+  path: string,
+) {
+  return `${workspace}#file/${repo}/${path}`;
 }
 
 export function olympusScheduleRequestKey(workspace: string, schedule: string) {
@@ -265,6 +296,7 @@ export async function submitOlympusChange(
             phase: result.status,
             action: change.action,
             reason: result.reason,
+            ...(result.commit ? { commit: result.commit } : {}),
           });
         }
       },
@@ -273,15 +305,18 @@ export async function submitOlympusChange(
       cleanup();
       return null;
     }
+    const waitMs =
+      change.action === "edit-file"
+        ? OLYMPUS_EDIT_FILE_TIMEOUT_MS
+        : OLYMPUS_RESULT_TIMEOUT_MS;
     timer = setTimeout(
       () =>
         settle({
           phase: "failed",
           action: change.action,
-          reason:
-            "No answer from Hephaestus in 30 seconds. The change can still apply later.",
+          reason: `No answer from Hephaestus in ${waitMs / 1000} seconds. The change can still apply later.`,
         }),
-      input.timeoutMs ?? OLYMPUS_RESULT_TIMEOUT_MS,
+      input.timeoutMs ?? waitMs,
     );
     await transport.publish(event);
     const state = await settled;

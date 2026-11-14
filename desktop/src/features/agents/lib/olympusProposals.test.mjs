@@ -12,6 +12,7 @@ import {
   nextOlympusProposalExpiry,
   olympusLineDiff,
   olympusProposalStatus,
+  olympusProposalSubject,
   parseOlympusProposal,
 } from "./olympusProposals.ts";
 
@@ -365,4 +366,40 @@ test("line diff keeps unchanged lines and marks removed and added ones", () => {
   );
   assert.equal(changed.filter((line) => line.type === "del").length, 600);
   assert.equal(changed.filter((line) => line.type === "add").length, 600);
+});
+
+test("a File proposal names the repository and path", () => {
+  const file = (target) =>
+    parseOlympusProposal(
+      proposalEvent({
+        body: content({
+          target: {
+            kind: "File",
+            namespace: "olympus-zeus",
+            name: "agents",
+            workspace: "dev",
+            ...target,
+          },
+          diff: [
+            { path: "zeus/agents/zeus.md", from: null, to: '"Be brief."' },
+          ],
+        }),
+      }),
+      TRUSTED,
+    );
+  const proposal = file({ path: "zeus/agents/zeus.md" });
+  assert.deepEqual(proposal.target, {
+    kind: "File",
+    namespace: "olympus-zeus",
+    name: "agents/zeus/agents/zeus.md",
+  });
+  assert.equal(
+    olympusProposalSubject(proposal),
+    "edit the file agents/zeus/agents/zeus.md",
+  );
+  assert.equal(file({}), null);
+  assert.equal(
+    olympusProposalSubject(parseOlympusProposal(proposalEvent(), TRUSTED)),
+    "patch Agent proof",
+  );
 });

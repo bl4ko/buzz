@@ -267,7 +267,17 @@ export function OlympusAgentSections({
                 <OlympusGitLock field="Instructions" />
               ) : null}
             </h3>
-            {spec.instructionsFrom ? (
+            {agent.instructionsFile ? (
+              <p
+                className="text-sm"
+                data-testid="olympus-agent-instructions-file"
+              >
+                File in Olympus git{" "}
+                <span className="font-mono">
+                  {agent.instructionsFile.repo}/{agent.instructionsFile.path}
+                </span>
+              </p>
+            ) : spec.instructionsFrom ? (
               <p className="text-sm">
                 From skills repository{" "}
                 <span className="font-mono">
