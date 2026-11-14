@@ -20,6 +20,7 @@ import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const SHOTS = "test-results/screenshots-dialogs";
 
@@ -157,7 +158,7 @@ test.describe("agent provider dropdown screenshots", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     await expect(page.getByTestId("agents-library-personas")).toBeVisible({
       timeout: 10_000,
     });
@@ -230,7 +231,7 @@ test.describe("agent provider dropdown screenshots", () => {
     });
 
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     await page
       .getByRole("button", { name: "Open actions for Codex Definition" })
       .click();

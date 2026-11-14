@@ -15,6 +15,7 @@ import { expect, test } from "@playwright/test";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const SHOTS = "test-results/restart-diff-screenshots";
 
@@ -120,10 +121,10 @@ const START_AGENT = {
 
 async function gotoAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("open-olympus-view")).toBeVisible({
     timeout: 10_000,
   });
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await expect(page.getByTestId("agents-library-personas")).toBeVisible({
     timeout: 10_000,
   });

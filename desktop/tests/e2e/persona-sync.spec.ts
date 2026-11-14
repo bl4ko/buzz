@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
 async function gotoApp(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForInvokeBridge(page);
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("open-olympus-view")).toBeVisible({
     timeout: 10_000,
   });
 }

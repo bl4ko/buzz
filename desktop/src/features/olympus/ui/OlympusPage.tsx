@@ -2,11 +2,13 @@ import * as React from "react";
 import { MountainSnow, RadioTower } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { useOlympusAgents } from "@/features/agents/useOlympusAgents";
 import { TopChromeInsetHeader } from "@/shared/layout/TopChromeInsetHeader";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
-import { OLYMPUS_TABS, type OlympusTab } from "../lib/olympusTabs";
+import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
+import { type OlympusTab, visibleOlympusTabs } from "../lib/olympusTabs";
 import { listOlympusSchedules } from "../lib/olympusSchedules";
 import { useOlympusPendingProposalCount } from "../useOlympusPendingProposalCount";
 import { OlympusProposalsTab, OlympusUsageTab } from "./olympusMounts";
@@ -17,6 +19,11 @@ import {
 } from "./OlympusInventoryTabs";
 import { OlympusEmptyState } from "./OlympusParts";
 import { OlympusSchedulesTab } from "./OlympusSchedulesTab";
+
+const AgentsScreen = React.lazy(async () => {
+  const module = await import("@/features/agents/ui/AgentsScreen");
+  return { default: module.AgentsScreen };
+});
 
 function summary(workspaces: number, agents: number, failing: number): string {
   const parts = [
@@ -33,6 +40,8 @@ export function OlympusPage({ tab }: { tab: OlympusTab }) {
   const olympus = useOlympusAgents();
   const { goOlympus } = useAppNavigation();
   const pending = useOlympusPendingProposalCount();
+  const localAgents = useManagedAgentsQuery().data?.length ?? 0;
+  const tabs = visibleOlympusTabs(tab, localAgents > 0);
   const agents = olympus.groups.reduce(
     (count, group) => count + group.agents.length,
     0,
@@ -75,8 +84,11 @@ export function OlympusPage({ tab }: { tab: OlympusTab }) {
         value={tab}
       >
         <div className="border-b border-border/60 px-4 py-2">
-          <TabsList aria-label="Olympus sections" className="h-8">
-            {OLYMPUS_TABS.map((item) => (
+          <TabsList
+            aria-label="Olympus sections"
+            className="h-8 max-w-full justify-start overflow-x-auto [scrollbar-width:none]"
+          >
+            {tabs.map((item) => (
               <TabsTrigger
                 className="gap-1.5 px-2.5 text-xs"
                 data-testid={`olympus-tab-${item.id}`}
@@ -94,44 +106,56 @@ export function OlympusPage({ tab }: { tab: OlympusTab }) {
             ))}
           </TabsList>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-5xl px-4 py-5">
-            {olympus.error ? (
-              <p className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                Couldn’t load Olympus state. {olympus.error.message}
-              </p>
-            ) : null}
-            {olympus.isLoading ? (
-              <div className="space-y-3" data-testid="olympus-loading">
-                <Skeleton className="h-24 w-full rounded-xl" />
-                <Skeleton className="h-24 w-full rounded-xl" />
-              </div>
-            ) : empty && tab !== "proposals" && tab !== "usage" ? (
-              <OlympusNoState />
-            ) : (
-              <>
-                <TabsContent className="mt-0" value="agents">
-                  <OlympusAgentsTab />
-                </TabsContent>
-                <TabsContent className="mt-0" value="schedules">
-                  <OlympusSchedulesTab />
-                </TabsContent>
-                <TabsContent className="mt-0" value="proposals">
-                  <OlympusProposalsTab />
-                </TabsContent>
-                <TabsContent className="mt-0" value="usage">
-                  <OlympusUsageTab />
-                </TabsContent>
-                <TabsContent className="mt-0" value="workspaces">
-                  <OlympusWorkspacesTab />
-                </TabsContent>
-                <TabsContent className="mt-0" value="providers">
-                  <OlympusProvidersTab />
-                </TabsContent>
-              </>
-            )}
+        {tab === "local" ? (
+          <TabsContent
+            className="mt-0 flex min-h-0 flex-1 flex-col"
+            data-testid="olympus-local-agents"
+            value="local"
+          >
+            <React.Suspense fallback={<ViewLoadingFallback kind="agents" />}>
+              <AgentsScreen embedded />
+            </React.Suspense>
+          </TabsContent>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-5xl px-4 py-5">
+              {olympus.error ? (
+                <p className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  Couldn’t load Olympus state. {olympus.error.message}
+                </p>
+              ) : null}
+              {olympus.isLoading ? (
+                <div className="space-y-3" data-testid="olympus-loading">
+                  <Skeleton className="h-24 w-full rounded-xl" />
+                  <Skeleton className="h-24 w-full rounded-xl" />
+                </div>
+              ) : empty && tab !== "proposals" && tab !== "usage" ? (
+                <OlympusNoState />
+              ) : (
+                <>
+                  <TabsContent className="mt-0" value="agents">
+                    <OlympusAgentsTab />
+                  </TabsContent>
+                  <TabsContent className="mt-0" value="schedules">
+                    <OlympusSchedulesTab />
+                  </TabsContent>
+                  <TabsContent className="mt-0" value="proposals">
+                    <OlympusProposalsTab />
+                  </TabsContent>
+                  <TabsContent className="mt-0" value="usage">
+                    <OlympusUsageTab />
+                  </TabsContent>
+                  <TabsContent className="mt-0" value="workspaces">
+                    <OlympusWorkspacesTab />
+                  </TabsContent>
+                  <TabsContent className="mt-0" value="providers">
+                    <OlympusProvidersTab />
+                  </TabsContent>
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </Tabs>
     </section>
   );

@@ -3,6 +3,7 @@ import { npubEncode } from "nostr-tools/nip19";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const SHOTS = "test-results/agent-access-warning";
 
@@ -326,7 +327,7 @@ test("persona-backed edit warns before saving open access", async ({
     ],
   });
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByRole("button", { name: "Tyler Agent agent profile" }).click();
   await page.getByTestId("user-profile-edit-agent").click();
 

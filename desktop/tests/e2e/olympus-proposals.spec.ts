@@ -232,6 +232,11 @@ test("a high-risk approve needs the extra confirmation and sends highRisk", asyn
       eventCreatedAt: Math.floor(Date.now() / 1000),
     }),
   );
+  await expect(card).toHaveCount(0);
+  await expect(list.getByTestId("olympus-proposals-empty")).toContainText(
+    "Nothing waits for your decision",
+  );
+  await list.getByTestId("olympus-proposals-show-all").click();
   await expect(card).toHaveAttribute("data-phase", "failed");
   await expect(card.getByRole("button", { name: "Approve" })).toHaveCount(0);
   await expect(card.getByTestId("olympus-proposal-result")).toContainText(

@@ -122,7 +122,7 @@ test("selected Inbox and Agents rows keep their highlight without bold text", as
   await expect(inbox).toHaveAttribute("data-active", "true");
   await expect(inbox).toHaveCSS("font-weight", "400");
 
-  const agents = page.getByTestId("open-agents-view");
+  const agents = page.getByTestId("open-olympus-view");
   await agents.click();
   await expect(agents).toHaveAttribute("data-active", "true");
   await expect(agents).toHaveCSS("font-weight", "400");
@@ -139,7 +139,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
     primaryMenu.getByRole("button", { name: "Inbox", exact: true }),
     page.getByTestId("open-pulse-view"),
     page.getByTestId("open-projects-view"),
-    page.getByTestId("open-agents-view"),
+    page.getByTestId("open-olympus-view"),
     page.getByTestId("open-workflows-view"),
   ];
 
@@ -257,11 +257,11 @@ test("dark mode keeps selected labels regular and channel-level unread labels bo
     .getByRole("button", { name: "Inbox", exact: true });
   await expect(inbox).toHaveAttribute("data-active", "true");
   await expect(inbox).toHaveCSS("font-weight", "400");
-  await expect(page.getByTestId("open-agents-view")).toHaveCSS("opacity", "1");
+  await expect(page.getByTestId("open-olympus-view")).toHaveCSS("opacity", "1");
   await expect(
-    page.getByTestId("open-agents-view").locator("[data-sidebar=menu-label]"),
+    page.getByTestId("open-olympus-view").locator("[data-sidebar=menu-label]"),
   ).toHaveCSS("opacity", "0.8");
-  await expect(page.getByTestId("open-agents-view").locator("svg")).toHaveCSS(
+  await expect(page.getByTestId("open-olympus-view").locator("svg")).toHaveCSS(
     "opacity",
     "0.8",
   );

@@ -19,6 +19,14 @@ import {
 } from "../lib/olympusSchedules";
 import { olympusFieldLocked } from "../lib/olympusOwnership";
 import {
+  activeOlympusScheduleFilter,
+  applyOlympusScheduleFilter,
+  loadOlympusScheduleFilter,
+  type OlympusScheduleFilter,
+  olympusScheduleFilterOptions,
+  saveOlympusScheduleFilter,
+} from "../lib/olympusScheduleFilter";
+import {
   formatOlympusAgo,
   formatOlympusDate,
   formatOlympusIn,
@@ -26,6 +34,7 @@ import {
   OlympusEmptyState,
   OlympusGitLock,
   OlympusRunResult,
+  OlympusSelect,
 } from "./OlympusParts";
 
 const MINUTE = 60_000;
@@ -42,7 +51,7 @@ function useMinuteClock() {
 export function OlympusSchedulesTab({ agent }: { agent?: string } = {}) {
   const olympus = useOlympusAgents();
   const now = useMinuteClock();
-  const [failedOnly, setFailedOnly] = React.useState(false);
+  const [stored, setStored] = React.useState(loadOlympusScheduleFilter);
   const failedId = React.useId();
   const rows = React.useMemo(
     () =>
@@ -51,8 +60,19 @@ export function OlympusSchedulesTab({ agent }: { agent?: string } = {}) {
       ),
     [agent, now, olympus.groups],
   );
+  const filter =
+    agent === undefined
+      ? activeOlympusScheduleFilter(rows, stored)
+      : { workspace: null, agent: null, failedOnly: false };
+  const options = olympusScheduleFilterOptions(rows, filter.workspace);
+  const update = (patch: Partial<OlympusScheduleFilter>) => {
+    const next = { ...filter, ...patch };
+    setStored(next);
+    saveOlympusScheduleFilter(next);
+  };
   const failed = rows.filter((row) => row.failed).length;
-  const shown = failedOnly ? rows.filter((row) => row.failed) : rows;
+  const shown = applyOlympusScheduleFilter(rows, filter);
+  const filtered = filter.workspace !== null || filter.agent !== null;
 
   if (rows.length === 0) {
     return (
@@ -69,22 +89,66 @@ export function OlympusSchedulesTab({ agent }: { agent?: string } = {}) {
   return (
     <div className="space-y-3" data-testid="olympus-schedules">
       {agent === undefined ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3"
+          data-testid="olympus-schedule-filters"
+        >
           <p className="text-xs text-muted-foreground">
-            {rows.length} {rows.length === 1 ? "schedule" : "schedules"}
+            {filtered || filter.failedOnly
+              ? `${shown.length} of ${rows.length} schedules`
+              : `${rows.length} ${rows.length === 1 ? "schedule" : "schedules"}`}
             {failed > 0 ? `, ${failed} with a failed last run` : ""}
           </p>
-          <label
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-            htmlFor={failedId}
-          >
-            <Switch
-              checked={failedOnly}
-              id={failedId}
-              onCheckedChange={setFailedOnly}
-            />
-            Only failed
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            {options.workspaces.length > 1 ? (
+              <div className="w-40">
+                <OlympusSelect
+                  label="Workspace"
+                  onChange={(value) =>
+                    update({
+                      workspace: value || null,
+                      agent:
+                        value &&
+                        filter.agent &&
+                        !filter.agent.startsWith(`${value}/`)
+                          ? null
+                          : filter.agent,
+                    })
+                  }
+                  options={[
+                    { value: "", label: "All workspaces" },
+                    ...options.workspaces.map((item) => ({
+                      value: item,
+                      label: item,
+                    })),
+                  ]}
+                  value={filter.workspace ?? ""}
+                />
+              </div>
+            ) : null}
+            <div className="w-48">
+              <OlympusSelect
+                label="Agent"
+                onChange={(value) => update({ agent: value || null })}
+                options={[
+                  { value: "", label: "All agents" },
+                  ...options.agents,
+                ]}
+                value={filter.agent ?? ""}
+              />
+            </div>
+            <label
+              className="flex items-center gap-2 pl-1 text-xs text-muted-foreground"
+              htmlFor={failedId}
+            >
+              <Switch
+                checked={filter.failedOnly}
+                id={failedId}
+                onCheckedChange={(failedOnly) => update({ failedOnly })}
+              />
+              Only failed
+            </label>
+          </div>
         </div>
       ) : null}
       <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/60">
@@ -109,6 +173,30 @@ export function OlympusSchedulesTab({ agent }: { agent?: string } = {}) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
+            {shown.length === 0 ? (
+              <tr>
+                <td
+                  className="px-3 py-6 text-center text-xs text-muted-foreground"
+                  colSpan={5}
+                  data-testid="olympus-schedules-none-match"
+                >
+                  No schedule matches the filter.{" "}
+                  <button
+                    className="font-medium text-foreground underline-offset-2 hover:underline"
+                    onClick={() =>
+                      update({
+                        workspace: null,
+                        agent: null,
+                        failedOnly: false,
+                      })
+                    }
+                    type="button"
+                  >
+                    Show all schedules
+                  </button>
+                </td>
+              </tr>
+            ) : null}
             {shown.map((row) => (
               <OlympusScheduleRowView
                 key={row.key}

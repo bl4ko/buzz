@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const BESTIE_PUBKEY = TEST_IDENTITIES.alice.pubkey;
 const RELAY_URL = "ws://localhost:3000";
@@ -79,7 +80,7 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
   });
   await page.keyboard.press("Escape");
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByRole("button", { name: "Mochi agent profile" }).click();
   const bestieAction = page.getByTestId("user-profile-bestie-action");
   await expect(bestieAction).toContainText("Make Bestie");
@@ -107,7 +108,7 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
     await sidebarBestie.evaluate(
       (element) =>
         element.previousElementSibling?.querySelector(
-          '[data-testid="open-agents-view"]',
+          '[data-testid="open-olympus-view"]',
         ) !== null,
     ),
   ).toBe(true);
@@ -205,7 +206,7 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
 
   await floatingTrigger.click();
   await expect(page.getByTestId("bestie-composer")).toBeFocused();
-  const outsideDestination = page.getByTestId("open-agents-view");
+  const outsideDestination = page.getByTestId("open-olympus-view");
   await outsideDestination.click();
   await expect(page.getByTestId("bestie-bloom-content")).toHaveCount(0);
   await expect(outsideDestination).toBeFocused();

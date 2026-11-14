@@ -108,7 +108,12 @@ function workspaceEvent(overrides = {}) {
       spec: { suspend: false, quota: null },
       status: { phase: "Ready", reason: null, conditions: [] },
       providers: [
-        { name: "anthropic", models: ["claude-haiku-5-5"], protocols: [] },
+        {
+          name: "anthropic",
+          description: "Claude API with a key, billed by token",
+          models: ["claude-haiku-5-5"],
+          protocols: [],
+        },
         { name: "local", models: [] },
       ],
       mcpServers: ["share", "hindsight", "search"],
@@ -342,6 +347,10 @@ test("a workspace without agents still forms a group", () => {
   assert.deepEqual(
     workspace.providers.map((provider) => provider.name),
     ["anthropic", "local"],
+  );
+  assert.deepEqual(
+    workspace.providers.map((provider) => provider.description),
+    ["Claude API with a key, billed by token", null],
   );
 });
 

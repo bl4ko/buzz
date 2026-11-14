@@ -132,6 +132,7 @@ export type OlympusAgent = {
 
 export type OlympusProvider = {
   name: string;
+  description: string | null;
   models: string[];
   protocols: string[];
 };
@@ -526,6 +527,7 @@ export function parseOlympusWorkspace(
         ? [
             {
               name: providerName,
+              description: text(provider.description),
               models: texts(provider.models),
               protocols: texts(provider.protocols),
             },

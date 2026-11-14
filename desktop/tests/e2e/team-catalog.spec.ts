@@ -6,6 +6,7 @@ import type { RelayEvent } from "@/shared/api/types";
 
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 type CatalogMember = {
   memberKey: string;
@@ -70,10 +71,10 @@ function createTeamCatalogEvent(input: {
 
 async function gotoAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("open-olympus-view")).toBeVisible({
     timeout: 10_000,
   });
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
 }
 
 async function openTeamCatalog(page: import("@playwright/test").Page) {

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
@@ -10,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 async function gotoApp(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForInvokeBridge(page);
-  await expect(page.getByTestId("open-agents-view")).toBeVisible({
+  await expect(page.getByTestId("open-olympus-view")).toBeVisible({
     timeout: 10_000,
   });
 }
@@ -268,7 +269,7 @@ test("env vars editor renders in PersonaDialog new-persona form", async ({
   await gotoApp(page);
 
   // Open the Agents view; the new-agent card opens the embedded create pane.
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByTestId("new-agent-card").click();
 
   // Scope all env-vars queries to the dialog: AgentDefaultsSettingsCard
@@ -312,7 +313,7 @@ test("persona model options follow the selected LLM provider", async ({
 }) => {
   await gotoApp(page);
 
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByTestId("new-agent-card").click();
 
   const provider = page.locator("#persona-runtime");

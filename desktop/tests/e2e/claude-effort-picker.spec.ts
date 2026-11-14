@@ -14,6 +14,7 @@ import {
   type MockBridgeOptions,
   TEST_IDENTITIES,
 } from "../helpers/bridge";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const AGENT_NAME = "Effort Agent";
 
@@ -178,7 +179,7 @@ async function stallDiscovery(page: Page, mode: "pending" | "failed") {
 
 async function openEdit(page: Page) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page
     .getByRole("button", { name: `${AGENT_NAME} agent profile`, exact: true })
     .click();
@@ -190,7 +191,7 @@ async function openEdit(page: Page) {
 
 async function openCreate(page: Page) {
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await page.getByTestId("new-agent-card").click();
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible();
@@ -655,7 +656,7 @@ test.describe("create dialog", () => {
       activePersonaIds: ["persona-opus"],
     });
     await page.goto("/");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     await page.getByLabel("Open actions for Opus Definition").click();
     await page.getByRole("menuitem", { name: "Edit" }).click();
     const dialog = page.getByTestId("persona-dialog");

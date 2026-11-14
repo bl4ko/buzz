@@ -13,6 +13,7 @@ import {
   olympusOpsEvents,
   olympusOpsResult,
 } from "../helpers/olympusPage";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 async function openOlympus(page: Page, events = olympusOpsEvents()) {
   await installMockBridge(page, {
@@ -101,7 +102,7 @@ test("shows the empty state when the relay has no Olympus state", async ({
   await expect(page.getByTestId("olympus-no-state")).toContainText(
     "No Olympus state from this relay",
   );
-  await page.getByTestId("open-agents-view").click();
+  await goToAgentsRoute(page);
   await expect(page.getByTestId("olympus-agents-link")).toHaveCount(0);
 });
 

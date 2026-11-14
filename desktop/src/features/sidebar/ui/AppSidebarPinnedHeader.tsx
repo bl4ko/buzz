@@ -4,7 +4,6 @@ import { useIdentityQuery } from "@/shared/api/hooks";
 import {
   Activity,
   Bookmark,
-  Bot,
   Folders,
   Inbox,
   MountainSnow,
@@ -55,7 +54,6 @@ type AppSidebarPinnedHeaderProps = {
 
 type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
-  onSelectAgents: () => void;
   onSelectHome: () => void;
   onSelectProjects: () => void;
   onSelectPulse: () => void;
@@ -105,7 +103,6 @@ export function AppSidebarPinnedHeader({
 
 export function AppSidebarPrimaryMenu({
   homeBadgeCount,
-  onSelectAgents,
   onSelectHome,
   onSelectProjects,
   onSelectPulse,
@@ -196,21 +193,8 @@ export function AppSidebarPrimaryMenu({
           <SidebarMenuItem>
             <SidebarMenuButton
               className="data-[active=true]:font-normal"
-              data-testid="open-agents-view"
-              isActive={selectedView === "agents"}
-              onClick={onSelectAgents}
-              tooltip="Agents"
-              type="button"
-            >
-              <Bot className="h-4 w-4" />
-              <SidebarMenuLabel>Agents</SidebarMenuLabel>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="data-[active=true]:font-normal"
               data-testid="open-olympus-view"
-              isActive={selectedView === "olympus"}
+              isActive={selectedView === "olympus" || selectedView === "agents"}
               onClick={() => void goOlympus()}
               tooltip="Olympus"
               type="button"

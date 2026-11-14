@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings } from "../helpers/settings";
 import { addSendMessageStep } from "../helpers/workflows";
+import { goToAgentsRoute } from "../helpers/agentsView";
 
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
 const WATERCOLOR_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
@@ -288,7 +289,7 @@ test("inbox unread-only choice survives navigation and reload", async ({
   for (const enabled of [true, false]) {
     await unreadOnly.setChecked(enabled);
     await page.keyboard.press("Escape");
-    await page.getByTestId("open-agents-view").click();
+    await goToAgentsRoute(page);
     await expect(page.getByTestId("home-inbox-list")).not.toBeVisible();
     await page.getByTestId("global-back").click();
     await options.click();
