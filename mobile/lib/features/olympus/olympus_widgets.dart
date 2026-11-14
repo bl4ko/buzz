@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -7,6 +9,27 @@ import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
 import 'olympus_provider.dart';
 import 'olympus_state.dart';
+
+/// The error color, lightened until text on the page surface reads well.
+/// Some themes (Storm) use a muted git deletion red for `error`.
+Color olympusDanger(BuildContext context) {
+  final error = context.colors.error;
+  final surface = context.colors.surface.computeLuminance();
+  double contrast(Color color) {
+    final value = color.computeLuminance();
+    return (math.max(value, surface) + 0.05) /
+        (math.min(value, surface) + 0.05);
+  }
+
+  final toward = context.theme.brightness == Brightness.dark
+      ? Colors.white
+      : Colors.black;
+  var color = error;
+  for (var step = 1; step <= 10 && contrast(color) < 4.5; step++) {
+    color = Color.lerp(error, toward, step / 10)!;
+  }
+  return color;
+}
 
 enum OlympusDisplayState { online, working, suspended, starting }
 
@@ -207,12 +230,12 @@ class OlympusRequestLine extends StatelessWidget {
       ),
       OlympusRequestPhase.refused => (
         BuzzIcons.circleX,
-        context.colors.error,
+        olympusDanger(context),
         'Refused: ${request.reason ?? 'no reason'}',
       ),
       OlympusRequestPhase.failed => (
         BuzzIcons.triangleAlert,
-        context.colors.error,
+        olympusDanger(context),
         request.reason ?? 'The request failed.',
       ),
     };

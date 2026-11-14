@@ -243,27 +243,37 @@ class MasterAgentRow extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: Grid.inventoryLabelGap),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: navigationChatTitleTextStyle.copyWith(
-                    color: channelNavigationForeground(context, unread: unread),
-                    fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
-                  ),
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: navigationChatTitleTextStyle.copyWith(
+                          color: channelNavigationForeground(
+                            context,
+                            unread: unread,
+                          ),
+                          fontWeight: unread
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: Grid.xxs),
+                    Text(
+                      working ? 'Working…' : 'Master',
+                      style: context.textTheme.labelMedium?.copyWith(
+                        color: working
+                            ? context.colors.primary
+                            : navigationMetadataForeground(context),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: Grid.xxs),
-              Text(
-                working ? 'Working…' : 'Master',
-                style: context.textTheme.labelMedium?.copyWith(
-                  color: working
-                      ? context.colors.primary
-                      : navigationMetadataForeground(context),
-                ),
-              ),
-              const Spacer(),
               if (pending > 0)
                 OlympusCountBadge(count: pending)
               else if (unread)

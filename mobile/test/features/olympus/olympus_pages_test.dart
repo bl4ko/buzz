@@ -1,3 +1,4 @@
+import 'package:buzz/features/olympus/master_agent.dart';
 import 'package:buzz/features/olympus/olympus_agent_page.dart';
 import 'package:buzz/features/olympus/olympus_agents_page.dart';
 import 'package:buzz/features/olympus/olympus_proposals.dart';
@@ -84,6 +85,7 @@ Future<FakeOlympusNotifier> _pump(
       overrides: [
         olympusProvider.overrideWith(() => fake),
         olympusWorkingAgentsProvider.overrideWithValue({zeusKey}),
+        masterDmChannelIdProvider.overrideWithValue(null),
         userCacheProvider.overrideWith(_Profiles.new),
         ownedAgentDirectoryProvider.overrideWith(
           (ref) async => const [
@@ -233,5 +235,15 @@ void main() {
       expect(find.textContaining('USD'), findsNothing);
       expect(find.textContaining(r'$'), findsNothing);
     }
+  });
+
+  testWidgets('the master row pins Zeus with its proposal count', (
+    tester,
+  ) async {
+    await _pump(tester, const Scaffold(body: MasterAgentRow()));
+    expect(find.text('Zeus'), findsOneWidget);
+    expect(find.text('Working…'), findsOneWidget);
+    final badge = tester.getTopRight(find.text('1'));
+    expect(badge.dx, greaterThan(330));
   });
 }

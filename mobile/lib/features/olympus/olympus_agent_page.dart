@@ -486,7 +486,7 @@ class _ScheduleRow extends ConsumerWidget {
                     schedule.lastResult!,
                     style: context.textTheme.labelMedium?.copyWith(
                       color: failed
-                          ? context.colors.error
+                          ? olympusDanger(context)
                           : context.appColors.success,
                       fontWeight: FontWeight.w600,
                     ),

@@ -163,7 +163,7 @@ class _StatusBadge extends StatelessWidget {
       OlympusProposalPhase.applied => context.appColors.success,
       OlympusProposalPhase.rejected ||
       OlympusProposalPhase.refused ||
-      OlympusProposalPhase.failed => context.colors.error,
+      OlympusProposalPhase.failed => olympusDanger(context),
       OlympusProposalPhase.expired => context.colors.outline,
     };
     return Container(
@@ -219,7 +219,7 @@ class _DiffRow extends StatelessWidget {
             diff.path,
             style: mono?.copyWith(color: context.colors.onSurfaceVariant),
           ),
-          value(from, context.colors.error, '−'),
+          value(from, olympusDanger(context), '−'),
           value(to, context.appColors.success, '+'),
         ],
       ),
@@ -257,7 +257,7 @@ class OlympusProposalCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(Radii.container),
         border: Border.all(
           color: danger
-              ? context.colors.error.withValues(alpha: 0.6)
+              ? olympusDanger(context).withValues(alpha: 0.6)
               : context.colors.onSurface.withValues(alpha: 0.06),
         ),
       ),
@@ -300,7 +300,7 @@ class OlympusProposalCard extends ConsumerWidget {
                 vertical: Grid.xxs,
               ),
               decoration: BoxDecoration(
-                color: context.colors.error.withValues(alpha: 0.12),
+                color: olympusDanger(context).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(Radii.lg),
               ),
               child: Row(
@@ -309,14 +309,14 @@ class OlympusProposalCard extends ConsumerWidget {
                   Icon(
                     BuzzIcons.shieldAlert,
                     size: 16,
-                    color: context.colors.error,
+                    color: olympusDanger(context),
                   ),
                   const SizedBox(width: Grid.xxs),
                   Expanded(
                     child: Text(
                       'High risk: ${proposal.highRisk.join(', ')}',
                       style: context.textTheme.bodySmall?.copyWith(
-                        color: context.colors.error,
+                        color: olympusDanger(context),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
