@@ -5601,7 +5601,7 @@ fn idle_thread_sessions_to_close(
     let mut idle: Vec<(SessionScope, u64)> = sessions
         .filter(|(scope, _)| scope.is_thread() && Some(scope) != current)
         .collect();
-    idle.sort_by(|a, b| b.1.cmp(&a.1));
+    idle.sort_by_key(|(_, last)| Reverse(*last));
     idle.into_iter()
         .enumerate()
         .filter(|(i, (_, last))| {
@@ -5631,7 +5631,8 @@ async fn close_unused_sessions(agent: &mut OwnedAgent, current: Option<&SessionS
         agent.state.invalidate_scope(&scope);
     }
     for session_id in std::mem::take(&mut agent.state.pending_close) {
-        agent.acp.session_close(&session_id).await;
+        let closed = agent.acp.session_close(&session_id).await;
+        tracing::info!(target: "pool::session", closed, "dropped session {session_id}");
     }
 }
 
