@@ -83,7 +83,9 @@ NostrEvent agentEvent({
       'secrets': [
         {'name': 'github-token', 'env': 'GH_TOKEN'},
       ],
-      'profile': {'displayName': '${name[0].toUpperCase()}${name.substring(1)}'},
+      'profile': {
+        'displayName': '${name[0].toUpperCase()}${name.substring(1)}',
+      },
     },
     'schedules': schedules,
     'status': {
@@ -175,7 +177,11 @@ OlympusSnapshot snapshotOf(
   requests: requests,
 );
 
-typedef SentChange = ({String key, OlympusChangeTarget target, OlympusChange change});
+typedef SentChange = ({
+  String key,
+  OlympusChangeTarget target,
+  OlympusChange change,
+});
 
 class FakeOlympusNotifier extends OlympusNotifier {
   FakeOlympusNotifier(this.initial);

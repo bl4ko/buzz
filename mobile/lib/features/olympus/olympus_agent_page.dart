@@ -210,10 +210,12 @@ class _Header extends ConsumerWidget {
               children: [
                 const OlympusGitLock(),
                 const SizedBox(width: Grid.half),
-                Text(
-                  'Suspend is set in gitops-home',
-                  style: context.textTheme.bodySmall?.copyWith(
-                    color: context.colors.onSurfaceVariant,
+                Flexible(
+                  child: Text(
+                    'Suspend is set in gitops-home',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: context.colors.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],

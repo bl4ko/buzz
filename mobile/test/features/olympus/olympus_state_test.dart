@@ -149,15 +149,21 @@ void main() {
       expect(formatCompactCount(999), '999');
     });
 
-    test('the ask draft quotes the message and keeps a line for the question', () {
-      expect(
-        buildAskDraft(quote: 'Line one\n\nline two', link: 'buzz://message?x'),
-        '> Line one\n>\n> line two\n\nbuzz://message?x ',
-      );
-      expect(buildAskDraft(quote: 'Why?'), '> Why?\n\n');
-      expect(mergeAskDraft('Hello', '> Why?\n\n'), 'Hello\n\n> Why?\n\n');
-      expect(mergeAskDraft('> Why?', '> Why?\n\n'), '> Why?');
-    });
+    test(
+      'the ask draft quotes the message and keeps a line for the question',
+      () {
+        expect(
+          buildAskDraft(
+            quote: 'Line one\n\nline two',
+            link: 'buzz://message?x',
+          ),
+          '> Line one\n>\n> line two\n\nbuzz://message?x ',
+        );
+        expect(buildAskDraft(quote: 'Why?'), '> Why?\n\n');
+        expect(mergeAskDraft('Hello', '> Why?\n\n'), 'Hello\n\n> Why?\n\n');
+        expect(mergeAskDraft('> Why?', '> Why?\n\n'), '> Why?');
+      },
+    );
 
     test('buzz://olympus/ask is the master shortcut link', () {
       expect(
@@ -211,39 +217,45 @@ void main() {
       );
     });
 
-    test('approve sends highRisk only when confirmed; reject sends a reason', () {
-      final proposal = snapshotOf([
-        agentEvent(workspace: 'dev', name: 'proof'),
-        proposalEvent(highRisk: ['master agent']),
-      ]).proposals.single;
-      final target = OlympusChangeTarget(
-        operator: operatorKey,
-        workspace: 'dev',
-      );
-      final approve = buildOlympusChangeRequest(
-        target,
-        OlympusChange.approve(proposal, highRisk: true),
-      );
-      expect(approve.tags, contains(equals(['proposal', proposal.name])));
-      expect(jsonDecode(approve.content), {
-        'v': 1,
-        'action': 'approve',
-        'workspace': 'dev',
-        'proposal': proposal.name,
-        'digest': digest,
-        'highRisk': true,
-      });
-      final plain = OlympusChange.approve(proposal);
-      expect(plain.params.containsKey('highRisk'), isFalse);
-      expect(
-        OlympusChange.reject(proposal, reason: '  not now ').params['reason'],
-        'not now',
-      );
-      expect(
-        OlympusChange.reject(proposal, reason: ' ').params.containsKey('reason'),
-        isFalse,
-      );
-    });
+    test(
+      'approve sends highRisk only when confirmed; reject sends a reason',
+      () {
+        final proposal = snapshotOf([
+          agentEvent(workspace: 'dev', name: 'proof'),
+          proposalEvent(highRisk: ['master agent']),
+        ]).proposals.single;
+        final target = OlympusChangeTarget(
+          operator: operatorKey,
+          workspace: 'dev',
+        );
+        final approve = buildOlympusChangeRequest(
+          target,
+          OlympusChange.approve(proposal, highRisk: true),
+        );
+        expect(approve.tags, contains(equals(['proposal', proposal.name])));
+        expect(jsonDecode(approve.content), {
+          'v': 1,
+          'action': 'approve',
+          'workspace': 'dev',
+          'proposal': proposal.name,
+          'digest': digest,
+          'highRisk': true,
+        });
+        final plain = OlympusChange.approve(proposal);
+        expect(plain.params.containsKey('highRisk'), isFalse);
+        expect(
+          OlympusChange.reject(proposal, reason: '  not now ').params['reason'],
+          'not now',
+        );
+        expect(
+          OlympusChange.reject(
+            proposal,
+            reason: ' ',
+          ).params.containsKey('reason'),
+          isFalse,
+        );
+      },
+    );
 
     test('a bad operator key is refused before signing', () {
       expect(
